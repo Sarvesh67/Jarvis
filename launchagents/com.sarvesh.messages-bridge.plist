@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template. Placeholders replaced at install time by setup/04_messages_bridge.sh:
+    __PROXY_BIN__   = absolute path to mcp-proxy
+    __MAC_MSG_BIN__ = absolute path to mac-messages-mcp
+    __HOME__        = sarvesh's home
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.sarvesh.messages-bridge</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PROXY_BIN__</string>
+        <string>--port</string>
+        <string>5000</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--</string>
+        <string>__MAC_MSG_BIN__</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/messages-bridge.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/messages-bridge.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>__HOME__/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+</dict>
+</plist>

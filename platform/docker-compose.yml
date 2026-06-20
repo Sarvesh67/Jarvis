@@ -1,0 +1,67 @@
+name: jarvis
+
+# Jarvis platform data + gateway layer.
+# All ports bound to 127.0.0.1 only — nothing is exposed off-box.
+# Brought up by Colima's Docker. LiteLLM is added in Phase 2.
+
+services:
+  falkordb:
+    image: falkordb/falkordb:v4.18.10   # pinned (latest stable as of 2026-06-16)
+    container_name: jarvis-falkordb
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"   # graph + vector (Redis protocol) — Cognee connects here
+      - "127.0.0.1:3000:3000"   # FalkorDB browser UI (graph visualization)
+    volumes:
+      - falkordb_data:/var/lib/falkordb/data   # image's real data dir (holds appendonlydir)
+    environment:
+      # Persist to disk: AOF + periodic RDB snapshot (image default data dir)
+      - REDIS_ARGS=--appendonly yes --save 60 1000
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: jarvis-postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"   # used by LiteLLM (spend/keys) + dashboard
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.89.1   # pinned (latest release; -stable tag lags)
+    container_name: jarvis-litellm
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:4000:4000"   # gateway + /ui dashboard
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      STORE_MODEL_IN_DB: "True"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # reach host Ollama (:11434)
+
+volumes:
+  falkordb_data:
+  postgres_data:

@@ -1,0 +1,86 @@
+# Hermes Agent config — hedgefund user
+# Location at deploy time: /Users/hedgefund/.hermes/config.yaml
+#
+# WARNING: field names are drafted from framework docs and need a sanity
+# check against `hermes --help` + any shipped config.yaml.example before
+# first run. The setup/06_install_hermes.sh script captures help output to
+# ~/.hermes/_install-help.txt — diff against this file if the agent refuses
+# to start.
+
+# ─── brain (reasoning LLM) ──────────────────────────────────────────
+# Hermes talks to the local router (8765), which heuristic-picks a tier
+# (haiku/sonnet/opus) and forwards to the Claude Code bridge (3456).
+#
+# id: "auto" tells the router to use its heuristic. To force a specific
+# tier for a particular skill, override model in that skill's call with
+# e.g. "claude-opus-4" — the router honors explicit tier names.
+model:
+  provider: "openai-compatible"
+  id: "auto"
+  base_url: "http://127.0.0.1:8765/v1"
+  timeout: 60
+
+# ─── approvals ──────────────────────────────────────────────────────
+# Every tool call gets a manual gate with once/session/always/deny prompt,
+# EXCEPT commands in the allowlist below.
+approvals:
+  mode: "manual"
+  timeout: 120
+
+# ─── terminal (the blast-radius boundary) ──────────────────────────
+terminal:
+  backend: "local"
+  cwd: "/Users/hedgefund/financial-data"
+  timeout: 300
+
+# Commands permitted without per-call approval. Everything else still works
+# but requires manual approval the first time. `sudo`, `rm -rf /`, osascript,
+# networksetup are not listed — they'll get blocked by Hermes's default
+# dangerous-pattern heuristics.
+command_allowlist:
+  - "python"
+  - "python3"
+  - "uv"
+  - "scrapy"
+  - "curl"
+  - "sqlite3"
+  - "grep"
+  - "awk"
+  - "sed"
+  - "jq"
+  - "git status"
+  - "git log"
+  - "ollama run *"
+  - "ollama list"
+  - "shasum"
+  - "wc"
+  - "head"
+  - "tail"
+
+# ─── MCP servers ────────────────────────────────────────────────────
+mcp_servers:
+  # iMessage bridge runs under sarvesh (needs Apple ID + FDA).
+  # See launchagents/com.sarvesh.messages-bridge.plist.
+  # NOTE: mcp-proxy exposes SSE on /sse, not /. Hitting the bare host
+  # returns 404 — every tool call silently fails. The /sse suffix is required.
+  messages:
+    url: "http://127.0.0.1:5000/sse"
+    transport: "sse"
+    connect_timeout: 10
+    timeout: 120
+    tools:
+      include:
+        - "send_message"
+        - "get_recent_messages"
+        - "search_messages"
+
+# ─── memory ─────────────────────────────────────────────────────────
+memory:
+  path: "/Users/hedgefund/.hermes/memories"
+
+# ─── session / history caps (token-saving) ─────────────────────────
+# If Hermes exposes these keys, they bound context growth. Adjust/remove
+# if the schema differs — the values are defensive.
+session:
+  max_history_tokens: 8000
+  auto_summarize_at: 6000

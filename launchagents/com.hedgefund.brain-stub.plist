@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hedgefund.brain-stub</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/hedgefund/brain-stub/.venv/bin/python</string>
+        <string>/Users/hedgefund/brain-stub/server.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/hedgefund/brain-stub</string>
+
+    <key>UserName</key>
+    <string>hedgefund</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/hedgefund/financial-data/logs/brain-stub.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/hedgefund/financial-data/logs/brain-stub.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/hedgefund</string>
+        <!-- Upstream LLM endpoint. Default: OpenRouter (raw API, full tool support).
+             The API key lives in /Users/hedgefund/brain-stub/.env (chmod 600).
+             To override tier→model mapping per-vendor, set ROUTER_HAIKU_MODEL,
+             ROUTER_SONNET_MODEL, ROUTER_OPUS_MODEL in .env. -->
+        <key>BRAIN_BRIDGE_URL</key>
+        <string>https://openrouter.ai/api/v1/chat/completions</string>
+    </dict>
+</dict>
+</plist>

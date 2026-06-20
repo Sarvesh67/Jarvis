@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>JARVIS · control center</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.24.0/dist/tabler-icons.min.css" />
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<style>
+  :root{
+    --bg:#080b10; --bg2:#0e131b; --panel:#11171f; --panel2:#151c26;
+    --line:#1c2430; --line2:#283342; --fg:#e7eef6; --mut:#8a99ad; --faint:#5a6678;
+    --cyan:#38bdf8; --cyandim:#1f6f99; --ok:#36d399; --warn:#fbbf24; --bad:#f87171;
+    --glow:0 0 14px rgba(56,189,248,.45);
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 var(--sans);
+    background-image:radial-gradient(900px 500px at 78% -10%,rgba(56,189,248,.07),transparent 60%),
+      linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:auto,46px 46px,46px 46px;background-position:0 0;}
+  body::after{content:"";position:fixed;inset:0;pointer-events:none;
+    background:linear-gradient(rgba(8,11,16,.0),rgba(8,11,16,.55));z-index:0}
+  .app{position:relative;z-index:1;display:grid;grid-template-columns:236px 1fr;height:100vh;overflow:hidden}
+
+  /* sidebar */
+  .side{background:linear-gradient(180deg,rgba(17,23,31,.92),rgba(11,15,21,.92));
+    border-right:1px solid var(--line);display:flex;flex-direction:column;backdrop-filter:blur(6px)}
+  .brand{padding:18px 18px 14px;border-bottom:1px solid var(--line)}
+  .brand .logo{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:700;letter-spacing:.14em}
+  .brand .logo i{color:var(--cyan);text-shadow:var(--glow)}
+  .brand .tag{color:var(--faint);font-size:10px;letter-spacing:.34em;text-transform:uppercase;margin-top:3px;padding-left:1px}
+  .navlbl{color:var(--faint);font-size:10px;letter-spacing:.2em;text-transform:uppercase;padding:16px 18px 8px}
+  .nav{padding:0 10px;display:flex;flex-direction:column;gap:3px}
+  .nitem{position:relative;display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;
+    color:var(--mut);cursor:pointer;border:1px solid transparent;transition:.16s}
+  .nitem i{font-size:17px;width:18px;text-align:center}
+  .nitem:hover{background:var(--panel);color:var(--fg)}
+  .nitem.active{background:var(--panel2);color:var(--fg);border-color:var(--line2)}
+  .nitem.active::before{content:"";position:absolute;left:-10px;top:8px;bottom:8px;width:3px;border-radius:3px;
+    background:var(--cyan);box-shadow:var(--glow)}
+  .nitem .nm{flex:1;font-size:13.5px}
+  .nitem .mini{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+  .side .foot{margin-top:auto;border-top:1px solid var(--line);padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+  .led{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--mut)}
+  .led .d{width:8px;height:8px;border-radius:50%;background:var(--bad)}
+  .led.up .d{background:var(--ok);box-shadow:0 0 10px rgba(54,211,153,.8);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .total{font-family:var(--mono);font-size:12px;color:var(--mut)}
+  .total b{color:var(--fg);font-weight:600}
+  .xlinks{display:flex;gap:8px}
+  .xlinks a{flex:1;text-align:center;font-size:11px;color:var(--mut);border:1px solid var(--line2);
+    border-radius:8px;padding:6px 4px;text-decoration:none;transition:.16s}
+  .xlinks a:hover{color:var(--cyan);border-color:var(--cyandim)}
+
+  /* main */
+  .main{display:flex;flex-direction:column;height:100vh;min-width:0}
+  .topbar{display:flex;align-items:center;gap:14px;padding:16px 26px;border-bottom:1px solid var(--line)}
+  .topbar h1{margin:0;font-size:19px;font-weight:650}
+  .topbar .sub{color:var(--mut);font-size:12px;margin-top:2px}
+  .chip{font-family:var(--mono);font-size:11px;color:var(--mut);border:1px solid var(--line2);border-radius:20px;padding:3px 11px}
+  .chip b{color:var(--cyan);font-weight:600}
+  .spacer{flex:1}
+  .tabs{display:flex;gap:4px;padding:0 22px;border-bottom:1px solid var(--line)}
+  .tab{display:flex;align-items:center;gap:7px;padding:12px 14px;color:var(--mut);cursor:pointer;
+    font-size:13.5px;border-bottom:2px solid transparent;transition:.16s}
+  .tab i{font-size:16px}
+  .tab:hover{color:var(--fg)}
+  .tab.active{color:var(--cyan);border-bottom-color:var(--cyan);text-shadow:0 0 12px rgba(56,189,248,.4)}
+  .content{flex:1;min-height:0;position:relative}
+  .scroll{height:100%;overflow:auto;padding:24px 26px}
+
+  /* cards / metrics */
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:20px}
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:15px 16px}
+  .metric .l{color:var(--faint);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase}
+  .metric .v{font-family:var(--mono);font-size:25px;font-weight:600;margin-top:7px}
+  .metric .v.glow{color:var(--cyan);text-shadow:var(--glow)}
+  .metric .v.ok{color:var(--ok)} .metric .v.warn{color:var(--warn)} .metric .v.bad{color:var(--bad)}
+  .metric .d{color:var(--faint);font-size:11px;margin-top:5px;font-family:var(--mono)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:18px 20px;margin-bottom:18px}
+  .panel h3{margin:0 0 14px;font-size:12px;color:var(--faint);letter-spacing:.12em;text-transform:uppercase;
+    display:flex;align-items:center;gap:8px}
+  .panel h3 i{color:var(--cyan);font-size:15px}
+  .bar{height:9px;background:#0a0f16;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:10px 0}
+  .bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--cyandim),var(--cyan));
+    box-shadow:0 0 12px rgba(56,189,248,.5);transition:width .5s ease}
+  .row{display:flex;justify-content:space-between;align-items:center;margin:7px 0;font-size:13px}
+  .row .k{color:var(--mut)}
+  .row .val{font-family:var(--mono)}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .tag{font-size:11px;background:#0c121a;color:var(--mut);border:1px solid var(--line2);border-radius:6px;padding:3px 9px;font-family:var(--mono)}
+  .edit{display:flex;gap:9px;margin-top:8px;align-items:center}
+  input,textarea,select{background:#0a0f16;border:1px solid var(--line2);color:var(--fg);border-radius:9px;
+    padding:9px 11px;font:13px var(--sans);outline:none}
+  input:focus,textarea:focus,select:focus{border-color:var(--cyandim);box-shadow:0 0 0 3px rgba(56,189,248,.12)}
+  input[type=number]{width:110px;font-family:var(--mono)}
+  button{background:var(--cyan);color:#04121d;border:0;border-radius:9px;padding:9px 16px;font-weight:600;
+    cursor:pointer;font-size:13px;transition:.16s}
+  button:hover{box-shadow:var(--glow)}
+  button.ghost{background:transparent;color:var(--cyan);border:1px solid var(--line2)}
+  button.ghost:hover{border-color:var(--cyandim);box-shadow:none}
+  button:disabled{opacity:.5;cursor:default;box-shadow:none}
+  .note{font-size:12px;color:var(--mut);font-family:var(--mono)}
+  .muted{color:var(--faint)}
+
+  /* chat */
+  .chat{display:flex;flex-direction:column;height:100%}
+  .chathead{display:flex;align-items:center;gap:10px;padding:13px 26px;border-bottom:1px solid var(--line);color:var(--mut);font-size:12px;font-family:var(--mono)}
+  .chathead .av{width:24px;height:24px;border-radius:7px;background:var(--panel2);border:1px solid var(--line2);
+    display:flex;align-items:center;justify-content:center;color:var(--cyan)}
+  .chathead .ghost{margin-left:auto;padding:5px 10px;font-size:11px}
+  .msgs{flex:1;overflow:auto;padding:22px 26px;display:flex;flex-direction:column;gap:16px}
+  .msg{display:flex;gap:11px;max-width:860px}
+  .msg .ava{width:28px;height:28px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px}
+  .msg.bot .ava{background:var(--panel2);border:1px solid var(--line2);color:var(--cyan)}
+  .msg.user{align-self:flex-end;flex-direction:row-reverse}
+  .msg.user .ava{background:rgba(56,189,248,.12);border:1px solid var(--cyandim);color:var(--cyan)}
+  .bubble{border-radius:12px;padding:11px 14px;font-size:14px;line-height:1.6}
+  .msg.bot .bubble{background:var(--panel);border:1px solid var(--line)}
+  .msg.user .bubble{background:rgba(56,189,248,.10);border:1px solid var(--cyandim)}
+  .bubble pre{background:#06090d;border:1px solid var(--line2);border-radius:8px;padding:11px;overflow:auto;font:12px var(--mono);margin:8px 0}
+  .bubble code{font-family:var(--mono);font-size:12.5px;background:#06090d;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+  .bubble pre code{border:0;padding:0;background:none}
+  .think{display:flex;gap:5px;align-items:center;color:var(--mut);font-size:13px}
+  .think .dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);animation:blink 1.2s infinite}
+  .think .dot:nth-child(2){animation-delay:.2s}.think .dot:nth-child(3){animation-delay:.4s}
+  @keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .schip{font-size:12.5px;color:var(--mut);border:1px solid var(--line2);border-radius:20px;padding:6px 13px;cursor:pointer;transition:.16s}
+  .schip:hover{color:var(--cyan);border-color:var(--cyandim)}
+  .empty{margin:auto;text-align:center;color:var(--faint);max-width:460px}
+  .empty .big{font-size:34px;color:var(--cyan);text-shadow:var(--glow);margin-bottom:10px}
+  .composer{display:flex;gap:10px;padding:14px 26px;border-top:1px solid var(--line);align-items:flex-end}
+  .composer textarea{flex:1;resize:none;max-height:160px;min-height:44px;line-height:1.5}
+
+  /* ledger */
+  .ledger{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
+  .ledger th{text-align:left;color:var(--faint);font-weight:500;font-size:10.5px;letter-spacing:.08em;
+    text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--line2);position:sticky;top:0;background:var(--bg)}
+  .ledger td{padding:9px 10px;border-bottom:1px solid var(--line)}
+  .ledger tr:hover td{background:var(--panel)}
+  .ledger .r{text-align:right}
+  .gmodel{display:flex;align-items:center;gap:8px}
+  .gbar{height:7px;border-radius:4px;background:linear-gradient(90deg,var(--cyandim),var(--cyan));box-shadow:0 0 8px rgba(56,189,248,.4)}
+  #cy{height:100%;width:100%;background:
+      radial-gradient(700px 360px at 70% 0,rgba(56,189,248,.05),transparent 60%),#080b10;
+    border:1px solid var(--line);border-radius:13px}
+  .kwrap{display:flex;flex-direction:column;height:100%;gap:14px}
+  .kbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .loading{color:var(--mut);font-family:var(--mono);font-size:13px;padding:20px}
+
+  /* live agent chat */
+  .cfgbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 26px;border-bottom:1px solid var(--line);background:var(--bg2)}
+  .cfgbar .lbl{font-size:10.5px;color:var(--faint);letter-spacing:.08em;text-transform:uppercase}
+  .cfgbar select{padding:6px 9px;font-size:12.5px;font-family:var(--mono)}
+  .seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
+  .seg button{background:transparent;color:var(--mut);border:0;border-radius:0;padding:6px 12px;font-size:12px;font-weight:500}
+  .seg button.on{background:var(--cyan);color:#04121d}
+  .seg button:hover{box-shadow:none;color:var(--fg)} .seg button.on:hover{color:#04121d}
+  .cfgbtn{display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--mut);border:1px solid var(--line2);border-radius:8px;padding:6px 11px;font-size:12px;font-weight:500}
+  .cfgbtn:hover{color:var(--cyan);border-color:var(--cyandim);box-shadow:none}
+  .ctxmeter{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .ctxmeter .b{width:62px;height:6px;border:1px solid var(--line2);border-radius:4px;overflow:hidden}
+  .ctxmeter .b>span{display:block;height:100%;background:var(--cyan)}
+  .pop{background:var(--panel2);border:1px solid var(--line2);border-radius:10px;padding:12px;overflow:auto;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  .pop h4{margin:0 0 8px;font-size:10.5px;color:var(--faint);letter-spacing:.1em;text-transform:uppercase}
+  .pop label{display:flex;align-items:center;gap:9px;padding:5px 4px;font-size:13px;color:var(--fg);cursor:pointer}
+  .pop label small{color:var(--faint);margin-left:auto;font-size:11px}
+  .pop input[type=checkbox]{width:15px;height:15px;accent-color:var(--cyan)}
+  .turn{display:flex;flex-direction:column;margin-bottom:18px}
+  .turn.user{align-items:flex-end}
+  .ubub{background:rgba(56,189,248,.10);border:1px solid var(--cyandim);border-radius:12px;padding:10px 14px;max-width:80%;font-size:14px;line-height:1.55}
+  .ufiles{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+  .afile{font-family:var(--mono);font-size:11px;color:var(--mut);border:1px solid var(--line2);border-radius:6px;padding:2px 8px}
+  .aturn{border-left:2px solid var(--cyandim);padding-left:15px;display:flex;flex-direction:column;gap:9px;max-width:900px}
+  .aturn>*:empty{display:none}
+  .thoughts{color:var(--faint);font-size:12.5px;font-style:italic;white-space:pre-wrap;line-height:1.5}
+  .toolcard{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
+  .toolcard .h{display:flex;align-items:center;gap:9px;padding:9px 12px;cursor:pointer}
+  .toolcard .h i.k{color:var(--cyan);font-size:16px}
+  .toolcard .h .t{flex:1;font-family:var(--mono);font-size:12.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .toolcard .st{font-size:11px;font-family:var(--mono);display:flex;align-items:center;gap:5px;flex:none}
+  .toolcard .st.running{color:var(--cyan)} .toolcard .st.completed{color:var(--ok)} .toolcard .st.failed{color:var(--bad)}
+  .spin{width:11px;height:11px;border:2px solid var(--line2);border-top-color:var(--cyan);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .toolcard .body{border-top:1px solid var(--line);padding:10px 12px;font-family:var(--mono);font-size:12px;color:var(--mut);white-space:pre-wrap;max-height:280px;overflow:auto}
+  .toolcard.collapsed .body{display:none}
+  .planbox{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:11px 14px}
+  .planbox h5{margin:0 0 7px;font-size:10.5px;color:var(--faint);letter-spacing:.1em;text-transform:uppercase}
+  .planbox .pi{display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;color:var(--mut)}
+  .planbox .pi i{font-size:15px;flex:none}
+  .planbox .pi.completed{color:var(--ok)} .planbox .pi.in_progress{color:var(--cyan)}
+  .atext{font-size:14px;line-height:1.65}
+  .permcard{border:1px solid var(--warn);border-radius:10px;background:rgba(251,191,36,.08);padding:12px 14px}
+  .permcard .q{font-size:13px;color:var(--fg);margin-bottom:10px}
+  .permcard .q b{color:var(--warn);font-family:var(--mono)}
+  .permcard .acts{display:flex;gap:8px;flex-wrap:wrap}
+  .permcard button{padding:6px 14px;font-size:12.5px}
+  .btn-deny{background:transparent;color:var(--bad);border:1px solid var(--bad)}
+  .btn-deny:hover{box-shadow:none;background:rgba(248,113,113,.1)}
+  .attachbar{display:flex;gap:6px;flex-wrap:wrap;padding:8px 26px 0}
+  .attachbar:empty{padding:0}
+  .attachchip{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);border:1px solid var(--line2);border-radius:20px;padding:4px 11px;font-family:var(--mono)}
+  .attachchip i{cursor:pointer;font-size:14px}
+  .attachchip i:hover{color:var(--bad)}
+  .iconbtn{background:transparent;border:1px solid var(--line2);color:var(--mut);border-radius:9px;padding:0 12px;font-size:17px;display:flex;align-items:center}
+  .iconbtn:hover{color:var(--cyan);border-color:var(--cyandim);box-shadow:none}
+
+  /* knowledge engine sub-tabs + ontology */
+  .ksub{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--line)}
+  .kst{display:flex;align-items:center;gap:7px;padding:10px 14px;color:var(--mut);cursor:pointer;font-size:13.5px;border-bottom:2px solid transparent}
+  .kst i{font-size:16px}
+  .kst:hover{color:var(--fg)}
+  .kst.on{color:var(--cyan);border-bottom-color:var(--cyan);text-shadow:0 0 12px rgba(56,189,248,.4)}
+  .relrow{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
+  .relrow select,.relrow input{font-size:12.5px}
+  .chiprm{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;background:#0c121a;color:var(--fg);border:1px solid var(--line2);border-radius:7px;padding:5px 10px;margin:3px 5px 0 0}
+  .chiprm small{color:var(--faint)}
+  .chiprm i{cursor:pointer;color:var(--faint);font-size:14px} .chiprm i:hover{color:var(--bad)}
+  .chiprm.sel{border-color:var(--cyandim);color:var(--cyan);cursor:pointer}
+  .chiprm.sel i{display:none}
+  .jobitem{border:1px solid var(--line);border-radius:9px;margin-bottom:8px;overflow:hidden}
+  .jobitem .jh{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;font-size:13px}
+  .jobitem .jlog{border-top:1px solid var(--line);padding:10px 12px;font-family:var(--mono);font-size:11.5px;color:var(--mut);white-space:pre-wrap;max-height:220px;overflow:auto}
+  .jobitem.collapsed .jlog{display:none}
+  .jbadge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;padding:2px 9px;border-radius:6px}
+  .jbadge.running{color:var(--cyan);border:1px solid var(--cyandim)}
+  .jbadge.done{color:var(--ok);border:1px solid var(--ok)}
+  .jbadge.failed{color:var(--bad);border:1px solid var(--bad)}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="logo"><i class="ti ti-diamond"></i>JARVIS</div>
+      <div class="tag">control center</div>
+    </div>
+    <div class="navlbl">Projects</div>
+    <div class="nav" id="nav"></div>
+    <div class="foot">
+      <span class="led" id="led"><span class="d"></span>gateway …</span>
+      <span class="total" id="total"></span>
+      <div class="xlinks">
+        <a href="http://127.0.0.1:4000/ui" target="_blank">LiteLLM ↗</a>
+        <a href="http://127.0.0.1:3000" target="_blank">FalkorDB ↗</a>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar" id="topbar"></header>
+    <nav class="tabs" id="tabs"></nav>
+    <section class="content" id="content"></section>
+  </main>
+</div>
+
+<script>
+const $ = (s,r=document)=>r.querySelector(s);
+const TABS = [
+  {id:"overview", lbl:"Overview", icon:"ti-layout-dashboard"},
+  {id:"chat", lbl:"Chat", icon:"ti-message-2"},
+  {id:"transactions", lbl:"Transactions", icon:"ti-receipt"},
+  {id:"knowledge", lbl:"Knowledge engine", icon:"ti-affiliate"},
+];
+const ICON = {hedgefund:"ti-chart-candle", msme:"ti-building-store", jarvis:"ti-robot"};
+const SUGGEST = {
+  hedgefund:["What's stored in my knowledge graph?","Summarize recent market notes","What positions are we tracking?"],
+  msme:["What's in the MSME knowledge base?","Draft a follow-up for a client","Summarize this week's tasks"],
+  jarvis:["What can you help me with?","Search my knowledge graph","Give me a status of the platform"],
+};
+const state = {alias:null, tab:"overview", overview:null, cy:null};
+const CHATS = JSON.parse(localStorage.getItem("jarvis_chat_v2")||"{}");
+const saveChats = ()=>localStorage.setItem("jarvis_chat_v2", JSON.stringify(CHATS));
+
+function money(v){
+  if(v==null) return "—";
+  v=Number(v);
+  if(v===0) return "$0";
+  if(v<0.01) return "$"+v.toFixed(5);
+  if(v<1) return "$"+v.toFixed(4);
+  return "$"+v.toFixed(2);
+}
+function ktok(n){ n=Number(n||0); return n>=1000 ? (n/1000).toFixed(n>=100000?0:1)+"k" : String(n); }
+function curProj(){ return (state.overview?.projects||[]).find(p=>p.alias===state.alias) || null; }
+function hasGraph(p){ return !!(p && p.graph && p.graph.exists); }
+function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function md(s){
+  return (s||"").split(/```/).map((seg,i)=>{
+    if(i%2===1){
+      const nl=seg.indexOf("\n"); const body=nl>=0?seg.slice(nl+1):seg;
+      return "<pre><code>"+esc(body)+"</code></pre>";
+    }
+    return esc(seg).replace(/`([^`]+)`/g,"<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>").replace(/\n/g,"<br>");
+  }).join("");
+}
+function tfmt(iso){
+  if(!iso) return "—";
+  const d=new Date(iso); if(isNaN(d)) return "—";
+  return d.toLocaleString(undefined,{month:"short",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"});
+}
+
+/* ---------- sidebar / topbar / tabs ---------- */
+function renderSidebar(){
+  const d=state.overview; if(!d) return;
+  $("#nav").innerHTML = d.projects.map(p=>{
+    const rem = p.remaining;
+    return `<div class="nitem ${p.alias===state.alias?"active":""}" onclick="selectProject('${p.alias}')">
+      <i class="ti ${ICON[p.alias]||"ti-folder"}"></i>
+      <span class="nm">${esc(p.label)}</span>
+      <span class="mini">${rem==null?"":money(rem)}</span>
+    </div>`;
+  }).join("");
+  $("#led").className = "led "+(d.gateway_up?"up":"");
+  $("#led").innerHTML = `<span class="d"></span>gateway ${d.gateway_up?"online":"offline"}`;
+  $("#total").innerHTML = `total <b>${money(d.total_spend)}</b> / ${money(d.total_budget)} · mo`;
+}
+function renderTopbar(){
+  const p=curProj(); if(!p) return;
+  $("#topbar").innerHTML = `
+    <div>
+      <h1>${esc(p.label)}</h1>
+      <div class="sub">${p.alias} · agent <b style="color:var(--cyan)">${esc(p.agent?.model||"—")}</b></div>
+    </div>
+    <span class="spacer"></span>
+    <span class="chip">budget <b>${money(p.spend)}</b> / ${money(p.budget)}</span>
+    <span class="chip">remaining <b>${money(p.remaining)}</b></span>`;
+}
+function renderTabs(){
+  const p=curProj();
+  const tabs = TABS.filter(t=>t.id!=="knowledge" || hasGraph(p));
+  if(!tabs.find(t=>t.id===state.tab)) state.tab="overview";
+  $("#tabs").innerHTML = tabs.map(t=>`<div class="tab ${t.id===state.tab?"active":""}" onclick="selectTab('${t.id}')">
+    <i class="ti ${t.icon}"></i>${t.lbl}</div>`).join("");
+}
+function selectProject(a){ state.alias=a; state.tab="overview"; renderAll(); }
+function selectTab(t){ state.tab=t; renderTabs(); renderContent(); }
+function renderAll(){ renderSidebar(); renderTopbar(); renderTabs(); renderContent(); }
+
+/* ---------- content router ---------- */
+function renderContent(){
+  const c=$("#content");
+  state.cy=null;
+  if(state.tab==="overview"){ c.innerHTML=`<div class="scroll">${viewOverview()}</div>`; }
+  else if(state.tab==="chat"){ c.innerHTML=viewChat(); afterChat(); }
+  else if(state.tab==="transactions"){ c.innerHTML=`<div class="scroll"><div class="loading">loading ledger…</div></div>`; loadTxns(); }
+  else if(state.tab==="knowledge"){ c.innerHTML=viewKnowledge(); afterKnowledge(); }
+}
+
+/* ---------- overview ---------- */
+function viewOverview(){
+  const p=curProj(); if(!p) return "";
+  const pct = p.budget ? Math.min(100,100*p.spend/p.budget) : 0;
+  const cls = pct>90?"bad":pct>70?"warn":"ok";
+  const g=p.graph||{};
+  return `
+  <div class="metrics">
+    <div class="metric"><div class="l">Budget / mo</div><div class="v">${money(p.budget)}</div><div class="d">${p.budget_duration||"30d"} window</div></div>
+    <div class="metric"><div class="l">Spent</div><div class="v ${cls}">${money(p.spend)}</div><div class="d">${pct.toFixed(1)}% used</div></div>
+    <div class="metric"><div class="l">Remaining</div><div class="v glow">${money(p.remaining)}</div><div class="d">until reset</div></div>
+    <div class="metric"><div class="l">Graph nodes</div><div class="v">${g.nodes??0}</div><div class="d">${g.edges??0} edges</div></div>
+  </div>
+  <div class="panel">
+    <h3><i class="ti ti-gauge"></i>Budget</h3>
+    <div class="row"><span class="k">${money(p.spend)} of ${money(p.budget)}</span><span class="val ${cls==="ok"?"":cls}" style="color:var(--${cls})">${pct.toFixed(1)}%</span></div>
+    <div class="bar"><span style="width:${pct}%"></span></div>
+    <div class="edit">
+      <input id="bud" type="number" step="1" value="${p.budget??""}" placeholder="budget $"/>
+      <button onclick="setBudget()">Set budget</button>
+      <span class="note" id="budnote"></span>
+    </div>
+  </div>
+  <div class="panel">
+    <h3><i class="ti ti-cpu"></i>Agent</h3>
+    <div class="row"><span class="k">Profile</span><span class="val">${esc(p.alias)}</span></div>
+    <div class="row"><span class="k">Model</span><span class="val" style="color:var(--cyan)">${esc(p.agent?.model||"—")}</span></div>
+    <div class="row"><span class="k">Wrapper</span><span class="val">${esc(p.agent?.wrapper||"—")}</span></div>
+    <div class="row"><span class="k">Chat session</span><span class="val">ui-${esc(p.alias)}</span></div>
+  </div>
+  <div class="panel">
+    <h3><i class="ti ti-affiliate"></i>Knowledge snapshot</h3>
+    ${hasGraph(p)?`
+      <div class="row"><span class="k">Nodes · edges · types</span><span class="val">${g.nodes} · ${g.edges} · ${(g.labels||[]).length}</span></div>
+      <div class="tags">${(g.labels||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join("")||'<span class="muted">no labels yet</span>'}</div>
+      <div style="margin-top:12px"><button class="ghost" onclick="selectTab('knowledge')">Open knowledge engine →</button></div>
+    `:`<span class="muted">No knowledge graph for the general agent.</span>`}
+  </div>`;
+}
+async function setBudget(){
+  const v=parseFloat($("#bud").value); const note=$("#budnote");
+  if(isNaN(v)){ note.textContent="enter a number"; return; }
+  note.textContent="saving…";
+  const r=await fetch(`/api/project/${state.alias}/budget`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_budget:v})});
+  note.textContent=r.ok?"✓ saved":"✗ failed";
+  if(r.ok) setTimeout(refreshOverview,500);
+}
+
+/* ---------- live agent chat (ACP over WebSocket) ---------- */
+let MODELS=[]; const TOOLSETS={};
+let WS=null, WSAlias=null, RUNNING=false, LIVE=null, PENDING_FILES=[];
+
+async function loadModels(){ if(!MODELS.length){ try{ MODELS=(await (await fetch('/api/models')).json()).models||[]; }catch(e){} } return MODELS; }
+async function loadToolsets(a){ if(!TOOLSETS[a]){ try{ TOOLSETS[a]=(await (await fetch('/api/toolsets/'+a)).json()).toolsets||[]; }catch(e){ TOOLSETS[a]=[]; } } return TOOLSETS[a]; }
+function cstate(a){ let s=CHATS[a]; if(!s||Array.isArray(s)) s=CHATS[a]={turns:[],cfg:{model:null,tools:null,yolo:false},usage:null}; s.turns=s.turns||[]; s.cfg=s.cfg||{model:null,tools:null,yolo:false}; return s; }
+
+function viewChat(){
+  const p=curProj();
+  return `<div class="chat">
+    <div class="cfgbar">
+      <span class="lbl">model</span>
+      <select id="msel" onchange="onModel(this.value)" title="Model is fixed before the turn; changing it switches the agent's brain"></select>
+      <span class="lbl">mode</span>
+      <span class="seg" id="modeseg">
+        <button data-m="ask" onclick="onMode(false)" title="Dangerous actions ask for approval">Ask</button>
+        <button data-m="auto" onclick="onMode(true)" title="Auto-approve everything (yolo)">Auto</button></span>
+      <button class="cfgbtn" id="tbtn" onclick="toggleTools()"><i class="ti ti-adjustments-horizontal"></i> Tools</button>
+      <span class="spacer"></span>
+      <span class="ctxmeter" id="ctx"></span>
+      <button class="cfgbtn" onclick="clearChat()" title="Clear this view"><i class="ti ti-trash"></i></button>
+    </div>
+    <div class="pop" id="tpan" hidden style="margin:10px 26px 0;max-height:250px"></div>
+    <div class="msgs" id="msgs"></div>
+    <div class="attachbar" id="abar"></div>
+    <div class="composer">
+      <button class="iconbtn" onclick="pickFiles()" title="Attach files / images"><i class="ti ti-paperclip"></i></button>
+      <input type="file" id="fin" multiple hidden onchange="onFiles(this)">
+      <textarea id="ci" placeholder="Message the ${esc(p.label)} agent…   (Enter to send · Shift+Enter for newline)"></textarea>
+      <button id="cb" onclick="sendChat()">Send</button>
+      <button id="cancelb" class="btn-deny" hidden onclick="cancelRun()"><i class="ti ti-player-stop"></i> Stop</button>
+    </div>
+  </div>`;
+}
+function emptyChat(){
+  const p=curProj();
+  return `<div class="empty"><div class="big"><i class="ti ti-diamond"></i></div>
+    <div>Chat with the <b style="color:var(--fg)">${esc(p.label)}</b> agent — live.<br>You'll see its tool calls, plan and thoughts as it works. It has this project's skills, knowledge graph and budget.</div>
+    <div class="chips">${(SUGGEST[state.alias]||[]).map(s=>`<span class="schip" onclick="quick(this)">${esc(s)}</span>`).join("")}</div></div>`;
+}
+async function afterChat(){
+  const a=state.alias, st=cstate(a), p=curProj();
+  await loadModels(); await loadToolsets(a);
+  const sel=$('#msel');
+  if(sel){ sel.innerHTML=MODELS.map(m=>`<option value="${m.id}">${esc(m.label)}</option>`).join('');
+    sel.value = st.cfg.model || p.agent?.model || (MODELS[0]&&MODELS[0].id) || ''; st.cfg.model=sel.value; }
+  updateModeSeg(); updateToolsBtn(); renderCtx(st.usage);
+  const list=$('#msgs'); list.innerHTML='';
+  if(!st.turns.length){ list.innerHTML=emptyChat(); }
+  else st.turns.forEach(t=>{ if(t.role==='user') appendUserTurn(t); else { const el=makeAssistantEl(); list.appendChild(el); t.done=true; paintAssistant(refsOf(el),t); } });
+  const ta=$('#ci'); ta.focus();
+  ta.addEventListener('input',()=>{ta.style.height='auto';ta.style.height=Math.min(170,ta.scrollHeight)+'px';});
+  ta.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();} });
+  renderAttachBar(); scrollMsgs();
+}
+function scrollMsgs(){ const m=$('#msgs'); if(m) m.scrollTop=m.scrollHeight; }
+function quick(el){ $('#ci').value=el.textContent; sendChat(); }
+function clearChat(){ if(confirm('Clear this conversation view? (the agent keeps its own session memory)')){ const st=cstate(state.alias); st.turns=[]; st.usage=null; saveChats(); renderContent(); } }
+
+/* config controls */
+function onModel(v){ cstate(state.alias).cfg.model=v; saveChats(); }
+function onMode(yolo){ cstate(state.alias).cfg.yolo=yolo; saveChats(); updateModeSeg(); }
+function updateModeSeg(){ const st=cstate(state.alias); document.querySelectorAll('#modeseg button').forEach(b=>b.classList.toggle('on', (b.dataset.m==='auto')===!!st.cfg.yolo)); }
+function effTools(a){ const ts=TOOLSETS[a]||[], custom=cstate(a).cfg.tools; return ts.filter(t=>custom?custom.includes(t.name):t.enabled).map(t=>t.name); }
+function updateToolsBtn(){ const b=$('#tbtn'); if(b) b.innerHTML=`<i class="ti ti-adjustments-horizontal"></i> Tools (${effTools(state.alias).length})`; }
+function toggleTools(){ const p=$('#tpan'); if(!p) return; p.hidden=!p.hidden; if(!p.hidden) renderToolsPanel(); }
+function renderToolsPanel(){
+  const a=state.alias, st=cstate(a), ts=TOOLSETS[a]||[], custom=st.cfg.tools;
+  const on=n=>custom?custom.includes(n):(ts.find(x=>x.name===n)?.enabled);
+  $('#tpan').innerHTML = `<h4>Toolsets the agent may use in this chat</h4>`+
+    ts.map(t=>`<label><input type="checkbox" ${on(t.name)?'checked':''} onchange="toggleTool('${t.name}',this.checked)"> ${esc(t.name)} <small>${esc(t.desc)}</small></label>`).join('')+
+    `<div style="margin-top:9px"><a href="#" onclick="resetTools(event)">reset to profile defaults</a></div>`;
+}
+function toggleTool(name,checked){ const a=state.alias, st=cstate(a), ts=TOOLSETS[a]||[]; let cur=new Set(st.cfg.tools|| ts.filter(x=>x.enabled).map(x=>x.name)); checked?cur.add(name):cur.delete(name); st.cfg.tools=[...cur]; saveChats(); updateToolsBtn(); }
+function resetTools(e){ e.preventDefault(); cstate(state.alias).cfg.tools=null; saveChats(); renderToolsPanel(); updateToolsBtn(); }
+function renderCtx(u){ const el=$('#ctx'); if(!el) return; if(!u||!u.size){ el.innerHTML=''; return; } const pct=Math.min(100,100*u.used/u.size); el.innerHTML=`ctx <span class="b"><span style="width:${pct}%"></span></span> ${Math.round(u.used/1000)}k/${Math.round(u.size/1000)}k`; }
+
+/* attachments */
+function pickFiles(){ $('#fin').click(); }
+function onFiles(input){ for(const f of input.files) PENDING_FILES.push(f); input.value=''; renderAttachBar(); }
+function rmFile(i){ PENDING_FILES.splice(i,1); renderAttachBar(); }
+function renderAttachBar(){ const b=$('#abar'); if(b) b.innerHTML=PENDING_FILES.map((f,i)=>`<span class="attachchip"><i class="ti ti-file"></i> ${esc(f.name)} <i class="ti ti-x" onclick="rmFile(${i})"></i></span>`).join(''); }
+function readFileB64(file){ return new Promise(res=>{ const r=new FileReader(); r.onload=()=>res({name:file.name,mime:file.type||'application/octet-stream',data:r.result}); r.onerror=()=>res(null); r.readAsDataURL(file); }); }
+
+/* turn rendering */
+function appendUserTurn(t){
+  const f=(t.files||[]).map(n=>`<span class="afile"><i class="ti ti-paperclip"></i> ${esc(n)}</span>`).join('');
+  $('#msgs').insertAdjacentHTML('beforeend', `<div class="turn user"><div class="ubub">${(esc(t.text||'').replace(/\n/g,'<br>'))||'<span class="muted">(attachment only)</span>'}${f?`<div class="ufiles">${f}</div>`:''}</div></div>`);
+}
+function makeAssistantEl(){ const d=document.createElement('div'); d.className='turn assistant';
+  d.innerHTML='<div class="aturn"><div class="thoughts" data-th></div><div class="tools" data-tools></div><div class="planwrap" data-plan></div><div class="atext" data-text></div><div class="perms" data-perms></div></div>'; return d; }
+function refsOf(el){ return {el, th:el.querySelector('[data-th]'), tools:el.querySelector('[data-tools]'), plan:el.querySelector('[data-plan]'), text:el.querySelector('[data-text]'), perms:el.querySelector('[data-perms]')}; }
+function kindIcon(k){ k=(k||'').toLowerCase(); if(k.includes('exec')||k.includes('term'))return'ti-terminal-2'; if(k.includes('read')||k.includes('file'))return'ti-file-text'; if(k.includes('edit')||k.includes('write'))return'ti-edit'; if(k.includes('search'))return'ti-search'; if(k.includes('fetch')||k.includes('web'))return'ti-world'; if(k.includes('think'))return'ti-bulb'; if(k.includes('delete'))return'ti-trash'; return'ti-tool'; }
+function stClass(s){ s=(s||'').toLowerCase(); if(s==='completed')return'completed'; if(s==='failed'||s==='error')return'failed'; if(s==='running'||s==='in_progress'||s==='pending'||!s)return'running'; return''; }
+function stInner(s){ const c=stClass(s); if(c==='completed')return'<i class="ti ti-check"></i>done'; if(c==='failed')return'<i class="ti ti-x"></i>failed'; return'<span class="spin"></span>'+(s||'running'); }
+function ctext(content){ if(!content)return''; if(!Array.isArray(content))content=[content]; return content.map(c=>{ const cc=(c&&c.content)?c.content:c; return (cc&&cc.text)||(cc&&cc.content&&cc.content.text)||''; }).filter(Boolean).join('\n'); }
+function toolCardHTML(t){ const body=esc(t.content||''); return `<div class="toolcard ${t.status==='failed'?'':'collapsed'}" data-tc="${esc(t.id)}">
+  <div class="h" onclick="this.parentNode.classList.toggle('collapsed')"><i class="ti ${kindIcon(t.kind)} k"></i><span class="t">${esc(t.title||t.kind||'tool')}</span><span class="st ${stClass(t.status)}" data-st>${stInner(t.status)}</span></div>
+  <div class="body" data-body>${body}</div></div>`; }
+function planHTML(entries){ if(!entries||!entries.length)return''; return `<div class="planbox"><h5>Plan</h5>${entries.map(e=>{ const s=(e.status||'').toLowerCase(); const ic=s==='completed'?'ti-circle-check':s==='in_progress'?'ti-loader-2':'ti-circle'; return `<div class="pi ${s}"><i class="ti ${ic}"></i>${esc(e.content||'')}</div>`; }).join('')}</div>`; }
+function paintAssistant(r,t){ if(t.thoughts){ r.th.textContent=t.thoughts; } r.tools.innerHTML=(t.tools||[]).map(toolCardHTML).join(''); r.plan.innerHTML=t.plan?planHTML(t.plan):''; r.text.innerHTML=md(t.text||''); }
+
+/* websocket */
+function wsConnect(alias){
+  if(WS && WSAlias===alias && WS.readyState<=1) return WS;
+  if(WS){ try{WS.close()}catch(e){} }
+  const proto=location.protocol==='https:'?'wss':'ws';
+  WS=new WebSocket(`${proto}://${location.host}/ws/chat/${alias}`); WSAlias=alias;
+  WS.onmessage=ev=>onWsMsg(alias, JSON.parse(ev.data));
+  WS.onclose=()=>{ if(RUNNING){ setRunning(false); } };
+  return WS;
+}
+function wsSend(o){ const s=()=>WS.send(JSON.stringify(o)); if(WS.readyState===1) s(); else WS.addEventListener('open', s, {once:true}); }
+function setRunning(b){ RUNNING=b; const cb=$('#cb'), x=$('#cancelb'); if(cb){cb.disabled=b; cb.hidden=b;} if(x) x.hidden=!b; }
+function cancelRun(){ if(WS) wsSend({t:'cancel'}); }
+
+async function sendChat(){
+  const ta=$('#ci'); if(!ta||RUNNING) return;
+  const text=ta.value.trim(); const files=PENDING_FILES.slice();
+  if(!text && !files.length) return;
+  const a=state.alias, st=cstate(a);
+  const list=$('#msgs'); if(list.querySelector('.empty')) list.innerHTML='';
+  const uturn={role:'user',text,files:files.map(f=>f.name)};
+  st.turns.push(uturn); appendUserTurn(uturn);
+  const aturn={role:'assistant',thoughts:'',tools:[],plan:null,text:'',done:false};
+  st.turns.push(aturn);
+  const el=makeAssistantEl(); list.appendChild(el); LIVE={...refsOf(el), turn:aturn};
+  saveChats(); ta.value=''; ta.style.height='auto'; setRunning(true); scrollMsgs();
+  wsConnect(a);
+  const attachments=(await Promise.all(files.map(readFileB64))).filter(Boolean);
+  PENDING_FILES=[]; renderAttachBar();
+  wsSend({t:'prompt', text, model:st.cfg.model||undefined, toolsets:(st.cfg.tools&&st.cfg.tools.length?st.cfg.tools:undefined), yolo:!!st.cfg.yolo, attachments});
+}
+function onWsMsg(alias, m){
+  if(alias!==state.alias) return;
+  if(m.t==='update') handleUpdate(m.u);
+  else if(m.t==='permission') handlePermission(m);
+  else if(m.t==='done') finishTurn(m.res);
+  else if(m.t==='error') liveError(m.error);
+}
+function handleUpdate(u){
+  const su=u.sessionUpdate;
+  if(su==='usage_update'){ const st=cstate(state.alias); st.usage={used:u.used,size:u.size}; renderCtx(st.usage); return; }
+  if(!LIVE) return; const t=LIVE.turn;
+  if(su==='agent_message_chunk'){ t.text+=(u.content&&u.content.text)||''; LIVE.text.innerHTML=md(t.text); scrollMsgs(); }
+  else if(su==='agent_thought_chunk'){ t.thoughts+=(u.content&&u.content.text)||''; LIVE.th.textContent=t.thoughts; scrollMsgs(); }
+  else if(su==='tool_call'){ const tc={id:u.toolCallId,title:u.title,kind:u.kind,status:u.status||'running',content:ctext(u.content)}; t.tools.push(tc); LIVE.tools.insertAdjacentHTML('beforeend', toolCardHTML(tc)); scrollMsgs(); }
+  else if(su==='tool_call_update'){ const tc=t.tools.find(x=>x.id===u.toolCallId); const c=ctext(u.content); if(tc){ if(u.status)tc.status=u.status; if(c)tc.content=c; } const card=LIVE.tools.querySelector(`[data-tc="${u.toolCallId}"]`); if(card){ const st=card.querySelector('[data-st]'); st.className='st '+stClass(u.status||(tc&&tc.status)); st.innerHTML=stInner(u.status||(tc&&tc.status)); if(c){ card.querySelector('[data-body]').textContent=c; } if((u.status||'').toLowerCase()==='failed') card.classList.remove('collapsed'); } else if(tc){ LIVE.tools.insertAdjacentHTML('beforeend', toolCardHTML(tc)); } scrollMsgs(); }
+  else if(su==='plan'){ t.plan=u.entries||[]; LIVE.plan.innerHTML=planHTML(t.plan); scrollMsgs(); }
+  saveChats();
+}
+function handlePermission(m){
+  if(!LIVE) return;
+  const p=m.params||{}, tc=p.toolCall||{}, opts=p.options||[];
+  const title=tc.title||(tc.rawInput&&tc.rawInput.command)||'run a tool';
+  const cid='perm'+Math.random().toString(36).slice(2);
+  const btns = opts.length ? opts.map(o=>{ const deny=/reject|deny|no/i.test((o.kind||'')+(o.name||'')); return `<button class="${deny?'btn-deny':''}" onclick="answerPerm('${m.reqId}','${esc(o.optionId)}',${!deny},'${cid}')">${esc(o.name||o.optionId)}</button>`; }).join('')
+    : `<button onclick="answerPerm('${m.reqId}','allow',true,'${cid}')">Allow</button><button class="btn-deny" onclick="answerPerm('${m.reqId}','',false,'${cid}')">Deny</button>`;
+  LIVE.perms.insertAdjacentHTML('beforeend', `<div class="permcard" id="${cid}"><div class="q">Agent requests permission to <b>${esc(title)}</b></div><div class="acts">${btns}</div></div>`);
+  scrollMsgs();
+}
+function answerPerm(reqId, optionId, allow, cid){ wsSend({t:'permission', reqId, optionId, allow}); const c=document.getElementById(cid); if(c) c.outerHTML=`<div class="note" style="color:${allow?'var(--ok)':'var(--bad)'}">${allow?'✓ allowed':'✗ denied'}</div>`; }
+function finishTurn(res){ if(LIVE){ LIVE.turn.done=true; if(res&&res.stopReason&&res.stopReason!=='end_turn'&&!LIVE.turn.text){ LIVE.text.innerHTML=`<span class="muted">(stopped: ${esc(res.stopReason)})</span>`; } } LIVE=null; setRunning(false); saveChats(); scrollMsgs(); }
+function liveError(err){ if(LIVE){ LIVE.text.innerHTML=md((LIVE.turn.text?LIVE.turn.text+'\n\n':'')+'⚠ '+err); LIVE.turn.text+='\n\n⚠ '+err; LIVE.turn.done=true; } LIVE=null; setRunning(false); saveChats(); }
+
+/* ---------- transactions ---------- */
+async function loadTxns(){
+  const alias=state.alias;
+  let d;
+  try{ d=await (await fetch(`/api/transactions/${alias}?limit=200`)).json(); }
+  catch(e){ $("#content").innerHTML=`<div class="scroll"><div class="loading">failed to load: ${esc(e.message)}</div></div>`; return; }
+  if(state.tab!=="transactions"||state.alias!==alias) return;
+  const s=d.summary||{count:0,spend:0,tokens:0,by_model:[]};
+  const avg = s.count ? s.spend/s.count : 0;
+  const maxs = Math.max(1e-9,...(s.by_model||[]).map(m=>m.spend));
+  $("#content").innerHTML = `<div class="scroll">
+    <div class="metrics">
+      <div class="metric"><div class="l">Requests</div><div class="v">${s.count}</div><div class="d">logged calls</div></div>
+      <div class="metric"><div class="l">Total spend</div><div class="v glow">${money(s.spend)}</div><div class="d">this key</div></div>
+      <div class="metric"><div class="l">Tokens</div><div class="v">${ktok(s.tokens)}</div><div class="d">in + out</div></div>
+      <div class="metric"><div class="l">Avg / request</div><div class="v">${money(avg)}</div><div class="d">mean cost</div></div>
+    </div>
+    <div class="panel">
+      <h3><i class="ti ti-chart-bar"></i>By model</h3>
+      ${(s.by_model||[]).map(m=>`
+        <div class="row"><span class="gmodel" style="flex:1">
+          <span class="gbar" style="width:${Math.max(8,160*m.spend/maxs)}px"></span>
+          <span class="val">${esc(m.model)}</span></span>
+          <span class="val muted">${m.count}× · ${ktok(m.tokens)}</span>
+          <span class="val" style="margin-left:14px">${money(m.spend)}</span></div>`).join("")||'<span class="muted">no spend yet</span>'}
+    </div>
+    <div class="panel" style="padding:6px 0 0">
+      <h3 style="padding:0 20px"><i class="ti ti-list"></i>Ledger · newest first
+        <span class="spacer"></span><button class="ghost" style="margin-right:14px;padding:5px 11px;font-size:11px" onclick="loadTxns()">↻ Refresh</button></h3>
+      <div style="overflow:auto;max-height:none">
+      <table class="ledger"><thead><tr>
+        <th>Time</th><th>Model</th><th>Type</th><th class="r">In</th><th class="r">Out</th><th class="r">Tokens</th><th class="r">Cost</th><th class="r">Latency</th>
+      </tr></thead><tbody>
+      ${(d.rows||[]).map(r=>`<tr>
+        <td class="muted">${tfmt(r.time)}</td>
+        <td>${esc(r.group||r.model||"—")}</td>
+        <td class="muted">${esc((r.call_type||"").replace("acompletion","chat").replace("aembedding","embed"))}</td>
+        <td class="r muted">${r.prompt_tokens??"—"}</td>
+        <td class="r muted">${r.completion_tokens??"—"}</td>
+        <td class="r">${ktok(r.total_tokens)}</td>
+        <td class="r" style="color:var(--cyan)">${money(r.spend)}</td>
+        <td class="r muted">${r.duration_ms!=null?(r.duration_ms/1000).toFixed(1)+"s":"—"}</td>
+      </tr>`).join("")||'<tr><td colspan="8" class="muted" style="padding:18px">no transactions on this key yet</td></tr>'}
+      </tbody></table></div>
+    </div>
+  </div>`;
+}
+
+/* ---------- knowledge engine ---------- */
+let KSCHEMA={}, KADD_TAGS=new Set(), KADD_FILES=[], KONTO=null, KONTO_ALIAS=null;
+async function loadSchema(a, force){ if(force||!KSCHEMA[a]){ try{ KSCHEMA[a]=await (await fetch(`/api/knowledge/${a}/schema`)).json(); }catch(e){ KSCHEMA[a]={}; } } return KSCHEMA[a]; }
+
+function viewKnowledge(){
+  const sub=state.ktab||(state.ktab='graph');
+  const T=[['graph','ti-affiliate','Graph'],['add','ti-database-plus','Add data'],['ontology','ti-schema','Ontology']];
+  return `<div class="scroll" style="display:flex;flex-direction:column">
+    <div class="ksub">${T.map(([k,i,l])=>`<span class="kst ${k===sub?'on':''}" onclick="kSub('${k}')"><i class="ti ${i}"></i>${l}</span>`).join('')}</div>
+    <div id="kbody" style="flex:1;min-height:0"></div>
+  </div>`;
+}
+function kSub(k){ state.ktab=k; renderContent(); }
+async function afterKnowledge(){
+  const a=state.alias;
+  await loadSchema(a,true);
+  const sub=state.ktab||'graph';
+  if(sub==='graph') renderKGraph();
+  else if(sub==='add') renderKAdd();
+  else renderKOnto();
+}
+
+/* --- graph --- */
+function renderKGraph(){
+  const sc=KSCHEMA[state.alias]||{};
+  $('#kbody').innerHTML=`<div class="kbar" style="margin-bottom:14px">
+    <span class="chip">nodes <b>${sc.nodes||0}</b></span><span class="chip">edges <b>${sc.edges||0}</b></span>
+    <span class="chip">types <b>${(sc.labels||[]).length}</b></span><span class="chip">relations <b>${(sc.rel_types||[]).length}</b></span>
+    <span class="spacer"></span>
+    <label class="note">show <select id="glim"><option>40</option><option selected>80</option><option>150</option><option>300</option></select> relations</label>
+    <button class="ghost" onclick="loadKGraph()">↻ Reload</button></div>
+    <div class="tags" style="margin-bottom:14px">${(sc.labels||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join('')}</div>
+    <div style="height:460px"><div id="cy"></div></div>
+    <div class="note" id="gcount" style="margin-top:10px"></div>`;
+  loadKGraph();
+}
+async function loadKGraph(){
+  const a=state.alias, lim=$('#glim')?.value||80;
+  let d; try{ d=await (await fetch(`/api/graph/${a}?limit=${lim}`)).json(); }catch(e){ return; }
+  if(state.tab!=='knowledge'||state.alias!==a||state.ktab!=='graph') return;
+  if($('#gcount')) $('#gcount').textContent=`${d.nodes.length} nodes · ${d.edges.length} edges rendered`;
+  $('#glim')?.addEventListener('change',loadKGraph,{once:true});
+  state.cy=cytoscape({ container:$('#cy'), elements:[...d.nodes,...d.edges],
+    style:[
+      {selector:'node',style:{'background-color':'#0e2433','border-color':'#38bdf8','border-width':1.4,'label':'data(label)','color':'#cfe8f7','font-size':'9px','width':20,'height':20,'text-wrap':'wrap','text-max-width':'82px','text-valign':'bottom','text-margin-y':3}},
+      {selector:'edge',style:{'width':1,'line-color':'#27384a','target-arrow-color':'#2f4459','target-arrow-shape':'triangle','curve-style':'bezier','label':'data(label)','font-size':'7px','color':'#5a6678'}}
+    ], layout:{name:'cose',animate:false,padding:24,nodeRepulsion:9000} });
+}
+
+/* --- add data --- */
+function renderKAdd(){
+  KADD_TAGS=new Set(); KADD_FILES=[];
+  $('#kbody').innerHTML=`
+    <div class="panel">
+      <h3><i class="ti ti-database-plus"></i> Add data to ${esc(curProj().label)}</h3>
+      <textarea id="ktext" placeholder="Paste text, notes, transcripts… to ingest into the knowledge graph" style="width:100%;min-height:130px"></textarea>
+      <div class="attachbar" id="kabar" style="padding:8px 0 0"></div>
+      <div class="edit" style="margin-top:10px;flex-wrap:wrap;align-items:center;gap:10px">
+        <button class="iconbtn" onclick="kPickFiles()" title="Attach files"><i class="ti ti-paperclip"></i></button>
+        <input type="file" id="kfin" multiple hidden onchange="kOnFiles(this)">
+        <span class="note">tags</span><span id="ktagsel"></span>
+        <input id="ktaginput" placeholder="+ tag" style="width:110px" onkeydown="if(event.key==='Enter'){event.preventDefault();kAddTagInput();}">
+        <span class="spacer"></span>
+        <span class="note">extractor</span>
+        <select id="kmodel" title="Model used for entity/relation extraction during cognify">
+          <option value="">Standard · gpt-4o-mini (cheap)</option>
+          <option value="openai/reasoner">High quality · Sonnet (dense docs)</option>
+          <option value="openai/fast">Fast · Haiku</option>
+        </select>
+        <button onclick="kIngest()"><i class="ti ti-upload"></i> Ingest + cognify</button>
+      </div>
+      <div class="note" id="kingnote" style="margin-top:8px">Ingestion runs in the background (add → cognify); it can take a few minutes and bills this project's budget. Extraction quality is baked into the graph permanently — use <b>Sonnet</b> for high-value or dense financial docs, <b>Standard</b> for bulk.</div>
+    </div>
+    <div class="panel"><h3><i class="ti ti-history"></i> Ingest jobs</h3><div id="kjobs"><span class="muted">none yet</span></div></div>`;
+  renderKTagSel(); renderKAttach(); loadKJobs();
+}
+function kPickFiles(){ $('#kfin').click(); }
+function kOnFiles(input){ for(const f of input.files) KADD_FILES.push(f); input.value=''; renderKAttach(); }
+function kRmFile(i){ KADD_FILES.splice(i,1); renderKAttach(); }
+function renderKAttach(){ const b=$('#kabar'); if(b) b.innerHTML=KADD_FILES.map((f,i)=>`<span class="attachchip"><i class="ti ti-file"></i> ${esc(f.name)} <i class="ti ti-x" onclick="kRmFile(${i})"></i></span>`).join(''); }
+function renderKTagSel(){ const sc=KSCHEMA[state.alias]||{}, vocab=(sc.ontology&&sc.ontology.tags)||[]; const el=$('#ktagsel'); if(!el)return; el.innerHTML=vocab.length?vocab.map(t=>`<span class="chiprm ${KADD_TAGS.has(t)?'sel':''}" onclick="kToggleTag('${esc(t)}')">${esc(t)}</span>`).join(''):'<span class="muted" style="font-size:12px">none — add in Ontology ›</span>'; }
+function kToggleTag(t){ KADD_TAGS.has(t)?KADD_TAGS.delete(t):KADD_TAGS.add(t); renderKTagSel(); }
+async function kAddTagInput(){ const i=$('#ktaginput'),v=i.value.trim(); if(!v)return; KADD_TAGS.add(v); i.value='';
+  const sc=KSCHEMA[state.alias]||{}, o=sc.ontology||{entityTypes:[],relationTypes:[],tags:[]}; if(!o.tags.includes(v)){ o.tags.push(v); try{ await fetch(`/api/knowledge/${state.alias}/ontology`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entityTypes:o.entityTypes,relationTypes:o.relationTypes,tags:o.tags})}); }catch(e){} } renderKTagSel(); }
+async function kIngest(){
+  const text=($('#ktext')?.value||'').trim(), note=$('#kingnote');
+  if(!text && !KADD_FILES.length){ note.textContent='add some text or a file first'; return; }
+  note.textContent='uploading…';
+  const files=(await Promise.all(KADD_FILES.map(readFileB64))).filter(Boolean);
+  const model=$('#kmodel')?.value||'';
+  let r; try{ r=await (await fetch(`/api/knowledge/${state.alias}/ingest`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,tags:[...KADD_TAGS],files,model})})).json(); }catch(e){ note.textContent='failed: '+e.message; return; }
+  if(r.ok){ note.textContent=`✓ job #${r.job} started — cognifying in the background`; $('#ktext').value=''; KADD_FILES=[]; renderKAttach(); loadKJobs(); }
+  else note.textContent='✗ '+(r.detail||'failed');
+}
+async function loadKJobs(){
+  const a=state.alias;
+  let jobs=[]; try{ jobs=(await (await fetch(`/api/knowledge/${a}/jobs`)).json()).jobs||[]; }catch(e){}
+  if(state.tab!=='knowledge'||state.alias!==a||state.ktab!=='add') return;
+  const el=$('#kjobs'); if(el) el.innerHTML = jobs.length? jobs.map(j=>`<div class="jobitem collapsed"><div class="jh" onclick="this.parentNode.classList.toggle('collapsed')"><span class="jbadge ${j.status}">${j.status==='running'?'<span class="spin"></span> running':j.status}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.summary||('job '+j.id))}</span><i class="ti ti-chevron-down"></i></div><div class="jlog">${esc(j.log||'(no output yet)')}</div></div>`).join('') : '<span class="muted">none yet</span>';
+  if(jobs.some(j=>j.status==='running')) setTimeout(loadKJobs, 4000);
+  else if(jobs.length){ loadSchema(a,true); }  // refresh stats once a job finishes
+}
+
+/* --- ontology (tags / custom types / OWL) --- */
+function ensureKonto(){ const a=state.alias, sc=KSCHEMA[a]||{}; if(KONTO_ALIAS!==a||!KONTO){ KONTO=JSON.parse(JSON.stringify(sc.ontology||{entityTypes:[],relationTypes:[],tags:[],owlFile:null})); KONTO_ALIAS=a; } }
+function renderKOnto(){
+  ensureKonto(); const sc=KSCHEMA[state.alias]||{}, mode=state.kotab||(state.kotab='tags');
+  const M=[['tags','Tags'],['types','Custom types'],['owl','OWL file']];
+  $('#kbody').innerHTML=`
+    <div class="panel" style="margin-bottom:14px">
+      <div class="note" style="margin-bottom:10px">Shape how the graph is built. Pick a format — all set formats are applied together at cognify time.</div>
+      <div class="seg" id="oseg">${M.map(([m,l])=>`<button class="${mode===m?'on':''}" onclick="kOnto('${m}')">${l}</button>`).join('')}</div>
+    </div>
+    <div id="obody"></div>
+    <div class="panel"><h3><i class="ti ti-affiliate"></i> Current graph schema</h3>
+      <div class="row"><span class="k">Entity labels (${(sc.labels||[]).length})</span></div>
+      <div class="tags">${(sc.labels||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join('')||'<span class="muted">—</span>'}</div>
+      <div class="row" style="margin-top:12px"><span class="k">Relationship types (${(sc.rel_types||[]).length})</span></div>
+      <div class="tags">${(sc.rel_types||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join('')||'<span class="muted">—</span>'}</div>
+    </div>`;
+  renderOBody();
+}
+function kOnto(m){ state.kotab=m; renderKOnto(); }
+function renderOBody(){
+  const mode=state.kotab||'tags', save=`<div style="display:flex;gap:10px;align-items:center"><button onclick="oSave()"><i class="ti ti-device-floppy"></i> Save ontology</button><span class="note" id="onote"></span></div>`;
+  let h='';
+  if(mode==='tags'){
+    h=`<div class="panel"><h3><i class="ti ti-tags"></i> Tags (node sets)</h3>
+      <div class="note" style="margin-bottom:10px">Lightweight labels attached to data on ingest — to filter and group later. No schema required.</div>
+      <div>${KONTO.tags.map((t,i)=>`<span class="chiprm">${esc(t)}<i class="ti ti-x" onclick="oRm('tags',${i})"></i></span>`).join('')||'<span class="muted">none yet</span>'}</div>
+      <div class="edit" style="margin-top:10px"><input id="oin" placeholder="add tag" onkeydown="if(event.key==='Enter'){event.preventDefault();oAddTag();}"><button class="ghost" onclick="oAddTag()">Add</button></div>
+    </div>`+save;
+  } else if(mode==='types'){
+    h=`<div class="panel"><h3><i class="ti ti-box"></i> Entity types</h3>
+      <div class="note" style="margin-bottom:10px">Classes the agent should extract — e.g. Client, Invoice, Product.</div>
+      <div>${KONTO.entityTypes.map((t,i)=>`<span class="chiprm">${esc(t)}<i class="ti ti-x" onclick="oRm('entityTypes',${i})"></i></span>`).join('')||'<span class="muted">none yet</span>'}</div>
+      <div class="edit" style="margin-top:10px"><input id="oent" placeholder="add entity type" onkeydown="if(event.key==='Enter'){event.preventDefault();oAddEnt();}"><button class="ghost" onclick="oAddEnt()">Add</button></div>
+    </div>
+    <div class="panel"><h3><i class="ti ti-arrows-right-left"></i> Relationship types</h3>
+      <div class="note" style="margin-bottom:10px">How entities relate — e.g. Client —PURCHASED→ Product. Source/target optional.</div>
+      ${KONTO.relationTypes.map((r,i)=>`<div class="relrow"><span class="chiprm">${esc(r.name)}${(r.source||r.target)?` <small>(${esc(r.source||'?')} → ${esc(r.target||'?')})</small>`:''}<i class="ti ti-x" onclick="oRm('relationTypes',${i})"></i></span></div>`).join('')||'<span class="muted">none yet</span>'}
+      <div class="relrow" style="margin-top:10px">
+        <input id="orelname" placeholder="relation name" style="width:150px">
+        <select id="orelsrc"><option value="">source…</option>${KONTO.entityTypes.map(t=>`<option>${esc(t)}</option>`).join('')}</select>
+        <span class="muted">→</span>
+        <select id="oreltgt"><option value="">target…</option>${KONTO.entityTypes.map(t=>`<option>${esc(t)}</option>`).join('')}</select>
+        <button class="ghost" onclick="oAddRel()">Add</button>
+      </div>
+    </div>`+save;
+  } else {
+    h=`<div class="panel"><h3><i class="ti ti-file-code"></i> OWL / RDF ontology file</h3>
+      <div class="note" style="margin-bottom:12px">Upload a formal ontology (.owl / .rdf / .ttl). Cognee's resolver aligns extraction to it via fuzzy matching.</div>
+      ${KONTO.owlFile?`<span class="chiprm">${esc(KONTO.owlFile)}<i class="ti ti-x" onclick="oRmOwl()"></i></span>`:'<span class="muted">no file uploaded</span>'}
+      <div class="edit" style="margin-top:14px;align-items:center;gap:10px"><button class="iconbtn" onclick="document.getElementById('owlin').click()"><i class="ti ti-upload"></i></button>
+      <input type="file" id="owlin" hidden accept=".owl,.rdf,.ttl,.xml,.rdfs" onchange="oUploadOwl(this)"><span class="note" id="owlnote">choose an ontology file</span></div>
+    </div>`;
+  }
+  $('#obody').innerHTML=h;
+}
+function oRm(key,i){ KONTO[key].splice(i,1); renderOBody(); }
+function oAddTag(){ const i=$('#oin'),v=i.value.trim(); if(v&&!KONTO.tags.includes(v))KONTO.tags.push(v); i.value=''; renderOBody(); }
+function oAddEnt(){ const i=$('#oent'),v=i.value.trim(); if(v&&!KONTO.entityTypes.includes(v))KONTO.entityTypes.push(v); i.value=''; renderOBody(); }
+function oAddRel(){ const n=$('#orelname').value.trim(); if(!n)return; KONTO.relationTypes.push({name:n,source:$('#orelsrc').value,target:$('#oreltgt').value}); renderOBody(); }
+async function oSave(){ const note=$('#onote'); if(note)note.textContent='saving…';
+  try{ await fetch(`/api/knowledge/${state.alias}/ontology`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entityTypes:KONTO.entityTypes,relationTypes:KONTO.relationTypes,tags:KONTO.tags})}); KONTO_ALIAS=null; await loadSchema(state.alias,true); if(note)note.textContent='✓ saved — applies on next ingest'; }catch(e){ if(note)note.textContent='✗ '+e.message; } }
+async function oUploadOwl(input){ const f=input.files[0]; if(!f)return; const note=$('#owlnote'); note.textContent='uploading…'; const b=await readFileB64(f);
+  try{ const r=await (await fetch(`/api/knowledge/${state.alias}/owl`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:f.name,data:b.data})})).json(); if(r.ok){ KONTO_ALIAS=null; await loadSchema(state.alias,true); renderKOnto(); } else note.textContent='✗ failed'; }catch(e){ note.textContent='✗ '+e.message; } }
+async function oRmOwl(){ try{ await fetch(`/api/knowledge/${state.alias}/owl`,{method:'DELETE'}); KONTO_ALIAS=null; await loadSchema(state.alias,true); renderKOnto(); }catch(e){} }
+
+/* ---------- boot + poll ---------- */
+async function refreshOverview(){
+  try{
+    const d=await (await fetch("/api/overview")).json();
+    state.overview=d;
+    if(!state.alias && d.projects.length) state.alias=d.projects[0].alias;
+    renderSidebar(); renderTopbar(); renderTabs();
+    const ae=document.activeElement;
+    const typing = ae && (ae.tagName==="INPUT"||ae.tagName==="TEXTAREA");
+    if(state.tab==="overview" && !typing) $("#content").innerHTML=`<div class="scroll">${viewOverview()}</div>`;
+  }catch(e){}
+}
+async function boot(){
+  await refreshOverview();
+  renderContent();
+  setInterval(refreshOverview, 15000);
+}
+boot();
+</script>
+</body>
+</html>
