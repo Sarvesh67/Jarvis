@@ -15,12 +15,34 @@ model_list:
     litellm_params:
       model: openrouter/anthropic/claude-sonnet-4.6
       api_key: os.environ/OPENROUTER_API_KEY
+      # Gateway-side Anthropic prompt caching: clients reach us as a generic
+      # OpenAI endpoint and never send cache_control, so LiteLLM injects a
+      # breakpoint on the system message. In Anthropic's cache order
+      # (tools → system → messages) that caches the whole static prefix
+      # (tool schemas + system prompt) — re-read at ~10% on repeat calls
+      # within the TTL. Cuts cost on every multi-step agent turn.
+      cache_control_injection_points:
+        - location: message
+          role: system
+      # OpenRouter only APPLIES + REPORTS the Anthropic cache discount when the
+      # request asks for usage accounting. Clients (Hermes/Cognee) don't send
+      # this, so default it here — without it LiteLLM bills the full prompt rate
+      # and the per-project budget is over-counted even though caching occurred.
+      extra_body:
+        usage:
+          include: true
 
   # --- cheap chat / triage ---
   - model_name: fast
     litellm_params:
       model: openrouter/anthropic/claude-haiku-4.5
       api_key: os.environ/OPENROUTER_API_KEY
+      cache_control_injection_points:
+        - location: message
+          role: system
+      extra_body:
+        usage:
+          include: true
 
   # --- local, free: domain bulk model (override target to cut cloud spend) ---
   - model_name: local-finance
