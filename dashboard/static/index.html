@@ -186,6 +186,16 @@
   .toolcard .st.running{color:var(--cyan)} .toolcard .st.completed{color:var(--ok)} .toolcard .st.failed{color:var(--bad)}
   .spin{width:11px;height:11px;border:2px solid var(--line2);border-top-color:var(--cyan);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
   @keyframes spin{to{transform:rotate(360deg)}}
+  /* MCP servers */
+  button.ghost.danger{color:var(--bad);border-color:transparent}
+  button.ghost.danger:hover{border-color:var(--bad)}
+  .mcpitem{display:flex;align-items:flex-start;gap:14px;padding:13px 0;border-top:1px solid var(--line)}
+  .mcpitem:first-child{border-top:0}
+  .mcpname{font-weight:600;display:flex;align-items:center;gap:7px}
+  .mcptag{font-size:10px;font-family:var(--mono);color:var(--mut);border:1px solid var(--line2);border-radius:6px;padding:1px 6px;text-transform:uppercase;letter-spacing:.06em}
+  .mcpmeta{font-family:var(--mono);font-size:12px;color:var(--mut);margin-top:4px;word-break:break-all}
+  .mcptest{font-family:var(--mono);font-size:11.5px;margin-top:6px;white-space:pre-wrap}
+  .mcptest.good{color:var(--ok)} .mcptest.bad{color:var(--bad)}
   .toolcard .body{border-top:1px solid var(--line);padding:10px 12px;font-family:var(--mono);font-size:12px;color:var(--mut);white-space:pre-wrap;max-height:280px;overflow:auto}
   .toolcard.collapsed .body{display:none}
   .planbox{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:11px 14px}
@@ -265,6 +275,7 @@ const TABS = [
   {id:"chat", lbl:"Chat", icon:"ti-message-2"},
   {id:"transactions", lbl:"Transactions", icon:"ti-receipt"},
   {id:"knowledge", lbl:"Knowledge engine", icon:"ti-affiliate"},
+  {id:"mcp", lbl:"MCP servers", icon:"ti-plug-connected"},
 ];
 const ICON = {hedgefund:"ti-chart-candle", msme:"ti-building-store", jarvis:"ti-robot"};
 const SUGGEST = {
@@ -349,6 +360,7 @@ function renderContent(){
   else if(state.tab==="chat"){ c.innerHTML=viewChat(); afterChat(); }
   else if(state.tab==="transactions"){ c.innerHTML=`<div class="scroll"><div class="loading">loading ledger…</div></div>`; loadTxns(); }
   else if(state.tab==="knowledge"){ c.innerHTML=viewKnowledge(); afterKnowledge(); }
+  else if(state.tab==="mcp"){ c.innerHTML=`<div class="scroll" id="mcpwrap"><div class="loading">loading MCP servers…</div></div>`; afterMcp(); }
 }
 
 /* ---------- overview ---------- */
@@ -611,6 +623,128 @@ async function loadTxns(){
       </tbody></table></div>
     </div>
   </div>`;
+}
+
+/* ---------- MCP servers ---------- */
+let MCP_KV=[];  // staging rows for headers/env on the add form
+async function afterMcp(){
+  const a=state.alias; let servers=[];
+  try{ servers=(await (await fetch('/api/mcp/'+a)).json()).servers||[]; }catch(e){}
+  if(state.tab!=='mcp'||state.alias!==a) return;
+  const w=$('#mcpwrap'); if(!w) return;
+  w.innerHTML = `
+    <div class="panel">
+      <h3><i class="ti ti-plug-connected"></i> Connected MCP servers — ${esc(curProj().label)}</h3>
+      <div class="note" style="margin-bottom:12px">Servers added here are written into this project's Hermes profile, so its agent (chat, ACP and CLI) gets their tools. New tools then show up under <b>Tools</b> in Chat. Secrets are stored in the profile config (chmod 600) and never shown back here.</div>
+      <div id="mcplist">${servers.length?servers.map(mcpRow).join(''):'<span class="muted">no servers connected yet</span>'}</div>
+    </div>
+    ${mcpAddForm()}`;
+  afterMcpForm();
+}
+function mcpRow(s){
+  const meta = s.transport==='url'
+    ? esc(s.url||'')
+    : esc(((s.command||'')+' '+(s.args||[]).join(' ')).trim());
+  const auth = [
+    s.header_keys.length?`headers: ${s.header_keys.map(esc).join(', ')}`:'',
+    s.env_keys.length?`env: ${s.env_keys.map(esc).join(', ')}`:'',
+  ].filter(Boolean).join(' · ');
+  return `<div class="mcpitem">
+    <div style="flex:1;min-width:0">
+      <div class="mcpname"><i class="ti ti-${s.transport==='url'?'world':'terminal-2'}"></i> ${esc(s.name)}
+        <span class="mcptag">${s.transport}</span></div>
+      <div class="mcpmeta">${meta||'—'}${auth?`<span class="muted"> · ${auth}</span>`:''}</div>
+      <div class="mcptest muted" id="mt-${esc(s.name)}"></div>
+    </div>
+    <div class="edit" style="gap:8px">
+      <button class="ghost" onclick="mcpTest('${esc(s.name)}')"><i class="ti ti-plug"></i> Test</button>
+      <button class="ghost danger" onclick="mcpRemove('${esc(s.name)}')"><i class="ti ti-trash"></i></button>
+    </div>
+  </div>`;
+}
+function mcpAddForm(){
+  return `<div class="panel">
+    <h3><i class="ti ti-plus"></i> Add a server</h3>
+    <div class="edit" style="flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px">
+      <input id="mcpname" placeholder="name (e.g. notion)" style="width:180px">
+      <div class="seg" id="mcpseg">
+        <button class="on" data-t="url" onclick="mcpType('url')">HTTP / URL</button>
+        <button data-t="stdio" onclick="mcpType('stdio')">Stdio (command)</button>
+      </div>
+    </div>
+    <div id="mcpfields"></div>
+    <div class="edit" style="margin-top:14px;align-items:center;gap:12px">
+      <button onclick="mcpAdd()"><i class="ti ti-plug-connected"></i> Connect server</button>
+      <span class="note" id="mcpnote"></span>
+    </div>
+  </div>`;
+}
+let MCP_TYPE='url';
+function mcpType(t){ MCP_TYPE=t; MCP_KV=[]; $('#mcpseg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.t===t)); renderMcpFields(); }
+function afterMcpForm(){ MCP_TYPE='url'; MCP_KV=[]; renderMcpFields(); }
+function renderMcpFields(){
+  const f=$('#mcpfields'); if(!f) return;
+  const kvLabel = MCP_TYPE==='url'?'Headers (auth)':'Environment variables';
+  const kvHint  = MCP_TYPE==='url'?'e.g. Authorization = Bearer sk-… — sent with every request':'e.g. API_KEY = … — passed to the subprocess';
+  let main;
+  if(MCP_TYPE==='url'){
+    main=`<input id="mcpurl" placeholder="https://mcp.example.com/mcp" style="width:100%">`;
+  } else {
+    main=`<div class="edit" style="gap:10px">
+      <input id="mcpcmd" placeholder="command (e.g. npx, uvx)" style="width:200px">
+      <input id="mcpargs" placeholder="args, space-separated (e.g. -y @scope/server)" style="flex:1;min-width:220px">
+    </div>`;
+  }
+  f.innerHTML = `${main}
+    <div style="margin-top:14px">
+      <div class="note" style="margin-bottom:8px">${kvLabel} <span class="muted">— ${kvHint}</span></div>
+      <div id="mcpkv">${MCP_KV.map(mcpKvRow).join('')}</div>
+      <div class="edit" style="margin-top:8px"><button class="ghost" onclick="mcpAddKv()"><i class="ti ti-plus"></i> Add ${MCP_TYPE==='url'?'header':'variable'}</button></div>
+    </div>`;
+}
+function mcpKvRow(kv,i){
+  return `<div class="edit mcpkvrow" style="margin-bottom:6px;gap:8px">
+    <input value="${esc(kv.k)}" placeholder="key" style="width:200px" oninput="MCP_KV[${i}].k=this.value">
+    <input value="${esc(kv.v)}" placeholder="value" style="flex:1;min-width:180px" oninput="MCP_KV[${i}].v=this.value">
+    <button class="ghost danger" onclick="mcpRmKv(${i})"><i class="ti ti-x"></i></button>
+  </div>`;
+}
+function mcpAddKv(){ MCP_KV.push({k:'',v:''}); renderMcpFields(); }
+function mcpRmKv(i){ MCP_KV.splice(i,1); renderMcpFields(); }
+function mcpKvMap(){ const o={}; for(const {k,v} of MCP_KV){ if(k.trim()) o[k.trim()]=v; } return o; }
+async function mcpAdd(){
+  const note=$('#mcpnote'), name=($('#mcpname')?.value||'').trim();
+  if(!name){ note.textContent='give the server a name'; return; }
+  const body={name, transport:MCP_TYPE};
+  if(MCP_TYPE==='url'){
+    body.url=($('#mcpurl')?.value||'').trim();
+    if(!body.url){ note.textContent='enter the server URL'; return; }
+    body.headers=mcpKvMap();
+  } else {
+    body.command=($('#mcpcmd')?.value||'').trim();
+    if(!body.command){ note.textContent='enter a command'; return; }
+    body.args=($('#mcpargs')?.value||'').trim().split(/\s+/).filter(Boolean);
+    body.env=mcpKvMap();
+  }
+  note.textContent='connecting…';
+  let r; try{ r=await (await fetch('/api/mcp/'+state.alias,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json(); }
+  catch(e){ note.textContent='failed: '+e.message; return; }
+  if(r.ok){ note.textContent='✓ connected — testing…'; await afterMcp(); mcpTest(name); }
+  else note.textContent='✗ '+(r.detail||'failed');
+}
+async function mcpRemove(name){
+  if(!confirm(`Remove MCP server "${name}" from ${curProj().label}?`)) return;
+  try{ await fetch(`/api/mcp/${state.alias}/${encodeURIComponent(name)}`,{method:'DELETE'}); }catch(e){}
+  afterMcp();
+}
+async function mcpTest(name){
+  const el=$('#mt-'+name); if(el){ el.className='mcptest muted'; el.innerHTML='<span class="spin"></span> testing connection…'; }
+  let r; try{ r=await (await fetch(`/api/mcp/${state.alias}/${encodeURIComponent(name)}/test`,{method:'POST'})).json(); }
+  catch(e){ if(el){el.className='mcptest bad';el.textContent='test failed: '+e.message;} return; }
+  const tgt=$('#mt-'+name); if(!tgt) return;
+  tgt.className='mcptest '+(r.ok?'good':'bad');
+  const first=(r.output||'').split('\n').filter(l=>l.trim()).slice(0,6).join('\n');
+  tgt.textContent=(r.ok?'✓ ':'✗ ')+first;
 }
 
 /* ---------- knowledge engine ---------- */

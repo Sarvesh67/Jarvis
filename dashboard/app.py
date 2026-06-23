@@ -16,6 +16,7 @@ import pathlib
 import re
 
 import httpx
+import yaml
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -28,6 +29,13 @@ PLATFORM_ENV = BASE.parent / "platform" / ".env"
 HERMES_PROFILES = pathlib.Path.home() / ".hermes" / "profiles"
 HERMES_BIN = pathlib.Path.home() / ".local" / "bin" / "hermes"
 UPLOADS = pathlib.Path.home() / ".jarvis-dashboard" / "uploads"
+MCP_DIR = pathlib.Path.home() / ".jarvis-dashboard" / "mcp"  # canonical per-project MCP store
+
+# Markers delimiting the block the dashboard owns inside each profile's config.yaml.
+# Everything outside stays untouched (the profile config is heavily commented).
+MCP_BEGIN = "# >>> jarvis-dashboard managed MCP servers (edit via the dashboard) >>>"
+MCP_END = "# <<< jarvis-dashboard managed MCP servers <<<"
+_MCP_BLOCK_RE = re.compile(re.escape(MCP_BEGIN) + r".*?" + re.escape(MCP_END) + r"\n?", re.DOTALL)
 
 # One live ACP agent process per project alias (kept warm across turns for memory).
 AGENTS: dict = {}
@@ -377,6 +385,175 @@ async def toolsets(alias: str):
             desc = re.sub(r"^[^A-Za-z]+", "", " ".join(parts[3:])).strip()
             items.append({"name": name, "enabled": parts[1] == "enabled", "desc": desc})
     return {"toolsets": items}
+
+
+# --------------------------------------------------------------------------- #
+# MCP servers — per project. The dashboard is the source of truth (JSON store);
+# it renders the servers into a delimited block inside the Hermes profile's
+# config.yaml so every run of that profile (dashboard chat, ACP, CLI) sees them.
+# --------------------------------------------------------------------------- #
+def _mcp_store(alias: str) -> pathlib.Path:
+    MCP_DIR.mkdir(parents=True, exist_ok=True)
+    return MCP_DIR / f"{alias}.json"
+
+
+def _mcp_load(alias: str) -> list:
+    p = _mcp_store(alias)
+    if p.exists():
+        try:
+            return json.loads(p.read_text())
+        except Exception:  # noqa: BLE001
+            return []
+    return []
+
+
+def _mcp_save(alias: str, servers: list):
+    _mcp_store(alias).write_text(json.dumps(servers, indent=2))
+
+
+def _mcp_config_map(servers: list) -> dict:
+    """Dashboard records -> Hermes `mcp_servers:` mapping (url/headers or command/args/env)."""
+    out = {}
+    for s in servers:
+        if s.get("url"):
+            entry = {"url": s["url"]}
+            if s.get("headers"):
+                entry["headers"] = s["headers"]
+        else:
+            entry = {"command": s.get("command", "")}
+            if s.get("args"):
+                entry["args"] = s["args"]
+            if s.get("env"):
+                entry["env"] = s["env"]
+        if s.get("timeout"):
+            entry["timeout"] = s["timeout"]
+        out[s["name"]] = entry
+    return out
+
+
+def _mcp_sync_config(alias: str):
+    """Rewrite the dashboard-managed mcp_servers block in the profile's config.yaml."""
+    cfg = HERMES_PROFILES / alias / "config.yaml"
+    if not cfg.exists():
+        raise HTTPException(404, f"no hermes profile for {alias}")
+    servers = _mcp_load(alias)
+    text = _MCP_BLOCK_RE.sub("", cfg.read_text())
+    if servers:
+        rendered = yaml.safe_dump({"mcp_servers": _mcp_config_map(servers)}, sort_keys=False).rstrip()
+        block = f"{MCP_BEGIN}\n{rendered}\n{MCP_END}"
+        text = text.rstrip() + "\n\n" + block + "\n"
+    cfg.write_text(text)
+    os.chmod(cfg, 0o600)
+
+
+async def _restart_agent(alias: str):
+    """Drop the warm ACP process so the next prompt respawns with the new MCP config."""
+    ag = AGENTS.pop(alias, None)
+    if ag:
+        try:
+            await ag.stop()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _mcp_view(s: dict) -> dict:
+    """Public shape — never leaks header/env secret values, only which keys are set."""
+    return {
+        "name": s["name"],
+        "transport": "url" if s.get("url") else "stdio",
+        "url": s.get("url"),
+        "command": s.get("command"),
+        "args": s.get("args") or [],
+        "header_keys": list((s.get("headers") or {}).keys()),
+        "env_keys": list((s.get("env") or {}).keys()),
+        "timeout": s.get("timeout"),
+    }
+
+
+@app.get("/api/mcp/{alias}")
+def mcp_list(alias: str):
+    if not any(p["alias"] == alias for p in PROJECTS):
+        raise HTTPException(404, "unknown project")
+    return {"servers": [_mcp_view(s) for s in _mcp_load(alias)]}
+
+
+class McpServer(BaseModel):
+    name: str
+    transport: str = "url"  # "url" | "stdio"
+    url: str = ""
+    headers: dict = {}
+    command: str = ""
+    args: list = []
+    env: dict = {}
+    timeout: int = 0
+
+
+@app.post("/api/mcp/{alias}")
+async def mcp_add(alias: str, body: McpServer):
+    if not any(p["alias"] == alias for p in PROJECTS):
+        raise HTTPException(404, "unknown project")
+    name = re.sub(r"[^A-Za-z0-9_-]", "", (body.name or "")).strip("-_")
+    if not name:
+        raise HTTPException(400, "server name required (letters, digits, _ or -)")
+    rec = {"name": name}
+    if body.transport == "stdio":
+        if not body.command.strip():
+            raise HTTPException(400, "stdio server needs a command")
+        rec["command"] = body.command.strip()
+        if body.args:
+            rec["args"] = [str(a) for a in body.args if str(a).strip()]
+        if body.env:
+            rec["env"] = {k: v for k, v in body.env.items() if k}
+    else:
+        if not body.url.strip():
+            raise HTTPException(400, "url server needs a URL")
+        rec["url"] = body.url.strip()
+        if body.headers:
+            rec["headers"] = {k: v for k, v in body.headers.items() if k}
+    if body.timeout:
+        rec["timeout"] = int(body.timeout)
+    servers = [s for s in _mcp_load(alias) if s.get("name") != name]
+    servers.append(rec)
+    _mcp_save(alias, servers)
+    _mcp_sync_config(alias)
+    await _restart_agent(alias)
+    return {"ok": True, "name": name}
+
+
+@app.delete("/api/mcp/{alias}/{name}")
+async def mcp_remove(alias: str, name: str):
+    if not any(p["alias"] == alias for p in PROJECTS):
+        raise HTTPException(404, "unknown project")
+    servers = [s for s in _mcp_load(alias) if s.get("name") != name]
+    _mcp_save(alias, servers)
+    _mcp_sync_config(alias)
+    await _restart_agent(alias)
+    return {"ok": True}
+
+
+@app.post("/api/mcp/{alias}/{name}/test")
+async def mcp_test(alias: str, name: str):
+    """Probe a configured server via `hermes -p <alias> mcp test <name>` (non-interactive)."""
+    if not any(p["alias"] == alias for p in PROJECTS):
+        raise HTTPException(404, "unknown project")
+    if not any(s.get("name") == name for s in _mcp_load(alias)):
+        raise HTTPException(404, "unknown server")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            str(HERMES_BIN), "-p", alias, "mcp", "test", name,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            env=_proc_env(),
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), 45)
+        rc = proc.returncode
+    except asyncio.TimeoutError:
+        return {"ok": False, "output": "connection test timed out after 45s"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "output": str(e)}
+    text = re.sub(r"\x1b\[[0-9;]*m", "", (out or b"").decode(errors="replace")).strip()
+    ok = rc == 0 and ("✓" in text or "Connected" in text or "tool" in text.lower())
+    return {"ok": ok, "output": text[-4000:] or "(no output)"}
 
 
 def _build_blocks(text: str, attachments: list, alias: str) -> list:
