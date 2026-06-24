@@ -1,0 +1,42 @@
+{
+  "preprocessing": {
+    "enabled": true,
+    "steps": [
+      {
+        "id": "clean-filter",
+        "name": "Clean & filter",
+        "output": "rewrite",
+        "enabled": true,
+        "model": "preprocess",
+        "appliesTo": { "docTypes": ["*"] },
+        "intent": "Keep only material financial info; drop ads/disclaimers/boilerplate; preserve numbers, quotes, attributions, opinions.",
+        "prompt": "You are cleaning a financial document for a knowledge graph. Keep ONLY the material financial signal as clean prose: company/issuer names, instruments/tickers, financial metrics and numbers, events (earnings, guidance, M&A, rating changes, management changes), analyst/management commentary and opinions WITH their attribution, and dates. Strip navigation, ads, cookie/subscription notices, legal disclaimers, repeated headers/footers, and unrelated content. Preserve exact numbers and direct quotes. Output ONLY the cleaned text — no preamble, no explanation, no markdown fences. If the document contains no material financial signal, output exactly: DROP",
+        "compiledBy": null
+      },
+      {
+        "id": "relevance",
+        "name": "Relevance classify",
+        "output": "signal",
+        "enabled": true,
+        "model": "preprocess",
+        "metaKey": "relevance",
+        "labels": ["high", "low"],
+        "appliesTo": { "docTypes": ["*"] },
+        "intent": "Label a doc 'high' if it is market-moving or company-specific fundamental signal; 'low' otherwise.",
+        "prompt": "Classify this financial document's importance for an investment knowledge graph. Output exactly one word, lowercase: 'high' if it carries market-moving or company-specific fundamental signal (earnings, guidance, M&A, rating changes, major management commentary), or 'low' if it is routine/general news with little actionable signal. Output ONLY one of: high, low",
+        "compiledBy": null
+      }
+    ]
+  },
+  "cognify": {
+    "defaultModel": "extractor",
+    "routing": {
+      "enabled": true,
+      "rules": [
+        { "if": { "docType": ["concall", "quarterly", "brokerage"] }, "model": "extractor-pro" },
+        { "if": { "pattern": "earnings|guidance|acquisition|merger|downgrade|upgrade|rating" }, "model": "extractor-pro" },
+        { "if": { "relevance": ["high"] }, "model": "extractor-pro" }
+      ]
+    }
+  }
+}

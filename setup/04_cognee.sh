@@ -16,6 +16,11 @@ else
   uv pip freeze --python .venv > requirements.lock
 fi
 
+log "Syncing per-project model maps to the gateway (DB-pool models + key allowlists)..."
+for proj in hedgefund msme; do
+  ./.venv/bin/python sync_models.py --project "$proj" || warn "model sync for $proj had issues — check gateway."
+done
+
 log "Smoke test (hedgefund: add -> cognify -> search)..."
 ./.venv/bin/python smoke_test.py hedgefund 2>/dev/null | grep -A2 "=== RESULT ===" || warn "Smoke test produced no RESULT — check FalkorDB + gateway."
 ok "Cognee ready. Query a graph: ./.venv/bin/python query.py <project> \"<question>\""

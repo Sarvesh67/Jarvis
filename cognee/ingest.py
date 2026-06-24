@@ -18,15 +18,85 @@ import json
 import pathlib
 import re
 import sys
+from collections import defaultdict
 
 import jarvis_cognee as jc
+import preprocess
+import routing
 import cognee
 
 BASE = pathlib.Path(__file__).resolve().parent
 
+# Files we can read as text for preprocessing. Anything else (PDF, docx, …) is handed
+# straight to Cognee's loaders unchanged and routed on doc_type/tags only.
+_TEXT_EXTS = {".txt", ".md", ".markdown", ".text", ".log", ".csv", ".tsv", ".json"}
+_PREPROCESS_MAX_CHARS = 40_000  # above this, skip single-pass preprocessing (output cap risk)
+
+_DEFAULT_PIPELINE = {
+    "preprocessing": {"enabled": False, "steps": []},
+    "cognify": {"defaultModel": "extractor", "routing": {"enabled": False, "rules": []}},
+}
+
 
 def _say(msg: str):
     print(msg, flush=True)
+
+
+def _pipeline_cfg(project: str) -> dict:
+    """Read <data>/<project>/pipeline.json; fall back to a safe pass-through default."""
+    p = BASE / "data" / project / "pipeline.json"
+    if p.exists():
+        try:
+            cfg = json.loads(p.read_text())
+            cfg.setdefault("preprocessing", dict(_DEFAULT_PIPELINE["preprocessing"]))
+            cfg.setdefault("cognify", dict(_DEFAULT_PIPELINE["cognify"]))
+            return cfg
+        except Exception as e:  # noqa: BLE001
+            _say(f"  pipeline.json unreadable ({e}); using defaults")
+    return json.loads(json.dumps(_DEFAULT_PIPELINE))
+
+
+def _models_cfg(project: str) -> dict:
+    """Read <data>/<project>/models.json -> {role: openrouter_id}; fall back to code defaults."""
+    p = BASE / "data" / project / "models.json"
+    if p.exists():
+        try:
+            roles = (json.loads(p.read_text()) or {}).get("roles") or {}
+            if isinstance(roles, dict):
+                return {**routing.DEFAULT_ROLE_MODELS, **roles}
+        except Exception as e:  # noqa: BLE001
+            _say(f"  models.json unreadable ({e}); using default model map")
+    return dict(routing.DEFAULT_ROLE_MODELS)
+
+
+def _resolve_step_models(steps: list, models_map: dict) -> list:
+    """Replace each step's `model` (a role handle) with the gateway pool model_name to call."""
+    out = []
+    for s in steps or []:
+        s2 = dict(s)
+        s2["model"] = routing.gateway_model(s.get("model") or "preprocess", models_map)
+        out.append(s2)
+    return out
+
+
+def _cognee_model(alias: str) -> str:
+    """Cognee's custom adapter expects an 'openai/<alias>' model id; pass-through if prefixed."""
+    return alias if "/" in alias else f"openai/{alias}"
+
+
+def _is_textfile(path: str) -> bool:
+    return pathlib.Path(path).suffix.lower() in _TEXT_EXTS
+
+
+def _read_text(path: str) -> str:
+    try:
+        return pathlib.Path(path).read_text(errors="replace")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _est_tokens(s: str) -> int:
+    return max(1, len(s or "") // 4)
 
 
 def _slug(s: str) -> str:
@@ -105,42 +175,120 @@ async def main():
     ap.add_argument("--project", required=True)
     ap.add_argument("--job", required=True)
     args = ap.parse_args()
+    project = args.project
 
     job = json.loads(pathlib.Path(args.job).read_text())
     text = (job.get("text") or "").strip()
     files = job.get("files") or []
     tags = [t for t in (job.get("tags") or []) if t]
-    model = (job.get("model") or "").strip()  # e.g. "openai/reasoner" for high-value docs
+    doc_type = (job.get("doc_type") or "").strip() or None
+    do_preprocess = job.get("preprocess", True)
+    # Manual extractor override (e.g. "openai/extractor-pro"): wins over routing for the
+    # whole job. Empty / "auto" defers to the configured cognify strategy.
+    model_override = (job.get("model") or "").strip()
+    if model_override.lower() == "auto":
+        model_override = ""
 
-    _say(f"configuring Cognee for project '{args.project}'…")
-    jc.configure(args.project)
+    _say(f"configuring Cognee for project '{project}'…")
+    jc.configure(project)
+    key = jc.project_key(project)
 
-    # Extraction quality is baked into the graph permanently, so high-value documents
-    # can opt into a stronger extractor. Default (no model) keeps the cheap gpt-4o-mini
-    # set by jc.configure(). The "openai/" prefix tells litellm the gateway is OpenAI-compatible.
-    if model:
-        cognee.config.set_llm_model(model)
-        _say(f"  extractor model: {model}")
+    pipe = _pipeline_cfg(project)
+    models_map = _models_cfg(project)  # role -> OpenRouter id (per project, with code defaults)
+    pp = pipe.get("preprocessing") or {}
+    steps = pp.get("steps") or []
+    steps_resolved = _resolve_step_models(steps, models_map)  # step.model role -> gateway model
+    pp_on = bool(do_preprocess and pp.get("enabled") and steps)
+    cognify_cfg = pipe.get("cognify") or {}
+    if pp_on:
+        _say(f"pre-processing on: {len([s for s in steps if s.get('enabled', True)])} step(s)"
+             + (f", doc_type={doc_type}" if doc_type else ""))
 
-    items = []
+    # --- Preprocess each item into cleaned prose (+meta), or drop it. ---
+    prepared: list[tuple[str, dict]] = []   # (text, meta)
+    raw_files: list[str] = []               # binary/unknown files → straight to Cognee
+    dropped = 0
+    preprocess_tokens = 0
+
+    def _prep(raw: str, dtype):
+        nonlocal dropped, preprocess_tokens
+        if not pp_on:
+            return raw, {"docType": dtype}
+        preprocess_tokens += _est_tokens(raw) * 2  # in + out, rough
+        out = preprocess.run_steps(steps_resolved, raw, key, doc_type=dtype, tags=tags)
+        for t in out.get("trace", []):
+            flag = "DROP" if t.get("dropped") else (t.get("error") or "ok")
+            extra = f" meta={t['meta']}" if t.get("meta") else ""
+            _say(f"    · {t['step']}: {flag}{extra}")
+        if out.get("text") is None:
+            dropped += 1
+            return None, None
+        return out["text"], out["meta"]
+
     if text:
-        items.append(text)
-    for f in files:
-        items.append(f)  # Cognee's loaders handle file paths (txt, md, pdf, …)
-    if not items:
-        _say("nothing to ingest (no text or files)")
-        return
-    _say(f"adding {len(items)} item(s)" + (f" with tags {tags}" if tags else "") + " …")
-    await cognee.add(items, dataset_name=args.project, node_set=tags or None)
+        t, m = _prep(text, doc_type)
+        if t is not None:
+            prepared.append((t, m))
 
-    resolver = _resolver(args.project)
-    kwargs = {"datasets": [args.project]}
+    for f in files:
+        if pp_on and _is_textfile(f):
+            ftext = _read_text(f)
+            if ftext and len(ftext) <= _PREPROCESS_MAX_CHARS:
+                t, m = _prep(ftext, doc_type)
+                if t is not None:
+                    prepared.append((t, m))
+                continue
+            if ftext:
+                _say(f"  {pathlib.Path(f).name}: too large for single-pass preprocess "
+                     f"({len(ftext)} chars) — ingesting raw")
+        raw_files.append(f)  # Cognee's loaders handle file paths (txt, md, pdf, …)
+
+    # --- Route each item to an extractor model and bucket by it. ---
+    buckets: dict[str, list] = defaultdict(list)
+
+    def _route(itext: str, meta: dict | None) -> str:
+        # A manual pick or a routing decision both yield a role; resolve it to the project's
+        # gateway pool model, then prefix for Cognee's OpenAI-compatible adapter.
+        if model_override:
+            role = model_override
+        else:
+            sig = routing.signals_for(itext, meta, tags)
+            role = routing.pick_model(sig, cognify_cfg)
+        return _cognee_model(routing.gateway_model(role, models_map))
+
+    for itext, meta in prepared:
+        buckets[_route(itext, meta)].append(itext)
+    for f in raw_files:
+        buckets[_route("", {"docType": doc_type})].append(f)
+
+    total = sum(len(v) for v in buckets.values())
+    _say(f"prepared {total} item(s)" + (f", dropped {dropped} by gate" if dropped else "")
+         + (f", tags {tags}" if tags else ""))
+    if total == 0:
+        _say("nothing to cognify" + (" (all items gated out)" if dropped else " (no input)"))
+        _say("INGEST_DONE")
+        return
+
+    # --- Cognify: per-bucket add + cognify with the routed model. ---
+    resolver = _resolver(project)
+    cog_kwargs = {"datasets": [project]}
     if resolver is not None:
-        kwargs["config"] = {"ontology_config": {"ontology_resolver": resolver}}
+        cog_kwargs["config"] = {"ontology_config": {"ontology_resolver": resolver}}
         _say("cognifying with ontology — this can take a few minutes…")
     else:
         _say("cognifying (no ontology set) — this can take a few minutes…")
-    await cognee.cognify(**kwargs)
+
+    cognify_tokens = sum(_est_tokens(t) for t, _ in prepared)  # cognify input estimate (text items)
+    for model_alias, items in buckets.items():
+        _say(f"  → {model_alias}: {len(items)} item(s)")
+        # cognify is incremental (processes only un-cognified data), so adding a bucket and
+        # cognifying it with its model, then the next, gives per-document model routing.
+        await cognee.add(items, dataset_name=project, node_set=tags or None)
+        cognee.config.set_llm_model(model_alias)
+        await cognee.cognify(**cog_kwargs)
+
+    _say(f"~tokens: preprocess≈{preprocess_tokens}, cognify inputs≈{cognify_tokens} "
+         f"(buckets: {', '.join(f'{m}×{len(v)}' for m, v in buckets.items())})")
     _say("INGEST_DONE")
 
 

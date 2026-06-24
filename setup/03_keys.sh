@@ -7,7 +7,10 @@ require_platform_env
 litellm_up || fail "Gateway down — run 02_platform.sh first."
 
 MASTER="$(env_get LITELLM_MASTER_KEY)"
-MODELS='["extractor","reasoner","fast","local-finance","embed"]'
+# Initial allowlist. The per-project pipeline allowlist is refined later by
+# cognee/sync_models.py (run from 04_cognee.sh) to {reasoner,fast,embed} + the project's
+# deduped `or--<slug>` DB-pool models, driven by that project's models.json.
+MODELS='["extractor","extractor-pro","preprocess","reasoner","fast","embed"]'
 
 # alias  budget  env-var-name
 ensure_key() {
@@ -15,8 +18,8 @@ ensure_key() {
   local existing; existing="$(env_get "$var")"
   if [ -n "$existing" ] && curl -fsS "$GATEWAY/key/info?key=$existing" -H "Authorization: Bearer $MASTER" >/dev/null 2>&1; then
     curl -fsS -X POST "$GATEWAY/key/update" -H "Authorization: Bearer $MASTER" -H "Content-Type: application/json" \
-      -d "{\"key\":\"$existing\",\"max_budget\":$budget}" >/dev/null
-    ok "$alias key exists — budget set to \$$budget."
+      -d "{\"key\":\"$existing\",\"max_budget\":$budget,\"models\":$MODELS}" >/dev/null
+    ok "$alias key exists — budget \$$budget, models synced."
     return
   fi
   log "Creating $alias key (\$$budget/30d)..."

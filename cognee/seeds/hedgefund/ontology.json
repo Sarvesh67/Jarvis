@@ -1,0 +1,35 @@
+{
+  "entityTypes": [
+    "Company",
+    "Instrument",
+    "Person",
+    "Brokerage",
+    "Sector",
+    "FinancialMetric",
+    "Event",
+    "Rating",
+    "TimePeriod",
+    "Product",
+    "Geography"
+  ],
+  "relationTypes": [
+    { "name": "REPORTED",      "source": "Company",   "target": "Event" },
+    { "name": "GUIDED",        "source": "Company",   "target": "Event" },
+    { "name": "RATED",         "source": "Brokerage", "target": "Company" },
+    { "name": "COMMENTED_ON",  "source": "Person",    "target": "Company" },
+    { "name": "EMPLOYED_BY",   "source": "Person",    "target": "Company" },
+    { "name": "COMPETES_WITH", "source": "Company",   "target": "Company" },
+    { "name": "OPERATES_IN",   "source": "Company",   "target": "Sector" },
+    { "name": "ACQUIRED",      "source": "Company",   "target": "Company" },
+    { "name": "HAS_METRIC",    "source": "Company",   "target": "FinancialMetric" },
+    { "name": "AFFECTS",       "source": "Event",     "target": "Instrument" }
+  ],
+  "tags": [
+    "news",
+    "earnings",
+    "concall",
+    "brokerage",
+    "commentary"
+  ],
+  "owlFile": null
+}

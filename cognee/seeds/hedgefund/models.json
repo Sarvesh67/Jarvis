@@ -1,0 +1,8 @@
+{
+  "roles": {
+    "preprocess": "deepseek/deepseek-v4-flash",
+    "extractor": "deepseek/deepseek-v4-flash",
+    "extractor-pro": "deepseek/deepseek-v4-pro",
+    "reasoner": "anthropic/claude-sonnet-4.6"
+  }
+}

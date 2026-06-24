@@ -75,8 +75,13 @@ curl -s http://127.0.0.1:11434/api/tags                  # ollama models
 - View/edit per-project budgets in the dashboard or at `:4000/ui`. Total target: **$100/mo**
   (hedgefund $40, msme $40, jarvis $20), monthly reset.
 - The OpenRouter account balance is the ultimate hard cap — keep it funded/limited there too.
-- Embeddings + the `local-finance` model run on Ollama = **$0**. Only `extractor`/`reasoner`/`fast`
-  (cloud) cost money.
+- Embeddings run on Ollama = **$0**. The cloud models cost money. Pipeline models are referenced
+  by **role** and mapped to a real OpenRouter model **per project** on the dashboard *Models* tab
+  (stored in the gitignored `cognee/data/<project>/models.json`, pushed to the gateway as deduped
+  `or--<slug>` DB models). Defaults: `preprocess`/`extractor` = DeepSeek V4 Flash, `extractor-pro` =
+  DeepSeek V4 Pro, `reasoner` = Sonnet (also compiles step prompts). Shared globals in
+  `config.yaml`: `reasoner`, `fast` (Haiku), `embed`. Re-point a role with no restart and no git
+  edit; `cognee/sync_models.py` re-syncs the gateway + key allowlist at setup.
 
 ## Kill switches
 

@@ -4,13 +4,49 @@
 # Models are also editable from the /ui dashboard (STORE_MODEL_IN_DB=True).
 
 model_list:
-  # --- cheap cloud extraction (Cognee cognify / bulk structured output) ---
+  # NOTE: these pipeline roles (extractor / extractor-pro / preprocess) are the **baseline**
+  # models — Cognee's default (jarvis_cognee.set_llm_model) + the smoke test use `extractor`.
+  # For dashboard-driven ingest, each project remaps these roles to a real OpenRouter model on
+  # the Models tab; those are served by per-project deduped `or--<slug>` DB-pool models created
+  # at runtime (cognee/sync_models.py + dashboard/app.py:_sync_models_sync), so they override
+  # these for routed ingest without a restart. Keep these as the fallback / non-dashboard path.
+
+  # --- bulk cognify extraction (structured output) ---
+  # DeepSeek V4 Flash: cheaper than gpt-4o-mini and a 1M ctx window. Cognify uses
+  # instructor tool_call mode, so this model MUST support tool calling — verified by
+  # the one-doc cognify gate in setup. If Flash ever fails structured output, fall back
+  # to `openrouter/openai/gpt-4o-mini` here (tool-calling is rock-solid there).
   - model_name: extractor
     litellm_params:
-      model: openrouter/openai/gpt-4o-mini
+      model: openrouter/deepseek/deepseek-v4-flash
       api_key: os.environ/OPENROUTER_API_KEY
+      extra_body:
+        usage:
+          include: true
 
-  # --- frontier reasoning (alpha synthesis / hard multi-hop) ---
+  # --- high-value cognify extraction (dense/high-signal docs) ---
+  # DeepSeek V4 Pro: native tool calling confirmed. Routed to by the cognify strategy
+  # (relevance rules) or picked manually for high-value documents.
+  - model_name: extractor-pro
+    litellm_params:
+      model: openrouter/deepseek/deepseek-v4-pro
+      api_key: os.environ/OPENROUTER_API_KEY
+      extra_body:
+        usage:
+          include: true
+
+  # --- pre-processing (clean / filter / annotate before cognify) ---
+  # DeepSeek V4 Flash again, but prose-in/prose-out (no tools needed), so tool-calling
+  # support is irrelevant here. Cheap per-doc; the relevance gate drops junk before cognify.
+  - model_name: preprocess
+    litellm_params:
+      model: openrouter/deepseek/deepseek-v4-flash
+      api_key: os.environ/OPENROUTER_API_KEY
+      extra_body:
+        usage:
+          include: true
+
+  # --- frontier reasoning (alpha synthesis / hard multi-hop / prompt compilation) ---
   - model_name: reasoner
     litellm_params:
       model: openrouter/anthropic/claude-sonnet-4.6
@@ -43,12 +79,6 @@ model_list:
       extra_body:
         usage:
           include: true
-
-  # --- local, free: domain bulk model (override target to cut cloud spend) ---
-  - model_name: local-finance
-    litellm_params:
-      model: ollama/llama-open-finance
-      api_base: http://host.docker.internal:11434
 
   # --- local, free: embeddings (Cognee) ---
   - model_name: embed

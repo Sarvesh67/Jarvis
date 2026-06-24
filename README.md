@@ -44,7 +44,8 @@ and agent profile.
                                     │  every LLM call         │
                           ┌─────────▼─────────────────────────▼─────────┐
                           │     LiteLLM gateway (:4000)  — budgets       │
-                          │  extractor · reasoner · fast · embed         │
+                          │ preprocess · extractor · extractor-pro ·     │
+                          │ reasoner · fast · embed                      │
                           └─────────┬───────────────────────┬───────────┘
                             cloud   │                        │  local
                           ┌─────────▼────────┐      ┌────────▼─────────┐
@@ -69,12 +70,22 @@ and agent profile.
 
 The split that keeps quality high and cost low:
 
-**Ingest (write-once, read-many) — invest here.**
+**Ingest (write-once, read-many) — invest here.** Two configurable stages (the **Pipeline** tab):
+- **Pre-process** (optional, cheap): ordered steps clean / filter / annotate each doc before it
+  hits the graph. Each step declares an output mode — **rewrite** the text (strip boilerplate,
+  drop junk via a `DROP` gate) or **extract a signal** (a label like `relevance: high`, or a
+  free-form value like a detected doc type) that the cognify router can use. Runs on a cheap model
+  (DeepSeek V4 Flash), prose-in/prose-out. Keeps the graph clean and cuts cognify tokens. Steps are
+  editable per project; describe intent and let Sonnet compile the prompt.
+- **Cognify** → entity/relation extraction. **One LLM call per chunk**, baked into the graph
+  permanently, so it's the place to spend. A **cognify strategy** routes each doc to a model by
+  relevance (DeepSeek V4 Flash for bulk, V4 Pro for high-value). A good **ontology** lets the cheap
+  model punch above its weight.
 - `cognee.add` → chunk + embed (embeddings are local/free). ~No LLM cost.
-- `cognee.cognify` → entity/relation extraction. **One LLM call per chunk.** This quality is
-  baked into the graph permanently, so it's the place to spend: use a strong extractor
-  (Sonnet) for high-value/dense docs, a cheap one (gpt-4o-mini) for bulk. A good **ontology**
-  lets the cheap model punch above its weight.
+
+Models are referenced by **role** (`preprocess`, `extractor`, `extractor-pro`, `reasoner`); the
+**Models** tab maps each role to a real OpenRouter model per project (stored locally, applied to the
+gateway live), so you can re-point `extractor` without editing config or the pipeline.
 
 **Retrieve (read-many) — keep it lean.**
 - `cognee/query.py` uses `recall(..., only_context=True)` → returns the relevant graph
@@ -123,7 +134,7 @@ Full operational reference (start/stop, reload, troubleshooting): see **[RUNBOOK
 
 ## Build a knowledge engine for a new project
 
-Say you want a project called `research`. Five steps:
+Say you want a project called `research`. Six steps:
 
 1. **Budget key** — add `RESEARCH_LLM_KEY=` to `platform/.env`, add a line to
    `setup/03_keys.sh` (`ensure_key research 20 RESEARCH_LLM_KEY`), and re-run it.
@@ -141,8 +152,12 @@ Say you want a project called `research`. Five steps:
    engine → Ontology* tab, declare your domain's entity/relation types (or upload an OWL
    file). This guides extraction so the graph captures *your* domain's structure.
 
-5. **Ingest** — *Knowledge engine → Add data*: paste text or attach files, pick the extractor
-   model (Sonnet for dense/high-value docs, Standard for bulk), and run. Then chat.
+5. **Pipeline** (optional) — *Knowledge engine → Pipeline*: configure pre-processing steps
+   (rewrite / extract-signal) and the cognify routing strategy (which model per doc). On the
+   *Models* tab, map each role to an OpenRouter model. Defaults work out of the box.
+
+6. **Ingest** — *Knowledge engine → Add data*: paste text or attach files, set a doc type, leave
+   the extractor on **Auto** (uses your strategy) or pick a role to override, and run. Then chat.
 
 That's it — a new isolated graph (`research_graph`), budget, ontology, and agent.
 

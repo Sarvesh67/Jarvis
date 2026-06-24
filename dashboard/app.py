@@ -43,6 +43,7 @@ AGENTS: dict = {}
 # Knowledge-engine ingestion runs in Cognee's own venv (heavy, isolated deps).
 COGNEE_DIR = BASE.parent / "cognee"
 COGNEE_PY = COGNEE_DIR / ".venv" / "bin" / "python"
+SEEDS_DIR = COGNEE_DIR / "seeds"  # committed per-project default configs (materialized locally)
 KNOWLEDGE_ALIASES = {"hedgefund", "msme"}  # the projects that have a Cognee dataset
 JOBS: dict = {}  # alias -> [recent ingest jobs]
 _JOB_SEQ = 0
@@ -661,18 +662,191 @@ def _onto_dir(alias: str) -> pathlib.Path:
     return d
 
 
-def _read_onto(alias: str) -> dict:
-    p = _onto_dir(alias) / "ontology.json"
-    if p.exists():
+# routing.py (in the Cognee dir) is pure-python, so it imports fine in the dashboard venv.
+# Loaded by path (like preprocess.py) for the role/model-pool resolution helpers, so the
+# default model map + pool-naming stay a single source of truth shared with ingest.py.
+_ROUTING = None
+
+
+def _routing_mod():
+    global _ROUTING
+    if _ROUTING is None:
+        import importlib.util as ilu
+        spec = ilu.spec_from_file_location("jarvis_routing", COGNEE_DIR / "routing.py")
+        mod = ilu.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _ROUTING = mod
+    return _ROUTING
+
+
+def _materialize(alias: str, filename: str, default) -> dict:
+    """Return data/<alias>/<filename> as a dict.
+
+    On first access (no local file) the config is **materialized** into the gitignored local
+    dir from the committed seed (seeds/<alias>/<filename>) if one exists, else from `default`.
+    This is how code-shipped defaults reach a fresh device without committing instance config.
+    """
+    local = _onto_dir(alias) / filename
+    if local.exists():
         try:
-            return json.loads(p.read_text())
+            return json.loads(local.read_text())
         except Exception:  # noqa: BLE001
             pass
-    return {"entityTypes": [], "relationTypes": [], "tags": [], "owlFile": None}
+    data = None
+    seed = SEEDS_DIR / alias / filename
+    if seed.exists():
+        try:
+            data = json.loads(seed.read_text())
+        except Exception:  # noqa: BLE001
+            data = None
+    if data is None:
+        data = default() if callable(default) else json.loads(json.dumps(default))
+    try:
+        local.write_text(json.dumps(data, indent=2))
+    except Exception:  # noqa: BLE001
+        pass
+    return data
+
+
+def _read_onto(alias: str) -> dict:
+    base = {"entityTypes": [], "relationTypes": [], "tags": [], "owlFile": None}
+    return {**base, **(_materialize(alias, "ontology.json", lambda: dict(base)) or {})}
 
 
 def _write_onto(alias: str, data: dict):
     (_onto_dir(alias) / "ontology.json").write_text(json.dumps(data, indent=2))
+
+
+# --- pipeline.json: per-project pre-processing steps + cognify model-routing strategy ---
+def _default_pipeline() -> dict:
+    return {
+        "preprocessing": {"enabled": False, "steps": []},
+        "cognify": {"defaultModel": "extractor", "routing": {"enabled": False, "rules": []}},
+    }
+
+
+def _read_pipeline(alias: str) -> dict:
+    cfg = _materialize(alias, "pipeline.json", _default_pipeline) or {}
+    d = _default_pipeline()
+    d.update({k: v for k, v in cfg.items() if v is not None})
+    return d
+
+
+def _write_pipeline(alias: str, data: dict):
+    (_onto_dir(alias) / "pipeline.json").write_text(json.dumps(data, indent=2))
+
+
+# --- models.json: per-project role -> OpenRouter model id (the editable mapping) ---
+def _default_models() -> dict:
+    return {"roles": dict(_routing_mod().DEFAULT_ROLE_MODELS)}
+
+
+def _read_models(alias: str) -> dict:
+    cfg = _materialize(alias, "models.json", _default_models) or {}
+    roles = {**_routing_mod().DEFAULT_ROLE_MODELS, **(cfg.get("roles") or {})}
+    return {"roles": roles}
+
+
+def _write_models(alias: str, data: dict):
+    (_onto_dir(alias) / "models.json").write_text(json.dumps(data, indent=2))
+
+
+# --- gateway pool sync: back each distinct OpenRouter id with a DB model, fix the allowlist ---
+# Shared config.yaml models every project key keeps: the agent brain (reasoner), the cheap chat
+# model (fast), and embeddings (embed, global — never per-project). Per-project pipeline models
+# are the deduped `or--<slug>` DB pool created on demand below.
+SHARED_MODELS = ["reasoner", "fast", "embed"]
+
+
+def _gateway_model_names_sync() -> set:
+    try:
+        r = httpx.get(f"{GATEWAY}/model/info",
+                      headers={"Authorization": f"Bearer {MASTER}"}, timeout=10)
+        r.raise_for_status()
+        return {m.get("model_name") for m in r.json().get("data", []) if m.get("model_name")}
+    except Exception:  # noqa: BLE001
+        return set()
+
+
+def _create_pool_model_sync(name: str, openrouter_id: str):
+    # The DB model needs the resolved key value — `os.environ/...` is stored verbatim (not
+    # resolved) for API-created models, so pass the real OpenRouter key from platform/.env.
+    or_key = ENV.get("OPENROUTER_API_KEY", "")
+    if not or_key:
+        raise RuntimeError("OPENROUTER_API_KEY missing from platform/.env")
+    body = {
+        "model_name": name,
+        "litellm_params": {
+            "model": f"openrouter/{openrouter_id}",
+            "api_key": or_key,
+            "extra_body": {"usage": {"include": True}},
+        },
+        "model_info": {"jarvis_pool": True},
+    }
+    httpx.post(f"{GATEWAY}/model/new",
+               headers={"Authorization": f"Bearer {MASTER}", "Content-Type": "application/json"},
+               json=body, timeout=15).raise_for_status()
+
+
+def _set_key_models_sync(alias: str, models: list):
+    proj = next((p for p in PROJECTS if p["alias"] == alias), None)
+    token = ENV.get(proj["key_env"]) if proj else None
+    if not token:
+        return
+    httpx.post(f"{GATEWAY}/key/update",
+               headers={"Authorization": f"Bearer {MASTER}", "Content-Type": "application/json"},
+               json={"key": token, "models": models}, timeout=10)
+
+
+def _sync_models_sync(alias: str) -> dict:
+    """Make the project's model map real at the gateway. Idempotent + best-effort.
+
+    For each distinct OpenRouter id in the project's map, ensure a deduped DB-pool model
+    `or--<slug>` exists; then set the project key's allowlist to the shared globals + the
+    project's pool models. Called before any pipeline gateway call (ingest / test / compile)
+    and on a Models save, so a per-project remap takes effect without a restart or a git edit.
+    """
+    if not MASTER:
+        return {"ok": False, "error": "no master key"}
+    rt = _routing_mod()
+    roles = _read_models(alias).get("roles") or {}
+    pool = {rt.pool_model_name(mid): mid for mid in roles.values() if mid}
+    try:
+        existing = _gateway_model_names_sync()
+        for name, mid in pool.items():
+            if name not in existing:
+                _create_pool_model_sync(name, mid)
+        allow = sorted(set(SHARED_MODELS) | set(pool.keys()))
+        _set_key_models_sync(alias, allow)
+        return {"ok": True, "pool": pool, "allow": allow}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:300]}
+
+
+# preprocess.py (in the Cognee dir) is httpx-only, so it imports fine in the dashboard venv.
+# Loaded by path to avoid putting the whole cognee/ dir on sys.path. Used for the live
+# "Test on sample" and "Compile from intent" affordances (both hit the gateway directly).
+_PREPROCESS = None
+
+
+def _preprocess_mod():
+    global _PREPROCESS
+    if _PREPROCESS is None:
+        import importlib.util as ilu
+        spec = ilu.spec_from_file_location("jarvis_preprocess", COGNEE_DIR / "preprocess.py")
+        mod = ilu.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _PREPROCESS = mod
+    return _PREPROCESS
+
+
+def _kkey(alias: str) -> str:
+    """The project's LiteLLM virtual key, for direct gateway calls (test-step / compile)."""
+    p = _kproj(alias)
+    key = ENV.get(p["key_env"], "")
+    if not key:
+        raise HTTPException(500, f"missing {p['key_env']} in platform/.env")
+    return key
 
 
 @app.get("/api/knowledge/{alias}/schema")
@@ -685,6 +859,8 @@ def knowledge_schema(alias: str):
         "labels": st.get("labels", []),
         "rel_types": _rel_types(p["graph"]),
         "ontology": _read_onto(alias),
+        "pipeline": _read_pipeline(alias),
+        "models": _read_models(alias),
     }
 
 
@@ -737,11 +913,100 @@ def knowledge_owl_delete(alias: str):
     return {"ok": True}
 
 
+class PipelineBody(BaseModel):
+    preprocessing: dict = {}
+    cognify: dict = {}
+
+
+@app.post("/api/knowledge/{alias}/pipeline")
+def knowledge_set_pipeline(alias: str, body: PipelineBody):
+    _kproj(alias)
+    cur = _read_pipeline(alias)
+    cur["preprocessing"] = body.preprocessing or cur.get("preprocessing", {})
+    cur["cognify"] = body.cognify or cur.get("cognify", {})
+    _write_pipeline(alias, cur)
+    return {"ok": True, "pipeline": cur}
+
+
+class ModelsBody(BaseModel):
+    roles: dict = {}  # {role: openrouter_model_id}
+
+
+@app.post("/api/knowledge/{alias}/models")
+def knowledge_set_models(alias: str, body: ModelsBody):
+    """Save the per-project role->OpenRouter-model map, then make it real at the gateway:
+    upsert a deduped DB-pool model per distinct id and refresh the project key allowlist."""
+    _kproj(alias)
+    roles = {k: (v or "").strip() for k, v in (body.roles or {}).items() if k and (v or "").strip()}
+    if not roles:
+        raise HTTPException(400, "no model mappings provided")
+    _write_models(alias, {"roles": roles})
+    sync = _sync_models_sync(alias)
+    return {"ok": True, "models": _read_models(alias), "sync": sync}
+
+
+class TestStepBody(BaseModel):
+    step: dict
+    text: str
+    doc_type: str = ""
+
+
+@app.post("/api/knowledge/{alias}/pipeline/test-step")
+def knowledge_test_step(alias: str, body: TestStepBody):
+    """Run ONE preprocessing step against a pasted sample — no graph writes. The guardrail
+    that makes free-text prompts safe: see the output (cleaned text / DROP / value) live."""
+    key = _kkey(alias)
+    rt = _routing_mod()
+    roles = _read_models(alias).get("roles") or {}
+    _sync_models_sync(alias)  # ensure the step's resolved model exists + the key allows it
+    step = dict(body.step or {})
+    step["model"] = rt.gateway_model(step.get("model") or "preprocess", roles)
+    try:
+        res = _preprocess_mod().run_one_step(
+            step, body.text, key, doc_type=(body.doc_type or None)
+        )
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"gateway error: {e}")
+    meta = {k: v for k, v in (res.get("meta") or {}).items() if not k.startswith("_")}
+    return {"ok": True, "output": res.get("text"), "dropped": res.get("dropped", False),
+            "meta": meta, "error": res.get("error")}
+
+
+class CompileBody(BaseModel):
+    intent: str
+    output: str = ""      # "rewrite" | "signal"
+    kind: str = ""        # legacy alias for output ("transform"/"classify")
+    labels: list = []
+
+
+@app.post("/api/knowledge/{alias}/pipeline/compile-prompt")
+def knowledge_compile_prompt(alias: str, body: CompileBody):
+    """Sonnet authors a robust Flash execution prompt from plain-English intent. Authoring-time
+    only — billed to the project key; the returned prompt is what Flash runs per document."""
+    key = _kkey(alias)
+    if not (body.intent or "").strip():
+        raise HTTPException(400, "intent is empty")
+    rt = _routing_mod()
+    roles = _read_models(alias).get("roles") or {}
+    _sync_models_sync(alias)  # ensure the project's reasoner model exists + the key allows it
+    reasoner = rt.gateway_model("reasoner", roles)
+    output = body.output or body.kind or "rewrite"
+    try:
+        prompt = _preprocess_mod().compile_prompt(
+            body.intent, output, key, labels=body.labels, model=reasoner
+        )
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"gateway error: {e}")
+    return {"ok": True, "prompt": prompt, "compiledBy": reasoner}
+
+
 class IngestBody(BaseModel):
     text: str = ""
     tags: list = []
     files: list = []  # [{name, data(base64)}]
-    model: str = ""   # optional stronger extractor for cognify, e.g. "openai/reasoner"
+    model: str = ""   # extractor override; "" / "auto" defers to the cognify strategy
+    doc_type: str = ""  # feeds preprocessing scope + cognify routing
+    preprocess: bool = True
 
 
 async def _run_ingest(alias: str, jid: int, jobfile: pathlib.Path):
@@ -791,6 +1056,8 @@ async def knowledge_ingest(alias: str, body: IngestBody):
     _kproj(alias)
     if not COGNEE_PY.exists():
         raise HTTPException(500, f"cognee venv not found at {COGNEE_PY}")
+    # Make the project's model map real at the gateway before ingest.py resolves roles to it.
+    await asyncio.to_thread(_sync_models_sync, alias)
     updir = _onto_dir(alias) / "uploads"
     updir.mkdir(parents=True, exist_ok=True)
     paths = []
@@ -808,7 +1075,10 @@ async def knowledge_ingest(alias: str, body: IngestBody):
     _JOB_SEQ += 1
     jid = _JOB_SEQ
     jobfile = updir / f"job_{jid}.json"
-    jobfile.write_text(json.dumps({"text": body.text, "files": paths, "tags": body.tags, "model": body.model}))
+    jobfile.write_text(json.dumps({
+        "text": body.text, "files": paths, "tags": body.tags, "model": body.model,
+        "doc_type": body.doc_type, "preprocess": body.preprocess,
+    }))
     summary = (body.text.strip()[:64] + ("…" if len(body.text.strip()) > 64 else "")) or f"{len(paths)} file(s)"
     JOBS.setdefault(alias, []).insert(0, {"id": jid, "status": "running", "log": "", "summary": summary})
     JOBS[alias] = JOBS[alias][:20]

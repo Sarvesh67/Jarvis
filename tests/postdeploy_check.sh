@@ -91,8 +91,8 @@ warn_check "no recent errors in bridge log"     bash -c "
 echo
 echo "=== 6. Ollama ==="
 warn_check "ollama service responding"          curl -sS -m 3 http://127.0.0.1:11434/api/tags
-warn_check "llama-open-finance model registered"  bash -c "
-    sudo -u hedgefund -H ollama list 2>/dev/null | grep -qw llama-open-finance
+warn_check "nomic-embed-text model registered"  bash -c "
+    ollama list 2>/dev/null | grep -qw nomic-embed-text
 "
 
 echo

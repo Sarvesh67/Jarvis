@@ -46,6 +46,16 @@ def _load_env(path: pathlib.Path) -> dict:
     return d
 
 
+def project_key(project: str) -> str:
+    """The LiteLLM virtual key carrying this project's budget (for direct gateway calls)."""
+    if project not in PROJECT_KEYS:
+        raise ValueError(f"unknown project {project!r}; expected {list(PROJECT_KEYS)}")
+    key = _load_env(PLATFORM_ENV).get(PROJECT_KEYS[project])
+    if not key:
+        raise RuntimeError(f"missing {PROJECT_KEYS[project]} in {PLATFORM_ENV}")
+    return key
+
+
 def configure(project: str) -> str:
     """Point Cognee at FalkorDB + the LiteLLM gateway for the given project."""
     if project not in PROJECT_KEYS:

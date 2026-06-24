@@ -749,11 +749,17 @@ async function mcpTest(name){
 
 /* ---------- knowledge engine ---------- */
 let KSCHEMA={}, KADD_TAGS=new Set(), KADD_FILES=[], KONTO=null, KONTO_ALIAS=null;
+let KPIPE=null, KPIPE_ALIAS=null;
+let KMODELS=null, KMODELS_ALIAS=null;
+const DEFAULT_ROLES={preprocess:'deepseek/deepseek-v4-flash',extractor:'deepseek/deepseek-v4-flash','extractor-pro':'deepseek/deepseek-v4-pro',reasoner:'anthropic/claude-sonnet-4.6'};
+function projRoles(){ const sc=KSCHEMA[state.alias]||{}; const r=(sc.models&&sc.models.roles); return (r&&Object.keys(r).length)?r:DEFAULT_ROLES; }
+function roleOpts(sel){ const roles=projRoles(); return Object.keys(roles).map(r=>`<option value="${esc(r)}" ${sel===r?'selected':''}>${esc(r)} · ${esc(roles[r])}</option>`).join(''); }
+function DEFAULT_PIPE(){ return {preprocessing:{enabled:false,steps:[]},cognify:{defaultModel:'extractor',routing:{enabled:false,rules:[]}}}; }
 async function loadSchema(a, force){ if(force||!KSCHEMA[a]){ try{ KSCHEMA[a]=await (await fetch(`/api/knowledge/${a}/schema`)).json(); }catch(e){ KSCHEMA[a]={}; } } return KSCHEMA[a]; }
 
 function viewKnowledge(){
   const sub=state.ktab||(state.ktab='graph');
-  const T=[['graph','ti-affiliate','Graph'],['add','ti-database-plus','Add data'],['ontology','ti-schema','Ontology']];
+  const T=[['graph','ti-affiliate','Graph'],['add','ti-database-plus','Add data'],['pipeline','ti-adjustments','Pipeline'],['models','ti-cpu','Models'],['ontology','ti-schema','Ontology']];
   return `<div class="scroll" style="display:flex;flex-direction:column">
     <div class="ksub">${T.map(([k,i,l])=>`<span class="kst ${k===sub?'on':''}" onclick="kSub('${k}')"><i class="ti ${i}"></i>${l}</span>`).join('')}</div>
     <div id="kbody" style="flex:1;min-height:0"></div>
@@ -766,6 +772,8 @@ async function afterKnowledge(){
   const sub=state.ktab||'graph';
   if(sub==='graph') renderKGraph();
   else if(sub==='add') renderKAdd();
+  else if(sub==='pipeline') renderKPipeline();
+  else if(sub==='models') renderKModels();
   else renderKOnto();
 }
 
@@ -809,16 +817,18 @@ function renderKAdd(){
         <input type="file" id="kfin" multiple hidden onchange="kOnFiles(this)">
         <span class="note">tags</span><span id="ktagsel"></span>
         <input id="ktaginput" placeholder="+ tag" style="width:110px" onkeydown="if(event.key==='Enter'){event.preventDefault();kAddTagInput();}">
+        <span class="note">doc type</span>
+        <input id="kdoctype" list="kdoctypes" placeholder="e.g. news" style="width:120px" title="Feeds pre-processing scope + cognify routing">
+        <datalist id="kdoctypes"><option>news</option><option>concall</option><option>quarterly</option><option>brokerage</option><option>commentary</option><option>blog</option><option>fundamentals</option></datalist>
         <span class="spacer"></span>
         <span class="note">extractor</span>
         <select id="kmodel" title="Model used for entity/relation extraction during cognify">
-          <option value="">Standard · gpt-4o-mini (cheap)</option>
-          <option value="openai/reasoner">High quality · Sonnet (dense docs)</option>
-          <option value="openai/fast">Fast · Haiku</option>
+          <option value="">Auto · use strategy</option>
+          ${roleOpts('')}
         </select>
         <button onclick="kIngest()"><i class="ti ti-upload"></i> Ingest + cognify</button>
       </div>
-      <div class="note" id="kingnote" style="margin-top:8px">Ingestion runs in the background (add → cognify); it can take a few minutes and bills this project's budget. Extraction quality is baked into the graph permanently — use <b>Sonnet</b> for high-value or dense financial docs, <b>Standard</b> for bulk.</div>
+      <div class="note" id="kingnote" style="margin-top:8px">Runs in the background (pre-process → cognify); bills this project's budget. <b>Auto</b> applies the configured <b>Pipeline</b> (clean/filter + per-doc model routing). Pick a role to override routing for this batch; model targets are set on the <b>Models</b> tab.</div>
     </div>
     <div class="panel"><h3><i class="ti ti-history"></i> Ingest jobs</h3><div id="kjobs"><span class="muted">none yet</span></div></div>`;
   renderKTagSel(); renderKAttach(); loadKJobs();
@@ -837,7 +847,8 @@ async function kIngest(){
   note.textContent='uploading…';
   const files=(await Promise.all(KADD_FILES.map(readFileB64))).filter(Boolean);
   const model=$('#kmodel')?.value||'';
-  let r; try{ r=await (await fetch(`/api/knowledge/${state.alias}/ingest`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,tags:[...KADD_TAGS],files,model})})).json(); }catch(e){ note.textContent='failed: '+e.message; return; }
+  const doc_type=($('#kdoctype')?.value||'').trim();
+  let r; try{ r=await (await fetch(`/api/knowledge/${state.alias}/ingest`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,tags:[...KADD_TAGS],files,model,doc_type})})).json(); }catch(e){ note.textContent='failed: '+e.message; return; }
   if(r.ok){ note.textContent=`✓ job #${r.job} started — cognifying in the background`; $('#ktext').value=''; KADD_FILES=[]; renderKAttach(); loadKJobs(); }
   else note.textContent='✗ '+(r.detail||'failed');
 }
@@ -915,6 +926,160 @@ async function oSave(){ const note=$('#onote'); if(note)note.textContent='saving
 async function oUploadOwl(input){ const f=input.files[0]; if(!f)return; const note=$('#owlnote'); note.textContent='uploading…'; const b=await readFileB64(f);
   try{ const r=await (await fetch(`/api/knowledge/${state.alias}/owl`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:f.name,data:b.data})})).json(); if(r.ok){ KONTO_ALIAS=null; await loadSchema(state.alias,true); renderKOnto(); } else note.textContent='✗ failed'; }catch(e){ note.textContent='✗ '+e.message; } }
 async function oRmOwl(){ try{ await fetch(`/api/knowledge/${state.alias}/owl`,{method:'DELETE'}); KONTO_ALIAS=null; await loadSchema(state.alias,true); renderKOnto(); }catch(e){} }
+
+/* --- pipeline: pre-processing steps + cognify routing strategy --- */
+function ensureKpipe(){ const a=state.alias, sc=KSCHEMA[a]||{}; if(KPIPE_ALIAS!==a||!KPIPE){ KPIPE=JSON.parse(JSON.stringify(sc.pipeline||DEFAULT_PIPE())); if(!KPIPE.preprocessing)KPIPE.preprocessing={enabled:false,steps:[]}; if(!KPIPE.cognify)KPIPE.cognify={defaultModel:'extractor',routing:{enabled:false,rules:[]}};
+  (KPIPE.preprocessing.steps||[]).forEach(s=>{ if(!s.output){ s.output=(s.kind==='classify')?'signal':'rewrite'; } delete s.kind; });  // migrate legacy kind -> output
+  KPIPE_ALIAS=a; } }
+function kPipe(m){ state.kptab=m; renderKPipeline(); }
+function csv(s){ return (s||'').split(',').map(x=>x.trim()).filter(Boolean); }
+function pSaveBar(){ return `<div style="display:flex;gap:10px;align-items:center"><button onclick="pSave()"><i class="ti ti-device-floppy"></i> Save pipeline</button><span class="note" id="pnote"></span></div>`; }
+function renderKPipeline(){
+  ensureKpipe(); const mode=state.kptab||(state.kptab='pre');
+  const M=[['pre','Pre-processing'],['cog','Cognify strategy']];
+  $('#kbody').innerHTML=`
+    <div class="panel" style="margin-bottom:14px">
+      <div class="note" style="margin-bottom:10px">Pre-processing cleans / filters / annotates each document; the cognify strategy routes it to an extractor model. Both apply on the next ingest.</div>
+      <div class="seg" id="pseg">${M.map(([m,l])=>`<button class="${mode===m?'on':''}" onclick="kPipe('${m}')">${l}</button>`).join('')}</div>
+    </div>
+    <div id="pbody"></div>`;
+  if(mode==='pre') renderPPre(); else renderPCog();
+}
+
+/* pre-processing segment */
+function ppStep(i){ return KPIPE.preprocessing.steps[i]; }
+function ppSet(i,k,v){ ppStep(i)[k]=v; }
+function ppScope(i,v){ const dt=csv(v); ppStep(i).appliesTo={docTypes:dt.length?dt:['*']}; }
+function ppLabels(i,v){ ppStep(i).labels=csv(v); }
+function ppMove(i,d){ const a=KPIPE.preprocessing.steps,j=i+d; if(j<0||j>=a.length)return; [a[i],a[j]]=[a[j],a[i]]; renderPPre(); }
+function ppDel(i){ KPIPE.preprocessing.steps.splice(i,1); renderPPre(); }
+function ppAdd(){ KPIPE.preprocessing.steps.push({id:'step'+Date.now(),name:'New step',output:'rewrite',enabled:true,model:'preprocess',appliesTo:{docTypes:['*']},intent:'',prompt:''}); renderPPre(); }
+function ppCard(s,i){
+  const isSig=(s.output||(s.kind==='classify'?'signal':'rewrite'))==='signal';
+  return `<div class="panel">
+    <div class="edit" style="align-items:center;gap:10px;flex-wrap:wrap">
+      <label style="cursor:pointer" title="enabled"><input type="checkbox" ${s.enabled!==false?'checked':''} onchange="ppSet(${i},'enabled',this.checked)"></label>
+      <input value="${esc(s.name||'')}" placeholder="step name" style="width:150px" onchange="ppSet(${i},'name',this.value)">
+      <span class="note" title="how the pipeline uses this step's output">output</span>
+      <select onchange="ppSet(${i},'output',this.value);renderPPre()"><option value="rewrite" ${!isSig?'selected':''}>Rewrite text</option><option value="signal" ${isSig?'selected':''}>Extract signal</option></select>
+      <span class="note">model</span><select onchange="ppSet(${i},'model',this.value)">${roleOpts(s.model||'preprocess')}</select>
+      <span class="note">doc types</span><input value="${esc((s.appliesTo&&s.appliesTo.docTypes||['*']).join(', '))}" style="width:130px" title="comma list, or * for all" onchange="ppScope(${i},this.value)">
+      <span class="spacer"></span>
+      <i class="ti ti-arrow-up" style="cursor:pointer" title="move up" onclick="ppMove(${i},-1)"></i>
+      <i class="ti ti-arrow-down" style="cursor:pointer" title="move down" onclick="ppMove(${i},1)"></i>
+      <i class="ti ti-trash" style="cursor:pointer" title="delete" onclick="ppDel(${i})"></i>
+    </div>
+    ${isSig?`<div class="edit" style="margin-top:8px;gap:10px;align-items:center"><span class="note">meta key</span><input value="${esc(s.metaKey||'')}" placeholder="e.g. relevance" style="width:130px" onchange="ppSet(${i},'metaKey',this.value)"><span class="note">labels</span><input value="${esc((s.labels||[]).join(', '))}" placeholder="high, low — leave empty for a free-form value" style="width:300px" onchange="ppLabels(${i},this.value)"></div>`:''}
+    <div style="margin-top:10px">
+      <div class="note">Intent (plain English) — describe what this step should do, then compile.</div>
+      <textarea placeholder="${isSig?'classify how relevant a doc is… (or extract a free-form value)':'keep only material financial info; drop ads/disclaimers…'}" style="width:100%;min-height:50px" onchange="ppSet(${i},'intent',this.value)">${esc(s.intent||'')}</textarea>
+      <button class="ghost" onclick="ppCompile(${i})"><i class="ti ti-sparkles"></i> Compile from intent (Sonnet)</button> <span class="note" id="pcn_${i}">${s.compiledBy?'compiled by '+esc(s.compiledBy):''}</span>
+    </div>
+    <div style="margin-top:10px">
+      <div class="note">Prompt — run verbatim by <b>${esc(s.model||'preprocess')}</b> per document</div>
+      <textarea style="width:100%;min-height:80px" onchange="ppSet(${i},'prompt',this.value)">${esc(s.prompt||'')}</textarea>
+    </div>
+    <div class="panel" style="margin-top:10px">
+      <div class="note">Test on sample</div>
+      <textarea id="pt_${i}" placeholder="paste a sample document…" style="width:100%;min-height:56px"></textarea>
+      <div class="edit" style="margin-top:6px;align-items:center;gap:10px"><button class="ghost" onclick="ppTest(${i})"><i class="ti ti-player-play"></i> Test</button><span class="note" id="ptn_${i}"></span></div>
+      <pre id="pto_${i}" class="jlog" style="display:none;margin-top:8px;white-space:pre-wrap"></pre>
+    </div>
+  </div>`;
+}
+function renderPPre(){
+  const pp=KPIPE.preprocessing; const steps=pp.steps||(pp.steps=[]);
+  const cards=steps.map((s,i)=>ppCard(s,i)).join('')||'<div class="panel"><span class="muted">No steps yet — add one, or describe an intent and compile it.</span></div>';
+  $('#pbody').innerHTML=`
+    <div class="panel" style="margin-bottom:14px">
+      <label class="row" style="cursor:pointer;align-items:center;gap:8px"><input type="checkbox" ${pp.enabled?'checked':''} onchange="KPIPE.preprocessing.enabled=this.checked"> <span class="k">Pre-processing enabled</span></label>
+      <div class="note">When off, documents go straight to cognify with no pre-processing.</div>
+    </div>
+    ${cards}
+    <div class="panel"><button class="ghost" onclick="ppAdd()"><i class="ti ti-plus"></i> Add step</button></div>
+    <div class="panel">${pSaveBar()}</div>`;
+}
+async function ppCompile(i){ const s=ppStep(i),n=$('#pcn_'+i); if(!s.intent||!s.intent.trim()){ if(n)n.textContent='write an intent first'; return; } if(n)n.textContent='compiling… (Sonnet)';
+  try{ const r=await (await fetch(`/api/knowledge/${state.alias}/pipeline/compile-prompt`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({intent:s.intent,output:s.output||'rewrite',labels:s.labels||[]})})).json();
+    if(r.ok&&r.prompt){ s.prompt=r.prompt; s.compiledBy=r.compiledBy||'reasoner'; renderPPre(); } else if(n) n.textContent='✗ '+(r.detail||'failed'); }
+  catch(e){ if(n)n.textContent='✗ '+e.message; } }
+async function ppTest(i){ const s=ppStep(i),txt=$('#pt_'+i)?.value||'',n=$('#ptn_'+i),out=$('#pto_'+i); if(!txt.trim()){ if(n)n.textContent='paste a sample first'; return; } if(n)n.textContent='running…';
+  try{ const r=await (await fetch(`/api/knowledge/${state.alias}/pipeline/test-step`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({step:s,text:txt})})).json();
+    if(!r.ok){ if(n)n.textContent='✗ '+(r.detail||'failed'); return; }
+    const hasMeta=r.meta&&Object.keys(r.meta).length;
+    if(n)n.textContent = r.error?('error: '+r.error):(r.dropped?'→ DROP (gated out)':('✓ '+(hasMeta?('signal '+JSON.stringify(r.meta)):'rewritten')));
+    if(out){ out.style.display='block'; out.textContent = r.dropped?'(document would be dropped)':(hasMeta?JSON.stringify(r.meta,null,2):(r.output||'(no output)')); } }
+  catch(e){ if(n)n.textContent='✗ '+e.message; } }
+
+/* cognify-strategy segment */
+function cogR(i){ return KPIPE.cognify.routing.rules[i]; }
+function cogCond(i,k,v,isList){ const r=cogR(i); const c=r.if||(r.if={}); if(isList){ const a=csv(v); if(a.length)c[k]=a; else delete c[k]; } else { if(v&&v.trim())c[k]=v.trim(); else delete c[k]; } }
+function cogModel(i,v){ cogR(i).model=v; }
+function cogDel(i){ KPIPE.cognify.routing.rules.splice(i,1); renderPCog(); }
+function cogAdd(){ KPIPE.cognify.routing.rules.push({if:{},model:'extractor-pro'}); renderPCog(); }
+function cogRule(r,i){
+  const c=r.if||(r.if={}); const mOpts=roleOpts(r.model);
+  return `<div class="panel"><div class="edit" style="flex-wrap:wrap;gap:10px;align-items:center">
+    <span class="note">if docType</span><input value="${esc((c.docType||[]).join(', '))}" placeholder="concall, brokerage" style="width:150px" onchange="cogCond(${i},'docType',this.value,true)">
+    <span class="note">pattern</span><input value="${esc(c.pattern||'')}" placeholder="earnings|merger" style="width:150px" onchange="cogCond(${i},'pattern',this.value,false)">
+    <span class="note">tag</span><input value="${esc((c.tag||[]).join(', '))}" placeholder="high-value" style="width:110px" onchange="cogCond(${i},'tag',this.value,true)">
+    <span class="note">relevance</span><input value="${esc((c.relevance||[]).join(', '))}" placeholder="high" style="width:90px" onchange="cogCond(${i},'relevance',this.value,true)">
+    <span class="spacer"></span><span class="note">→ model</span><select onchange="cogModel(${i},this.value)">${mOpts}</select>
+    <i class="ti ti-trash" style="cursor:pointer" title="delete" onclick="cogDel(${i})"></i>
+  </div></div>`;
+}
+function renderPCog(){
+  const c=KPIPE.cognify; if(!c.routing)c.routing={enabled:false,rules:[]}; const rules=c.routing.rules||(c.routing.rules=[]);
+  const dOpts=roleOpts(c.defaultModel);
+  const ruleCards=rules.map((r,i)=>cogRule(r,i)).join('')||'<div class="panel"><span class="muted">No rules — every doc uses the default model.</span></div>';
+  $('#pbody').innerHTML=`
+    <div class="panel">
+      <div class="edit" style="align-items:center;gap:10px"><span class="k">Default model</span><select onchange="KPIPE.cognify.defaultModel=this.value">${dOpts}</select></div>
+      <div class="note" style="margin-top:6px">Used when no rule matches (bulk). Keep this cheap (Flash); escalate via rules.</div>
+    </div>
+    <div class="panel">
+      <label class="row" style="cursor:pointer;align-items:center;gap:8px"><input type="checkbox" ${c.routing.enabled?'checked':''} onchange="KPIPE.cognify.routing.enabled=this.checked"> <span class="k">Relevance routing enabled</span></label>
+      <div class="note">First matching rule wins; conditions within a rule are AND-ed. A manual model pick on the Add-data form overrides routing.</div>
+    </div>
+    ${ruleCards}
+    <div class="panel"><button class="ghost" onclick="cogAdd()"><i class="ti ti-plus"></i> Add rule</button></div>
+    <div class="panel">${pSaveBar()}</div>`;
+}
+async function pSave(){ const n=$('#pnote'); if(n)n.textContent='saving…';
+  try{ await fetch(`/api/knowledge/${state.alias}/pipeline`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({preprocessing:KPIPE.preprocessing,cognify:KPIPE.cognify})}); KPIPE_ALIAS=null; await loadSchema(state.alias,true); if(n)n.textContent='✓ saved — applies on next ingest'; }
+  catch(e){ if(n)n.textContent='✗ '+e.message; } }
+
+/* --- models: per-project role -> OpenRouter model map --- */
+const FIXED_ROLES=['preprocess','extractor','extractor-pro','reasoner'];
+function ensureKmodels(){ const a=state.alias, sc=KSCHEMA[a]||{}; if(KMODELS_ALIAS!==a||!KMODELS){ const r=(sc.models&&sc.models.roles)||DEFAULT_ROLES; KMODELS=JSON.parse(JSON.stringify(r)); KMODELS_ALIAS=a; } }
+function kmSet(role,v){ KMODELS[role]=v; }
+function kmDel(role){ delete KMODELS[role]; renderKModels(); }
+function kmAdd(){ const i=$('#kmrole'),v=(i.value||'').trim(); if(!v)return; if(!KMODELS[v])KMODELS[v]=''; i.value=''; renderKModels(); }
+function renderKModels(){
+  ensureKmodels();
+  const rows=Object.keys(KMODELS).map(role=>`<div class="edit" style="align-items:center;gap:10px;margin-bottom:8px">
+    <span class="k" style="width:130px">${esc(role)}</span>
+    <input value="${esc(KMODELS[role]||'')}" placeholder="vendor/model (OpenRouter id)" style="flex:1;min-width:240px" onchange="kmSet('${esc(role)}',this.value)">
+    ${FIXED_ROLES.includes(role)?'':`<i class="ti ti-trash" style="cursor:pointer" title="remove role" onclick="kmDel('${esc(role)}')"></i>`}
+  </div>`).join('');
+  $('#kbody').innerHTML=`
+    <div class="panel" style="margin-bottom:14px">
+      <h3><i class="ti ti-cpu"></i> Models for ${esc(curProj().label)}</h3>
+      <div class="note" style="margin-bottom:12px">Map each pipeline <b>role</b> to a real <b>OpenRouter model</b> (vendor/model). Saved per project (local, not committed) and applied to the gateway immediately. Roles are stable handles your Pipeline references — change the target here without touching the pipeline.</div>
+      ${rows}
+      <div class="edit" style="margin-top:10px;align-items:center;gap:8px"><input id="kmrole" placeholder="+ role name" style="width:150px"><button class="ghost" onclick="kmAdd()">Add role</button></div>
+    </div>
+    <div class="panel">
+      <div class="note" style="margin-bottom:10px"><b>preprocess</b> runs clean/filter/signal steps · <b>extractor</b> bulk cognify · <b>extractor-pro</b> high-value cognify · <b>reasoner</b> compiles step prompts. Embeddings are global and not set here.</div>
+      <div style="display:flex;gap:10px;align-items:center"><button onclick="kmSave()"><i class="ti ti-device-floppy"></i> Save models</button><span class="note" id="kmnote"></span></div>
+    </div>`;
+}
+async function kmSave(){ const n=$('#kmnote'); if(n)n.textContent='saving + syncing gateway…';
+  const roles={}; Object.keys(KMODELS).forEach(r=>{ const v=(KMODELS[r]||'').trim(); if(v)roles[r]=v; });
+  try{ const res=await (await fetch(`/api/knowledge/${state.alias}/models`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roles})})).json();
+    if(res.ok){ KMODELS_ALIAS=null; await loadSchema(state.alias,true); const sy=res.sync||{}; if(n)n.textContent='✓ saved'+(sy.ok===false?(' (sync warning: '+esc(sy.error||'')+')'):' — gateway synced'); }
+    else if(n)n.textContent='✗ '+(res.detail||'failed'); }
+  catch(e){ if(n)n.textContent='✗ '+e.message; } }
 
 /* ---------- boot + poll ---------- */
 async function refreshOverview(){
