@@ -2,8 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>JARVIS · control center</title>
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Jarvis" />
+<meta name="theme-color" content="#080b10" />
+<link rel="manifest" href="/static/manifest.json" />
+<link rel="apple-touch-icon" href="/static/icon-192.png" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.24.0/dist/tabler-icons.min.css" />
 <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
 <style>
@@ -240,6 +246,75 @@
   .jbadge.running{color:var(--cyan);border:1px solid var(--cyandim)}
   .jbadge.done{color:var(--ok);border:1px solid var(--ok)}
   .jbadge.failed{color:var(--bad);border:1px solid var(--bad)}
+
+  /* =========================== mobile / iPhone PWA =========================== */
+  @media (max-width:640px){
+    /* layout: sidebar becomes a fixed bottom bar of project switchers */
+    .app{grid-template-columns:1fr;grid-template-rows:1fr auto;height:100vh;height:100dvh}
+    .main{order:1;height:auto;min-height:0}
+    .side{order:2;flex-direction:row;border-right:none;border-top:1px solid var(--line);
+      padding:0;height:calc(58px + env(safe-area-inset-bottom));backdrop-filter:blur(6px);overflow-x:auto}
+    .brand,.navlbl,.side .foot{display:none}
+    .nav{flex-direction:row;padding:0;gap:0;flex:1}
+    .nitem{flex-direction:column;gap:2px;padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+      border-radius:0;border:none;font-size:10px;min-width:64px;align-items:center;justify-content:center}
+    .nitem .nm{font-size:10px}
+    .nitem .mini{display:none}
+    .nitem.active{background:transparent}
+    .nitem.active::before{left:0;right:0;bottom:0;top:auto;width:auto;height:2px;border-radius:2px 2px 0 0}
+
+    /* iOS notch / dynamic island */
+    .topbar{padding-top:calc(14px + env(safe-area-inset-top))}
+
+    /* tighter horizontal padding everywhere */
+    .topbar{padding-left:14px;padding-right:14px;gap:10px}
+    .tabs{padding:0 6px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}
+    .tab{padding:10px 8px;font-size:11.5px;gap:4px;flex:0 0 auto}
+    .tab i{font-size:14px}
+    .scroll{padding:12px 10px}
+    .msgs{padding:12px 10px}
+    .composer{padding:8px 10px}
+    .chathead{padding:8px 12px}
+    .cfgbar{padding:6px 10px;gap:6px}
+    .panel{padding:12px 12px}
+
+    .topbar h1{font-size:15px}
+    .chip{padding:2px 7px;font-size:11px}
+
+    /* metrics: 2-up */
+    .metrics{grid-template-columns:1fr 1fr;gap:10px}
+
+    /* touch targets */
+    button{min-height:40px}
+    button.ghost{min-height:36px}
+    input,textarea,select{font-size:16px}  /* >=16px stops iOS auto-zoom on focus */
+
+    /* chat: use full width */
+    .msg{max-width:100%}
+    .aturn{max-width:100%}
+    .ubub{max-width:94%}
+    .cfgbar .lbl{display:none}
+
+    /* ledger: drop low-value columns (Type, In, Out, Latency) to fit */
+    .ledger th:nth-child(3),.ledger td:nth-child(3),
+    .ledger th:nth-child(4),.ledger td:nth-child(4),
+    .ledger th:nth-child(5),.ledger td:nth-child(5),
+    .ledger th:nth-child(8),.ledger td:nth-child(8){display:none}
+    .ledger{font-size:11.5px}
+    .ledger th,.ledger td{padding:6px 5px}
+
+    /* knowledge graph canvas */
+    #cy{height:280px !important}
+
+    /* form inputs that hardcode wide min-widths */
+    #mcpfields input,#mcpfields select,
+    .relrow select,.relrow input{width:100% !important;min-width:unset !important}
+    .relrow{flex-wrap:wrap}
+
+    /* signals sub-tabs + dispatch rows wrap cleanly */
+    .ksub{flex-wrap:wrap;gap:4px}
+    .edit{flex-wrap:wrap}
+  }
 </style>
 </head>
 <body>
@@ -270,6 +345,15 @@
 
 <script>
 const $ = (s,r=document)=>r.querySelector(s);
+
+// --- auth: token is injected into the shell by GET / (window.__JARVIS_TOKEN) ---
+const tok = () => window.__JARVIS_TOKEN || "";
+// Drop-in fetch replacement that attaches the bearer token to every /api call.
+const apiFetch = (url, opts={}) => {
+  opts.headers = {"Authorization": "Bearer " + tok(), ...(opts.headers||{})};
+  return window.fetch(url, opts);
+};
+
 const TABS = [
   {id:"overview", lbl:"Overview", icon:"ti-layout-dashboard"},
   {id:"chat", lbl:"Chat", icon:"ti-message-2"},
@@ -410,7 +494,7 @@ async function setBudget(){
   const v=parseFloat($("#bud").value); const note=$("#budnote");
   if(isNaN(v)){ note.textContent="enter a number"; return; }
   note.textContent="saving…";
-  const r=await fetch(`/api/project/${state.alias}/budget`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_budget:v})});
+  const r=await apiFetch(`/api/project/${state.alias}/budget`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_budget:v})});
   note.textContent=r.ok?"✓ saved":"✗ failed";
   if(r.ok) setTimeout(refreshOverview,500);
 }
@@ -419,8 +503,8 @@ async function setBudget(){
 let MODELS=[]; const TOOLSETS={};
 let WS=null, WSAlias=null, RUNNING=false, LIVE=null, PENDING_FILES=[];
 
-async function loadModels(){ if(!MODELS.length){ try{ MODELS=(await (await fetch('/api/models')).json()).models||[]; }catch(e){} } return MODELS; }
-async function loadToolsets(a){ if(!TOOLSETS[a]){ try{ TOOLSETS[a]=(await (await fetch('/api/toolsets/'+a)).json()).toolsets||[]; }catch(e){ TOOLSETS[a]=[]; } } return TOOLSETS[a]; }
+async function loadModels(){ if(!MODELS.length){ try{ MODELS=(await (await apiFetch('/api/models')).json()).models||[]; }catch(e){} } return MODELS; }
+async function loadToolsets(a){ if(!TOOLSETS[a]){ try{ TOOLSETS[a]=(await (await apiFetch('/api/toolsets/'+a)).json()).toolsets||[]; }catch(e){ TOOLSETS[a]=[]; } } return TOOLSETS[a]; }
 function cstate(a){ let s=CHATS[a]; if(!s||Array.isArray(s)) s=CHATS[a]={turns:[],cfg:{model:null,tools:null,yolo:false},usage:null}; s.turns=s.turns||[]; s.cfg=s.cfg||{model:null,tools:null,yolo:false}; return s; }
 
 function viewChat(){
@@ -523,7 +607,8 @@ function wsConnect(alias){
   if(WS && WSAlias===alias && WS.readyState<=1) return WS;
   if(WS){ try{WS.close()}catch(e){} }
   const proto=location.protocol==='https:'?'wss':'ws';
-  WS=new WebSocket(`${proto}://${location.host}/ws/chat/${alias}`); WSAlias=alias;
+  const _t=tok();  // browsers can't set headers on WS connect -> pass token as query param
+  WS=new WebSocket(`${proto}://${location.host}/ws/chat/${alias}${_t?'?token='+encodeURIComponent(_t):''}`); WSAlias=alias;
   WS.onmessage=ev=>onWsMsg(alias, JSON.parse(ev.data));
   WS.onclose=()=>{ if(RUNNING){ setRunning(false); } };
   return WS;
@@ -585,7 +670,7 @@ function liveError(err){ if(LIVE){ LIVE.text.innerHTML=md((LIVE.turn.text?LIVE.t
 async function loadTxns(){
   const alias=state.alias;
   let d;
-  try{ d=await (await fetch(`/api/transactions/${alias}?limit=200`)).json(); }
+  try{ d=await (await apiFetch(`/api/transactions/${alias}?limit=200`)).json(); }
   catch(e){ $("#content").innerHTML=`<div class="scroll"><div class="loading">failed to load: ${esc(e.message)}</div></div>`; return; }
   if(state.tab!=="transactions"||state.alias!==alias) return;
   const s=d.summary||{count:0,spend:0,tokens:0,by_model:[]};
@@ -633,7 +718,7 @@ async function loadTxns(){
 let MCP_KV=[];  // staging rows for headers/env on the add form
 async function afterMcp(){
   const a=state.alias; let servers=[];
-  try{ servers=(await (await fetch('/api/mcp/'+a)).json()).servers||[]; }catch(e){}
+  try{ servers=(await (await apiFetch('/api/mcp/'+a)).json()).servers||[]; }catch(e){}
   if(state.tab!=='mcp'||state.alias!==a) return;
   const w=$('#mcpwrap'); if(!w) return;
   w.innerHTML = `
@@ -731,19 +816,19 @@ async function mcpAdd(){
     body.env=mcpKvMap();
   }
   note.textContent='connecting…';
-  let r; try{ r=await (await fetch('/api/mcp/'+state.alias,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json(); }
+  let r; try{ r=await (await apiFetch('/api/mcp/'+state.alias,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json(); }
   catch(e){ note.textContent='failed: '+e.message; return; }
   if(r.ok){ note.textContent='✓ connected — testing…'; await afterMcp(); mcpTest(name); }
   else note.textContent='✗ '+(r.detail||'failed');
 }
 async function mcpRemove(name){
   if(!confirm(`Remove MCP server "${name}" from ${curProj().label}?`)) return;
-  try{ await fetch(`/api/mcp/${state.alias}/${encodeURIComponent(name)}`,{method:'DELETE'}); }catch(e){}
+  try{ await apiFetch(`/api/mcp/${state.alias}/${encodeURIComponent(name)}`,{method:'DELETE'}); }catch(e){}
   afterMcp();
 }
 async function mcpTest(name){
   const el=$('#mt-'+name); if(el){ el.className='mcptest muted'; el.innerHTML='<span class="spin"></span> testing connection…'; }
-  let r; try{ r=await (await fetch(`/api/mcp/${state.alias}/${encodeURIComponent(name)}/test`,{method:'POST'})).json(); }
+  let r; try{ r=await (await apiFetch(`/api/mcp/${state.alias}/${encodeURIComponent(name)}/test`,{method:'POST'})).json(); }
   catch(e){ if(el){el.className='mcptest bad';el.textContent='test failed: '+e.message;} return; }
   const tgt=$('#mt-'+name); if(!tgt) return;
   tgt.className='mcptest '+(r.ok?'good':'bad');
@@ -759,7 +844,7 @@ const DEFAULT_ROLES={preprocess:'deepseek/deepseek-v4-flash',extractor:'deepseek
 function projRoles(){ const sc=KSCHEMA[state.alias]||{}; const r=(sc.models&&sc.models.roles); return (r&&Object.keys(r).length)?r:DEFAULT_ROLES; }
 function roleOpts(sel){ const roles=projRoles(); return Object.keys(roles).map(r=>`<option value="${esc(r)}" ${sel===r?'selected':''}>${esc(r)} · ${esc(roles[r])}</option>`).join(''); }
 function DEFAULT_PIPE(){ return {preprocessing:{enabled:false,steps:[]},cognify:{defaultModel:'extractor',routing:{enabled:false,rules:[]}}}; }
-async function loadSchema(a, force){ if(force||!KSCHEMA[a]){ try{ KSCHEMA[a]=await (await fetch(`/api/knowledge/${a}/schema`)).json(); }catch(e){ KSCHEMA[a]={}; } } return KSCHEMA[a]; }
+async function loadSchema(a, force){ if(force||!KSCHEMA[a]){ try{ KSCHEMA[a]=await (await apiFetch(`/api/knowledge/${a}/schema`)).json(); }catch(e){ KSCHEMA[a]={}; } } return KSCHEMA[a]; }
 
 function viewKnowledge(){
   const sub=state.ktab||(state.ktab='graph');
@@ -797,7 +882,7 @@ function renderKGraph(){
 }
 async function loadKGraph(){
   const a=state.alias, lim=$('#glim')?.value||80;
-  let d; try{ d=await (await fetch(`/api/graph/${a}?limit=${lim}`)).json(); }catch(e){ return; }
+  let d; try{ d=await (await apiFetch(`/api/graph/${a}?limit=${lim}`)).json(); }catch(e){ return; }
   if(state.tab!=='knowledge'||state.alias!==a||state.ktab!=='graph') return;
   if($('#gcount')) $('#gcount').textContent=`${d.nodes.length} nodes · ${d.edges.length} edges rendered`;
   $('#glim')?.addEventListener('change',loadKGraph,{once:true});
@@ -844,7 +929,7 @@ function renderKAttach(){ const b=$('#kabar'); if(b) b.innerHTML=KADD_FILES.map(
 function renderKTagSel(){ const sc=KSCHEMA[state.alias]||{}, vocab=(sc.ontology&&sc.ontology.tags)||[]; const el=$('#ktagsel'); if(!el)return; el.innerHTML=vocab.length?vocab.map(t=>`<span class="chiprm ${KADD_TAGS.has(t)?'sel':''}" onclick="kToggleTag('${esc(t)}')">${esc(t)}</span>`).join(''):'<span class="muted" style="font-size:12px">none — add in Ontology ›</span>'; }
 function kToggleTag(t){ KADD_TAGS.has(t)?KADD_TAGS.delete(t):KADD_TAGS.add(t); renderKTagSel(); }
 async function kAddTagInput(){ const i=$('#ktaginput'),v=i.value.trim(); if(!v)return; KADD_TAGS.add(v); i.value='';
-  const sc=KSCHEMA[state.alias]||{}, o=sc.ontology||{entityTypes:[],relationTypes:[],tags:[]}; if(!o.tags.includes(v)){ o.tags.push(v); try{ await fetch(`/api/knowledge/${state.alias}/ontology`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entityTypes:o.entityTypes,relationTypes:o.relationTypes,tags:o.tags})}); }catch(e){} } renderKTagSel(); }
+  const sc=KSCHEMA[state.alias]||{}, o=sc.ontology||{entityTypes:[],relationTypes:[],tags:[]}; if(!o.tags.includes(v)){ o.tags.push(v); try{ await apiFetch(`/api/knowledge/${state.alias}/ontology`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entityTypes:o.entityTypes,relationTypes:o.relationTypes,tags:o.tags})}); }catch(e){} } renderKTagSel(); }
 async function kIngest(){
   const text=($('#ktext')?.value||'').trim(), note=$('#kingnote');
   if(!text && !KADD_FILES.length){ note.textContent='add some text or a file first'; return; }
@@ -852,13 +937,13 @@ async function kIngest(){
   const files=(await Promise.all(KADD_FILES.map(readFileB64))).filter(Boolean);
   const model=$('#kmodel')?.value||'';
   const doc_type=($('#kdoctype')?.value||'').trim();
-  let r; try{ r=await (await fetch(`/api/knowledge/${state.alias}/ingest`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,tags:[...KADD_TAGS],files,model,doc_type})})).json(); }catch(e){ note.textContent='failed: '+e.message; return; }
+  let r; try{ r=await (await apiFetch(`/api/knowledge/${state.alias}/ingest`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,tags:[...KADD_TAGS],files,model,doc_type})})).json(); }catch(e){ note.textContent='failed: '+e.message; return; }
   if(r.ok){ note.textContent=`✓ job #${r.job} started — cognifying in the background`; $('#ktext').value=''; KADD_FILES=[]; renderKAttach(); loadKJobs(); }
   else note.textContent='✗ '+(r.detail||'failed');
 }
 async function loadKJobs(){
   const a=state.alias;
-  let jobs=[]; try{ jobs=(await (await fetch(`/api/knowledge/${a}/jobs`)).json()).jobs||[]; }catch(e){}
+  let jobs=[]; try{ jobs=(await (await apiFetch(`/api/knowledge/${a}/jobs`)).json()).jobs||[]; }catch(e){}
   if(state.tab!=='knowledge'||state.alias!==a||state.ktab!=='add') return;
   const el=$('#kjobs'); if(el) el.innerHTML = jobs.length? jobs.map(j=>`<div class="jobitem collapsed"><div class="jh" onclick="this.parentNode.classList.toggle('collapsed')"><span class="jbadge ${j.status}">${j.status==='running'?'<span class="spin"></span> running':j.status}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.summary||('job '+j.id))}</span><i class="ti ti-chevron-down"></i></div><div class="jlog">${esc(j.log||'(no output yet)')}</div></div>`).join('') : '<span class="muted">none yet</span>';
   if(jobs.some(j=>j.status==='running')) setTimeout(loadKJobs, 4000);
@@ -878,7 +963,7 @@ function viewSignals(){
 function sSub(k){ state.stab=k; renderContent(); }
 async function afterSignals(){
   const a=state.alias;
-  try{ SIGNALS=await (await fetch(`/api/signals/${a}/proposals`)).json(); }catch(e){ SIGNALS={pending:[],approved:[],rejected:[]}; }
+  try{ SIGNALS=await (await apiFetch(`/api/signals/${a}/proposals`)).json(); }catch(e){ SIGNALS={pending:[],approved:[],rejected:[]}; }
   if(state.tab!=='signals'||state.alias!==a) return;
   const sub=state.stab||'propose';
   if(sub==='propose') renderSPropose();
@@ -916,14 +1001,14 @@ async function sPropose(){
   if(!seed){ note.textContent='enter a seed first'; return; }
   note.textContent='starting agent…';
   const direction=$('#sdir')?.value||'long', horizon=($('#shorizon')?.value||'5d').trim();
-  let r; try{ r=await (await fetch(`/api/signals/${state.alias}/propose`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seed,direction,horizon})})).json(); }
+  let r; try{ r=await (await apiFetch(`/api/signals/${state.alias}/propose`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seed,direction,horizon})})).json(); }
   catch(e){ note.textContent='failed: '+e.message; return; }
   if(r.ok){ note.textContent=`✓ run #${r.job} started — the agent is proposing, then backtesting`; $('#sseed').value=''; loadSJobs(); }
   else note.textContent='✗ '+(r.detail||r.error||'failed');
 }
 async function loadSJobs(){
   const a=state.alias;
-  let jobs=[]; try{ jobs=(await (await fetch(`/api/signals/${a}/jobs`)).json()).jobs||[]; }catch(e){}
+  let jobs=[]; try{ jobs=(await (await apiFetch(`/api/signals/${a}/jobs`)).json()).jobs||[]; }catch(e){}
   if(state.tab!=='signals'||state.alias!==a||state.stab!=='propose') return;
   const el=$('#sjobs'); if(el) el.innerHTML = jobs.length? jobs.map(j=>`<div class="jobitem collapsed"><div class="jh" onclick="this.parentNode.classList.toggle('collapsed')"><span class="jbadge ${j.status}">${j.status==='running'?'<span class="spin"></span> running':j.status}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.seed||('run '+j.id))}</span><i class="ti ti-chevron-down"></i></div><div class="jlog">${esc(j.log||'(no output yet)')}</div></div>`).join('') : '<span class="muted">none yet</span>';
   if(jobs.some(j=>j.status==='running')) setTimeout(loadSJobs, 4000);
@@ -965,13 +1050,13 @@ function renderSList(status){
 }
 async function sApprove(pid){
   if(!confirm('Approve this signal? It will be written into the graph as a validated Signal node.')) return;
-  try{ const r=await (await fetch(`/api/signals/${state.alias}/proposals/${pid}/approve`,{method:'POST'})).json();
+  try{ const r=await (await apiFetch(`/api/signals/${state.alias}/proposals/${pid}/approve`,{method:'POST'})).json();
     if(!r.ok){ alert('approve failed: '+(r.detail||'')); return; } }catch(e){ alert('approve failed: '+e.message); return; }
   afterSignals();
 }
 async function sReject(pid){
   const reason=prompt('Reject reason (optional):','')||'';
-  try{ await fetch(`/api/signals/${state.alias}/proposals/${pid}/reject`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason})}); }
+  try{ await apiFetch(`/api/signals/${state.alias}/proposals/${pid}/reject`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason})}); }
   catch(e){ alert('reject failed: '+e.message); return; }
   afterSignals();
 }
@@ -981,7 +1066,7 @@ let DTASKS=[];
 const WD=[['','Any day'],['1','Sun'],['2','Mon'],['3','Tue'],['4','Wed'],['5','Thu'],['6','Fri'],['7','Sat']];
 async function afterDispatch(){
   const a=state.alias;
-  try{ DTASKS=(await (await fetch(`/api/dispatch/${a}`)).json()).tasks||[]; }catch(e){ DTASKS=[]; }
+  try{ DTASKS=(await (await apiFetch(`/api/dispatch/${a}`)).json()).tasks||[]; }catch(e){ DTASKS=[]; }
   if(state.tab!=='dispatch'||state.alias!==a) return;
   renderDispatch();
 }
@@ -1045,35 +1130,35 @@ function dSchedFields(id){
 async function dSave(){
   const name=($('#dn_name')?.value||'').trim(), command=($('#dn_cmd')?.value||'').trim(), description=($('#dn_desc')?.value||'').trim(), note=$('#dnote');
   if(!command){ note.textContent='command required'; return; }
-  let r; try{ r=await (await fetch(`/api/dispatch/${state.alias}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,command,description})})).json(); }
+  let r; try{ r=await (await apiFetch(`/api/dispatch/${state.alias}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,command,description})})).json(); }
   catch(e){ note.textContent='failed: '+e.message; return; }
   if(r.ok) afterDispatch(); else note.textContent='✗ '+(r.detail||'failed');
 }
 async function dRun(id){
-  try{ const r=await (await fetch(`/api/dispatch/${state.alias}/${id}/run`,{method:'POST'})).json(); if(!r.ok){ alert('run failed'); return; } }
+  try{ const r=await (await apiFetch(`/api/dispatch/${state.alias}/${id}/run`,{method:'POST'})).json(); if(!r.ok){ alert('run failed'); return; } }
   catch(e){ alert('run failed: '+e.message); return; }
   loadDJobs();
 }
 async function dSchedule(id){
   const t=dTaskById(id); if(!t) return;
   // persist the (possibly edited) schedule, then enable the LaunchAgent
-  await fetch(`/api/dispatch/${state.alias}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:t.id,name:t.name,description:t.description,command:t.command,cwd:t.cwd,schedule:dSchedFields(id)})});
-  try{ const r=await (await fetch(`/api/dispatch/${state.alias}/${id}/schedule`,{method:'POST'})).json(); if(!r.ok){ alert('schedule failed: '+(r.detail||'')); } }
+  await apiFetch(`/api/dispatch/${state.alias}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:t.id,name:t.name,description:t.description,command:t.command,cwd:t.cwd,schedule:dSchedFields(id)})});
+  try{ const r=await (await apiFetch(`/api/dispatch/${state.alias}/${id}/schedule`,{method:'POST'})).json(); if(!r.ok){ alert('schedule failed: '+(r.detail||'')); } }
   catch(e){ alert('schedule failed: '+e.message); }
   afterDispatch();
 }
 async function dUnschedule(id){
-  try{ await fetch(`/api/dispatch/${state.alias}/${id}/unschedule`,{method:'POST'}); }catch(e){}
+  try{ await apiFetch(`/api/dispatch/${state.alias}/${id}/unschedule`,{method:'POST'}); }catch(e){}
   afterDispatch();
 }
 async function dDelete(id){
   if(!confirm('Delete this task?')) return;
-  try{ await fetch(`/api/dispatch/${state.alias}/${id}`,{method:'DELETE'}); }catch(e){}
+  try{ await apiFetch(`/api/dispatch/${state.alias}/${id}`,{method:'DELETE'}); }catch(e){}
   afterDispatch();
 }
 async function loadDJobs(){
   const a=state.alias;
-  let jobs=[]; try{ jobs=(await (await fetch(`/api/dispatch/${a}/jobs`)).json()).jobs||[]; }catch(e){}
+  let jobs=[]; try{ jobs=(await (await apiFetch(`/api/dispatch/${a}/jobs`)).json()).jobs||[]; }catch(e){}
   if(state.tab!=='dispatch'||state.alias!==a) return;
   const el=$('#djobs'); if(el) el.innerHTML = jobs.length? jobs.map(j=>`<div class="jobitem collapsed"><div class="jh" onclick="this.parentNode.classList.toggle('collapsed')"><span class="jbadge ${j.status}">${j.status==='running'?'<span class="spin"></span> running':j.status}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.name||('job '+j.id))}</span><i class="ti ti-chevron-down"></i></div><div class="jlog">${esc(j.log||'(no output yet)')}</div></div>`).join('') : '<span class="muted">none yet</span>';
   if(jobs.some(j=>j.status==='running')) setTimeout(loadDJobs, 3000);
@@ -1140,10 +1225,10 @@ function oAddTag(){ const i=$('#oin'),v=i.value.trim(); if(v&&!KONTO.tags.includ
 function oAddEnt(){ const i=$('#oent'),v=i.value.trim(); if(v&&!KONTO.entityTypes.includes(v))KONTO.entityTypes.push(v); i.value=''; renderOBody(); }
 function oAddRel(){ const n=$('#orelname').value.trim(); if(!n)return; KONTO.relationTypes.push({name:n,source:$('#orelsrc').value,target:$('#oreltgt').value}); renderOBody(); }
 async function oSave(){ const note=$('#onote'); if(note)note.textContent='saving…';
-  try{ await fetch(`/api/knowledge/${state.alias}/ontology`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entityTypes:KONTO.entityTypes,relationTypes:KONTO.relationTypes,tags:KONTO.tags})}); KONTO_ALIAS=null; await loadSchema(state.alias,true); if(note)note.textContent='✓ saved — applies on next ingest'; }catch(e){ if(note)note.textContent='✗ '+e.message; } }
+  try{ await apiFetch(`/api/knowledge/${state.alias}/ontology`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entityTypes:KONTO.entityTypes,relationTypes:KONTO.relationTypes,tags:KONTO.tags})}); KONTO_ALIAS=null; await loadSchema(state.alias,true); if(note)note.textContent='✓ saved — applies on next ingest'; }catch(e){ if(note)note.textContent='✗ '+e.message; } }
 async function oUploadOwl(input){ const f=input.files[0]; if(!f)return; const note=$('#owlnote'); note.textContent='uploading…'; const b=await readFileB64(f);
-  try{ const r=await (await fetch(`/api/knowledge/${state.alias}/owl`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:f.name,data:b.data})})).json(); if(r.ok){ KONTO_ALIAS=null; await loadSchema(state.alias,true); renderKOnto(); } else note.textContent='✗ failed'; }catch(e){ note.textContent='✗ '+e.message; } }
-async function oRmOwl(){ try{ await fetch(`/api/knowledge/${state.alias}/owl`,{method:'DELETE'}); KONTO_ALIAS=null; await loadSchema(state.alias,true); renderKOnto(); }catch(e){} }
+  try{ const r=await (await apiFetch(`/api/knowledge/${state.alias}/owl`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:f.name,data:b.data})})).json(); if(r.ok){ KONTO_ALIAS=null; await loadSchema(state.alias,true); renderKOnto(); } else note.textContent='✗ failed'; }catch(e){ note.textContent='✗ '+e.message; } }
+async function oRmOwl(){ try{ await apiFetch(`/api/knowledge/${state.alias}/owl`,{method:'DELETE'}); KONTO_ALIAS=null; await loadSchema(state.alias,true); renderKOnto(); }catch(e){} }
 
 /* --- pipeline: pre-processing steps + cognify routing strategy --- */
 function ensureKpipe(){ const a=state.alias, sc=KSCHEMA[a]||{}; if(KPIPE_ALIAS!==a||!KPIPE){ KPIPE=JSON.parse(JSON.stringify(sc.pipeline||DEFAULT_PIPE())); if(!KPIPE.preprocessing)KPIPE.preprocessing={enabled:false,steps:[]}; if(!KPIPE.cognify)KPIPE.cognify={defaultModel:'extractor',routing:{enabled:false,rules:[]}};
@@ -1218,11 +1303,11 @@ function renderPPre(){
     <div class="panel">${pSaveBar()}</div>`;
 }
 async function ppCompile(i){ const s=ppStep(i),n=$('#pcn_'+i); if(!s.intent||!s.intent.trim()){ if(n)n.textContent='write an intent first'; return; } if(n)n.textContent='compiling… (Sonnet)';
-  try{ const r=await (await fetch(`/api/knowledge/${state.alias}/pipeline/compile-prompt`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({intent:s.intent,output:s.output||'rewrite',labels:s.labels||[]})})).json();
+  try{ const r=await (await apiFetch(`/api/knowledge/${state.alias}/pipeline/compile-prompt`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({intent:s.intent,output:s.output||'rewrite',labels:s.labels||[]})})).json();
     if(r.ok&&r.prompt){ s.prompt=r.prompt; s.compiledBy=r.compiledBy||'reasoner'; renderPPre(); } else if(n) n.textContent='✗ '+(r.detail||'failed'); }
   catch(e){ if(n)n.textContent='✗ '+e.message; } }
 async function ppTest(i){ const s=ppStep(i),txt=$('#pt_'+i)?.value||'',n=$('#ptn_'+i),out=$('#pto_'+i); if(!txt.trim()){ if(n)n.textContent='paste a sample first'; return; } if(n)n.textContent='running…';
-  try{ const r=await (await fetch(`/api/knowledge/${state.alias}/pipeline/test-step`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({step:s,text:txt})})).json();
+  try{ const r=await (await apiFetch(`/api/knowledge/${state.alias}/pipeline/test-step`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({step:s,text:txt})})).json();
     if(!r.ok){ if(n)n.textContent='✗ '+(r.detail||'failed'); return; }
     const hasMeta=r.meta&&Object.keys(r.meta).length;
     if(n)n.textContent = r.error?('error: '+r.error):(r.dropped?'→ DROP (gated out)':('✓ '+(hasMeta?('signal '+JSON.stringify(r.meta)):'rewritten')));
@@ -1264,7 +1349,7 @@ function renderPCog(){
     <div class="panel">${pSaveBar()}</div>`;
 }
 async function pSave(){ const n=$('#pnote'); if(n)n.textContent='saving…';
-  try{ await fetch(`/api/knowledge/${state.alias}/pipeline`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({preprocessing:KPIPE.preprocessing,cognify:KPIPE.cognify})}); KPIPE_ALIAS=null; await loadSchema(state.alias,true); if(n)n.textContent='✓ saved — applies on next ingest'; }
+  try{ await apiFetch(`/api/knowledge/${state.alias}/pipeline`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({preprocessing:KPIPE.preprocessing,cognify:KPIPE.cognify})}); KPIPE_ALIAS=null; await loadSchema(state.alias,true); if(n)n.textContent='✓ saved — applies on next ingest'; }
   catch(e){ if(n)n.textContent='✗ '+e.message; } }
 
 /* --- models: per-project role -> OpenRouter model map --- */
@@ -1294,7 +1379,7 @@ function renderKModels(){
 }
 async function kmSave(){ const n=$('#kmnote'); if(n)n.textContent='saving + syncing gateway…';
   const roles={}; Object.keys(KMODELS).forEach(r=>{ const v=(KMODELS[r]||'').trim(); if(v)roles[r]=v; });
-  try{ const res=await (await fetch(`/api/knowledge/${state.alias}/models`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roles})})).json();
+  try{ const res=await (await apiFetch(`/api/knowledge/${state.alias}/models`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roles})})).json();
     if(res.ok){ KMODELS_ALIAS=null; await loadSchema(state.alias,true); const sy=res.sync||{}; if(n)n.textContent='✓ saved'+(sy.ok===false?(' (sync warning: '+esc(sy.error||'')+')'):' — gateway synced'); }
     else if(n)n.textContent='✗ '+(res.detail||'failed'); }
   catch(e){ if(n)n.textContent='✗ '+e.message; } }
@@ -1302,7 +1387,7 @@ async function kmSave(){ const n=$('#kmnote'); if(n)n.textContent='saving + sync
 /* ---------- boot + poll ---------- */
 async function refreshOverview(){
   try{
-    const d=await (await fetch("/api/overview")).json();
+    const d=await (await apiFetch("/api/overview")).json();
     state.overview=d;
     if(!state.alias && d.projects.length) state.alias=d.projects[0].alias;
     renderSidebar(); renderTopbar(); renderTabs();
@@ -1311,6 +1396,21 @@ async function refreshOverview(){
     if(state.tab==="overview" && !typing) $("#content").innerHTML=`<div class="scroll">${viewOverview()}</div>`;
   }catch(e){}
 }
+// Keep multiple clients (Mac + iPhone) in sync: when the app regains focus, re-pull the
+// active view so changes made elsewhere (approve a signal, run a task, edit a budget) show up.
+// Chat is skipped so a live agent stream is never interrupted; overview is covered by its
+// own 15s poll inside refreshOverview().
+function syncNow(){
+  if(document.visibilityState!=='visible') return;
+  refreshOverview();
+  if(state.tab!=='chat' && state.tab!=='overview') renderContent();
+}
+document.addEventListener('visibilitychange', syncNow);
+setInterval(syncNow, 60000);
+
+// PWA: register the service worker (enables Add to Home Screen + offline shell).
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(()=>{}); }
+
 async function boot(){
   await refreshOverview();
   renderContent();
