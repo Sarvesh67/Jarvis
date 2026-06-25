@@ -40,6 +40,24 @@ autostart at login; containers have `restart: unless-stopped`.
 One-shot: `jarvis chat -q "…" --yolo`. Query a graph directly:
 `cognee/.venv/bin/python cognee/query.py <project> "<question>" 2>/dev/null`
 
+## Signals, Dispatch & market data
+
+For time-series projects (e.g. `hedgefund`):
+
+- **Market data** (`marketdata/`, own venv) — OHLCV in a Parquet + DuckDB store (`marketdata/store/`,
+  gitignored). CLI: `marketdata/.venv/bin/python -m marketdata.cli {demo,load,coverage,feature}`.
+  Feature math (forward/abnormal return, z-score, vol) is golden-tested — the single source of truth
+  shared by ingestion and the backtester.
+- **Signals** — dashboard *Signals* tab (Propose / Pending / Approved / Rejected). A proposal runs a
+  headless `hermes -p <project>` (the `jarvis-signals` skill) → auto-backtest → **Pending**. Approve
+  writes an isolated `:Signal` graph node; reject files it with a reason. Proposals live under
+  `cognee/data/<project>/proposals/{inbox,pending,approved,rejected}/`.
+- **Dispatch** — dashboard *Dispatch* tab. User-defined tasks (`{name, command, schedule}`) stored in
+  `~/.jarvis-dashboard/dispatch/<alias>.json`. **Run now** = subprocess; **Enable schedule** writes a
+  `com.jarvis.dispatch.<alias>.<id>` LaunchAgent (`RunAtLoad:false` → never auto-runs on load). Logs
+  under `~/.jarvis-dashboard/dispatch/logs/`. Nothing runs until you click Run or enable a schedule.
+- **Tests:** `marketdata/.venv/bin/python -m pytest marketdata/tests backtest/tests` (all deterministic).
+
 ## Start / stop / status
 
 ```bash

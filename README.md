@@ -25,16 +25,22 @@ and agent profile.
 - **A live agent chat UI** — a "Command Center" dashboard where you chat with a real agent
   that streams its tool calls, plan, and reasoning, and queries the knowledge graph live.
 - **A clean ingest → retrieve pipeline** with an explicit cost model (see below).
+- **Signals (agent proposes, you approve)** — a headless agent turns a seed into one testable
+  signal, it's auto-backtested against price history (deterministic, $0 LLM), and you approve or
+  reject it from a review queue. Approved signals are written as isolated graph nodes.
+- **Dispatch** — a generic per-project task runner: any command, run on demand or on a schedule
+  you enable (a user-owned LaunchAgent). Nothing runs automatically until you turn it on.
 
 ---
 
 ## Architecture
 
 ```
-                          ┌─────────────────────────────────────────┐
-                          │  Dashboard  (FastAPI + vanilla-JS SPA)   │
-                          │  chat · transactions · knowledge engine  │
-                          └───────────────┬─────────────┬───────────┘
+                          ┌──────────────────────────────────────────────┐
+                          │  Dashboard  (FastAPI + vanilla-JS SPA)        │
+                          │  chat · transactions · knowledge · signals ·  │
+                          │  dispatch                                     │
+                          └───────────────┬─────────────┬────────────────┘
                                  ACP (stdio)│             │ HTTP
                           ┌────────────────▼───┐   ┌─────▼──────────────┐
                           │  Hermes agent      │   │  Cognee            │
@@ -62,7 +68,9 @@ and agent profile.
 | **FalkorDB** | Graph + vector hybrid store; one graph per project | Docker (`platform/`) |
 | **Cognee** | Builds the graph (`add` → `cognify`) and retrieves context | `cognee/` |
 | **Hermes** | The agent that reasons over retrieved context; one profile per project | `~/.hermes/` |
-| **Dashboard** | Web UI: chat, transactions, knowledge-engine management | `dashboard/` |
+| **Dashboard** | Web UI: chat, transactions, knowledge-engine management, signals, dispatch | `dashboard/` |
+| **Market data** | Price store (Parquet + DuckDB) + deterministic feature/backtest math; numbers stay *out* of the graph | `marketdata/`, `backtest/` |
+| **Signals** | Headless agent proposes a signal → auto-backtest → human approve/reject | `signals/` |
 
 ---
 
@@ -95,6 +103,32 @@ gateway live), so you can re-point `extractor` without editing config or the pip
 
 So: **Cognee is the memory substrate; the agent is the single reasoning brain.** Pick the
 agent's model (e.g. Opus) for reasoning quality; pick the extractor model for graph quality.
+
+---
+
+## Signals & market data
+
+For projects with a time-series dimension (e.g. `hedgefund`), Jarvis links price data to the
+knowledge graph **without putting numbers in the graph**:
+
+- **Price store** (`marketdata/`, own venv) — a swappable source adapter (CSV / Parquet /
+  synthetic / yfinance) lands OHLCV in a Parquet-at-rest + DuckDB store. A **golden-tested feature
+  registry** (forward return, abnormal return, z-score, realized vol) is the single source of truth
+  for price math, shared by ingestion and the backtester.
+- **Graph linkage** — ingestion stamps each doc with namespaced `ticker:<t>` / `asof:<date>` tags
+  (Cognee NodeSets). The graph holds entities + pointers; the join to numbers happens on
+  `(ticker, as_of)`. A preprocessing step can compute a deterministic price-move signal ($0 LLM) so
+  price-relevant docs route to a better extractor model.
+- **Backtester** (`backtest/`) — turns a proposed signal's trigger into events from the graph,
+  computes forward/abnormal-return stats (hit-rate, t-stat, IC, equity curve), and refuses any
+  forward-looking (hindsight) feature as a predictor.
+- **Signals workflow** (`signals/`) — a headless `hermes` run (the `jarvis-signals` skill) writes a
+  proposal from a seed, the orchestrator auto-backtests it into a **Pending** queue, and you
+  **Approve / Reject** from the dashboard's *Signals* tab. Approving writes an isolated `:Signal`
+  node (its own label, direct graph write, no cognify → no contamination of the doc graph).
+
+All of the above is near-zero LLM cost — the only model call is the agent that drafts a proposal;
+everything downstream is deterministic math.
 
 ---
 
@@ -167,8 +201,11 @@ That's it — a new isolated graph (`research_graph`), budget, ontology, and age
 
 ```
 platform/      Docker services (FalkorDB + Postgres) + LiteLLM gateway config
-cognee/        Knowledge engine — ingest.py, query.py, jarvis_cognee.py (own venv)
+cognee/        Knowledge engine — ingest.py, query.py, jarvis_cognee.py, linker.py (own venv)
 dashboard/     Web UI — app.py (FastAPI), acp.py (live agent), static/index.html (own venv)
+marketdata/    Price store (Parquet + DuckDB) + golden-tested feature registry (own venv)
+backtest/      Deterministic backtester over the price store + graph events
+signals/       Signal proposal orchestrator + sweep (agent proposes → auto-backtest)
 setup/         Idempotent rebuild scripts (00_run_all → 01..06)
 tests/         pytest suite + postdeploy checks
 launchagents/  macOS autostart service templates
