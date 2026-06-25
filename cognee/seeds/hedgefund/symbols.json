@@ -1,0 +1,11 @@
+{
+  "defaultBenchmark": "^NSEI",
+  "tickers": {
+    "INFY.NS": {"aliases": ["Infosys", "Infosys Ltd", "Infosys Limited", "INFY"], "benchmark": "^CNXIT", "sector": "IT"},
+    "TCS.NS": {"aliases": ["TCS", "Tata Consultancy Services", "Tata Consultancy"], "benchmark": "^CNXIT", "sector": "IT"},
+    "RELIANCE.NS": {"aliases": ["Reliance", "Reliance Industries", "Reliance Industries Ltd", "RIL"], "benchmark": "^NSEI", "sector": "Energy"},
+    "TATAMOTORS.NS": {"aliases": ["Tata Motors", "Tata Motors Ltd", "Tata Motors Limited"], "benchmark": "^NSEI", "sector": "Auto"},
+    "HDFCBANK.NS": {"aliases": ["HDFC Bank", "HDFC Bank Ltd"], "benchmark": "^NSEBANK", "sector": "Financials"},
+    "ICICIBANK.NS": {"aliases": ["ICICI Bank", "ICICI Bank Ltd"], "benchmark": "^NSEBANK", "sector": "Financials"}
+  }
+}

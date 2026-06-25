@@ -37,10 +37,20 @@ in `compile_prompt` (authoring time), never per document.
 """
 from __future__ import annotations
 
+import json
+import pathlib
+import subprocess
+
 import httpx
 
 GATEWAY = "http://127.0.0.1:4000/v1"
 DROP = "DROP"
+
+# The market-data feature registry lives in its own venv (duckdb/pandas) to keep those heavy
+# deps out of the Cognee/dashboard venvs. A `feature` step computes a deterministic value by
+# shelling out to it — the same isolation pattern the dashboard uses to drive the Cognee venv.
+_REPO = pathlib.Path(__file__).resolve().parent.parent
+_MARKETDATA_PY = _REPO / "marketdata" / ".venv" / "bin" / "python"
 
 # Output caps. DeepSeek V4 is a *reasoning* model — with reasoning enabled it spends
 # completion tokens thinking and returns empty content until done, so per-document calls
@@ -107,6 +117,82 @@ def _match_label(out: str, labels: list) -> str | None:
     return None
 
 
+def _engine(step: dict) -> str:
+    """Which executor runs a step: 'llm' (default, a gateway chat call) or 'feature'
+    (a deterministic, $0-LLM market-data feature computed in the marketdata venv)."""
+    return (step.get("engine") or "llm").strip().lower()
+
+
+def _label_from_value(value, thresholds: dict) -> str | None:
+    """Map a numeric feature value to a label via config thresholds (mirror of
+    marketdata.features.label_from_value — kept inline to avoid a cross-venv import).
+
+    thresholds e.g. {"high": 1.5, "by": "abs", "highLabel": "high", "lowLabel": "low"}.
+    Returns None when value is None (no data => no label, fail closed)."""
+    if value is None:
+        return None
+    by = (thresholds or {}).get("by", "abs")
+    v = abs(value) if by == "abs" else value
+    hi = (thresholds or {}).get("high")
+    if hi is None:
+        return None
+    return (thresholds.get("highLabel", "high") if v >= hi
+            else thresholds.get("lowLabel", "low"))
+
+
+def _marketdata_feature(name: str, ticker: str, bench: str | None, as_of: str,
+                        params: dict, *, freq: str = "1d") -> dict:
+    """Compute one feature for (ticker, as_of) via the marketdata venv. Returns {value, version,
+    error?}; value is None when there's no data (fail closed — never fabricate a number)."""
+    if not _MARKETDATA_PY.exists():
+        return {"value": None, "error": "marketdata venv not found"}
+    cmd = [str(_MARKETDATA_PY), "-m", "marketdata.cli", "feature",
+           "--name", name, "--ticker", ticker, "--as-of", as_of,
+           "--params", json.dumps(params or {}), "--freq", freq]
+    if bench:
+        cmd += ["--bench", bench]
+    try:
+        r = subprocess.run(cmd, cwd=str(_REPO), capture_output=True, text=True, timeout=60)
+    except Exception as e:  # noqa: BLE001
+        return {"value": None, "error": str(e)[:200]}
+    if r.returncode != 0:
+        return {"value": None, "error": (r.stderr or "").strip()[-200:]}
+    try:
+        return json.loads(r.stdout)
+    except Exception as e:  # noqa: BLE001
+        return {"value": None, "error": f"bad feature output: {e}"}
+
+
+def _run_feature_step(step: dict, link: dict | None) -> dict:
+    """A `feature` step: compute a market-data feature for the doc's ticker(s)+as_of and emit a
+    signal. Multi-ticker docs take the most extreme value (max |value|). Fails open (doc kept,
+    no meta) when ticker/as_of/data are missing — logged via the trace reason."""
+    res = {"output": "signal", "dropped": False, "text": None, "meta": {}, "error": None}
+    feat = step.get("feature")
+    tickers = (link or {}).get("tickers") or []
+    as_of = (link or {}).get("as_of")
+    if not feat or not tickers or not as_of:
+        res["meta"]["_reason"] = "no ticker/as_of/feature"
+        return res
+    benches = (link or {}).get("benchmarks") or {}
+    params = step.get("params") or {}
+    best = None
+    for tk in tickers:
+        out = _marketdata_feature(feat, tk, benches.get(tk), as_of, params)
+        v = out.get("value")
+        if v is not None and (best is None or abs(v) > abs(best[0])):
+            best = (v, tk, out.get("version"))
+    if best is None:
+        res["meta"]["_reason"] = "no price data for window"
+        return res
+    value, tk, version = best
+    mk = step.get("metaKey") or step.get("id") or "feature"
+    label = _label_from_value(value, step.get("thresholds") or {})
+    res["meta"][mk] = label if label is not None else round(float(value), 4)
+    res["meta"]["_raw"] = f"{feat}={value:.4f} ticker={tk} v{version}"
+    return res
+
+
 def _output_mode(step: dict) -> str:
     """How the pipeline consumes a step's output: 'rewrite' or 'signal'.
 
@@ -118,12 +204,21 @@ def _output_mode(step: dict) -> str:
     return "signal" if (step.get("kind") or "").strip().lower() == "classify" else "rewrite"
 
 
-def run_one_step(step: dict, text: str, key: str, *, doc_type: str | None = None) -> dict:
+def run_one_step(step: dict, text: str, key: str, *, doc_type: str | None = None,
+                 link: dict | None = None) -> dict:
     """Execute one step against `text`.
 
     Returns {output, dropped, text, meta, error}. On a gateway error the step **fails open**
     (keeps the original text, no meta) so a transient hiccup never silently drops data.
+
+    A `feature`-engine step ignores `text` and computes a deterministic market-data value from
+    the `link` context (doc tickers + as_of); see `_run_feature_step`.
     """
+    if _engine(step) == "feature":
+        r = _run_feature_step(step, link)
+        r["text"] = text  # feature steps never rewrite
+        return r
+
     mode = _output_mode(step)
     model = step.get("model") or "preprocess"
     prompt = step.get("prompt") or ""
@@ -163,12 +258,16 @@ def run_one_step(step: dict, text: str, key: str, *, doc_type: str | None = None
 
 
 def run_steps(steps: list, text: str, key: str, *,
-              doc_type: str | None = None, tags: list | None = None) -> dict:
+              doc_type: str | None = None, tags: list | None = None,
+              link: dict | None = None) -> dict:
     """Run enabled, in-scope steps in order over `text`.
 
     Returns {text|None, meta, trace}: text=None means a rewrite step DROPped the doc. `meta`
     accumulates signal values (e.g. {"relevance": "high", "docType": "concall"}); a signal
     step that sets `docType` updates scope for later steps. `trace` is per-step for logging/UI.
+
+    `link` is the timeseries context (doc tickers + as_of + benchmarks) used by feature-engine
+    steps; it's resolved once per doc by the caller (ingest.py) and ignored by LLM steps.
     """
     meta: dict = {"docType": doc_type, "tags": list(tags or [])}
     trace: list = []
@@ -178,7 +277,7 @@ def run_steps(steps: list, text: str, key: str, *,
         name = step.get("name") or step.get("id") or "step"
         if not step_applies(step, cur_type):
             continue
-        r = run_one_step(step, cur, key, doc_type=cur_type)
+        r = run_one_step(step, cur, key, doc_type=cur_type, link=link)
         trace.append({
             "step": name, "output": r["output"], "dropped": r["dropped"],
             "error": r["error"],

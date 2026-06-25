@@ -275,6 +275,8 @@ const TABS = [
   {id:"chat", lbl:"Chat", icon:"ti-message-2"},
   {id:"transactions", lbl:"Transactions", icon:"ti-receipt"},
   {id:"knowledge", lbl:"Knowledge engine", icon:"ti-affiliate"},
+  {id:"signals", lbl:"Signals", icon:"ti-bolt"},
+  {id:"dispatch", lbl:"Dispatch", icon:"ti-calendar-bolt"},
   {id:"mcp", lbl:"MCP servers", icon:"ti-plug-connected"},
 ];
 const ICON = {hedgefund:"ti-chart-candle", msme:"ti-building-store", jarvis:"ti-robot"};
@@ -343,7 +345,7 @@ function renderTopbar(){
 }
 function renderTabs(){
   const p=curProj();
-  const tabs = TABS.filter(t=>t.id!=="knowledge" || hasGraph(p));
+  const tabs = TABS.filter(t=>(t.id!=="knowledge"&&t.id!=="signals") || hasGraph(p));
   if(!tabs.find(t=>t.id===state.tab)) state.tab="overview";
   $("#tabs").innerHTML = tabs.map(t=>`<div class="tab ${t.id===state.tab?"active":""}" onclick="selectTab('${t.id}')">
     <i class="ti ${t.icon}"></i>${t.lbl}</div>`).join("");
@@ -360,6 +362,8 @@ function renderContent(){
   else if(state.tab==="chat"){ c.innerHTML=viewChat(); afterChat(); }
   else if(state.tab==="transactions"){ c.innerHTML=`<div class="scroll"><div class="loading">loading ledger…</div></div>`; loadTxns(); }
   else if(state.tab==="knowledge"){ c.innerHTML=viewKnowledge(); afterKnowledge(); }
+  else if(state.tab==="signals"){ c.innerHTML=viewSignals(); afterSignals(); }
+  else if(state.tab==="dispatch"){ c.innerHTML=`<div class="scroll" id="dwrap"><div class="loading">loading tasks…</div></div>`; afterDispatch(); }
   else if(state.tab==="mcp"){ c.innerHTML=`<div class="scroll" id="mcpwrap"><div class="loading">loading MCP servers…</div></div>`; afterMcp(); }
 }
 
@@ -859,6 +863,220 @@ async function loadKJobs(){
   const el=$('#kjobs'); if(el) el.innerHTML = jobs.length? jobs.map(j=>`<div class="jobitem collapsed"><div class="jh" onclick="this.parentNode.classList.toggle('collapsed')"><span class="jbadge ${j.status}">${j.status==='running'?'<span class="spin"></span> running':j.status}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.summary||('job '+j.id))}</span><i class="ti ti-chevron-down"></i></div><div class="jlog">${esc(j.log||'(no output yet)')}</div></div>`).join('') : '<span class="muted">none yet</span>';
   if(jobs.some(j=>j.status==='running')) setTimeout(loadKJobs, 4000);
   else if(jobs.length){ loadSchema(a,true); }  // refresh stats once a job finishes
+}
+
+/* ====================== Signals — agent proposes, you approve ====================== */
+let SIGNALS={pending:[],approved:[],rejected:[]};
+function viewSignals(){
+  const sub=state.stab||(state.stab='propose');
+  const T=[['propose','ti-wand','Propose'],['pending','ti-inbox','Pending'],['approved','ti-checks','Approved'],['rejected','ti-trash','Rejected']];
+  return `<div class="scroll" style="display:flex;flex-direction:column">
+    <div class="ksub">${T.map(([k,i,l])=>`<span class="kst ${k===sub?'on':''}" onclick="sSub('${k}')"><i class="ti ${i}"></i>${l}${k!=='propose'?` <b style="opacity:.6">${(SIGNALS[k]||[]).length}</b>`:''}</span>`).join('')}</div>
+    <div id="sbody" style="flex:1;min-height:0"></div>
+  </div>`;
+}
+function sSub(k){ state.stab=k; renderContent(); }
+async function afterSignals(){
+  const a=state.alias;
+  try{ SIGNALS=await (await fetch(`/api/signals/${a}/proposals`)).json(); }catch(e){ SIGNALS={pending:[],approved:[],rejected:[]}; }
+  if(state.tab!=='signals'||state.alias!==a) return;
+  const sub=state.stab||'propose';
+  if(sub==='propose') renderSPropose();
+  else renderSList(sub);
+}
+function pct(v){ return v==null?'—':(v*100).toFixed(2)+'%'; }
+function sparkline(eq){
+  if(!eq||eq.length<2) return '';
+  const w=120,h=28,mn=Math.min(...eq),mx=Math.max(...eq),rng=(mx-mn)||1;
+  const pts=eq.map((v,i)=>`${(i/(eq.length-1)*w).toFixed(1)},${(h-((v-mn)/rng)*h).toFixed(1)}`).join(' ');
+  const up=eq[eq.length-1]>=eq[0];
+  return `<svg width="${w}" height="${h}" style="vertical-align:middle"><polyline points="${pts}" fill="none" stroke="${up?'#34d399':'#f87171'}" stroke-width="1.4"/></svg>`;
+}
+function renderSPropose(){
+  $('#sbody').innerHTML=`
+    <div class="panel">
+      <h3><i class="ti ti-wand"></i> Propose a signal from a seed</h3>
+      <div class="note" style="margin-bottom:8px">The agent queries the knowledge graph around your seed, forms one testable signal, and writes a proposal. It's auto-backtested against price history (deterministic, no extra LLM) and lands in <b>Pending</b> for your review.</div>
+      <textarea id="sseed" placeholder="An event or news to build a signal around, e.g. 'Morgan Stanley upgraded Tata Motors to Overweight citing JLR order book and FY26 margins'" style="width:100%;min-height:90px"></textarea>
+      <div class="edit" style="margin-top:10px;flex-wrap:wrap;align-items:center;gap:10px">
+        <span class="note">direction</span>
+        <select id="sdir"><option value="long">long</option><option value="short">short</option></select>
+        <span class="note">horizon</span>
+        <input id="shorizon" value="5d" style="width:64px" title="forward window, e.g. 5d">
+        <span class="spacer"></span>
+        <button onclick="sPropose()"><i class="ti ti-bolt"></i> Propose signal</button>
+      </div>
+      <div class="note" id="snote" style="margin-top:8px"></div>
+    </div>
+    <div class="panel"><h3><i class="ti ti-history"></i> Proposal runs</h3><div id="sjobs"><span class="muted">none yet</span></div></div>`;
+  loadSJobs();
+}
+async function sPropose(){
+  const seed=($('#sseed')?.value||'').trim(), note=$('#snote');
+  if(!seed){ note.textContent='enter a seed first'; return; }
+  note.textContent='starting agent…';
+  const direction=$('#sdir')?.value||'long', horizon=($('#shorizon')?.value||'5d').trim();
+  let r; try{ r=await (await fetch(`/api/signals/${state.alias}/propose`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seed,direction,horizon})})).json(); }
+  catch(e){ note.textContent='failed: '+e.message; return; }
+  if(r.ok){ note.textContent=`✓ run #${r.job} started — the agent is proposing, then backtesting`; $('#sseed').value=''; loadSJobs(); }
+  else note.textContent='✗ '+(r.detail||r.error||'failed');
+}
+async function loadSJobs(){
+  const a=state.alias;
+  let jobs=[]; try{ jobs=(await (await fetch(`/api/signals/${a}/jobs`)).json()).jobs||[]; }catch(e){}
+  if(state.tab!=='signals'||state.alias!==a||state.stab!=='propose') return;
+  const el=$('#sjobs'); if(el) el.innerHTML = jobs.length? jobs.map(j=>`<div class="jobitem collapsed"><div class="jh" onclick="this.parentNode.classList.toggle('collapsed')"><span class="jbadge ${j.status}">${j.status==='running'?'<span class="spin"></span> running':j.status}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.seed||('run '+j.id))}</span><i class="ti ti-chevron-down"></i></div><div class="jlog">${esc(j.log||'(no output yet)')}</div></div>`).join('') : '<span class="muted">none yet</span>';
+  if(jobs.some(j=>j.status==='running')) setTimeout(loadSJobs, 4000);
+  else if(jobs.some(j=>j.status==='done')) afterSignals();  // refresh pending once a run lands
+}
+function sCard(p, actions){
+  const st=(p.backtest&&p.backtest.stats)||{}, tr=(p.trigger&&p.trigger.match)||{};
+  const bterr=(p.backtest&&p.backtest.error);
+  return `<div class="panel" style="margin-bottom:12px">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="flex:1">
+        <div style="font-weight:600;margin-bottom:3px">${esc(p.thesis||p.id)}</div>
+        <div class="note">${esc(p.seed||'')}</div>
+      </div>
+      <span class="chip">${esc(p.direction||'?')} · ${esc(String(p.horizon||''))}</span>
+    </div>
+    <div class="kbar" style="margin:10px 0 6px;flex-wrap:wrap">
+      ${bterr?`<span class="chip" style="color:#f87171">backtest error</span>`:`
+      <span class="chip">events <b>${st.n??'—'}</b></span>
+      <span class="chip">hit-rate <b>${st.hitRate==null?'—':pct(st.hitRate)}</b></span>
+      <span class="chip">avg fwd <b>${st.avgFwdRet==null?'—':pct(st.avgFwdRet)}</b></span>
+      <span class="chip">t-stat <b>${st.tStat??'—'}</b></span>
+      <span class="chip">IC <b>${st.ic??'—'}</b></span>
+      <span class="spacer"></span>${sparkline(st.equityCurve)}`}
+    </div>
+    <div class="tags" style="margin-bottom:8px">${(tr.tickers||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}${(tr.keywordAny||[]).slice(0,5).map(k=>`<span class="tag" style="opacity:.6">${esc(k)}</span>`).join('')}</div>
+    ${p.rejectReason?`<div class="note" style="color:#f87171">rejected: ${esc(p.rejectReason)}</div>`:''}
+    ${actions?`<div class="edit" style="margin-top:8px;gap:8px">
+      <button onclick="sApprove('${esc(p.id)}')"><i class="ti ti-check"></i> Approve</button>
+      <button class="ghost" onclick="sReject('${esc(p.id)}')"><i class="ti ti-x"></i> Reject</button>
+      <span class="spacer"></span><span class="muted" style="font-size:11px">${esc(p.id)}</span>
+    </div>`:`<div class="muted" style="font-size:11px;margin-top:4px">${esc(p.id)}</div>`}
+  </div>`;
+}
+function renderSList(status){
+  const list=SIGNALS[status]||[];
+  $('#sbody').innerHTML = list.length ? list.map(p=>sCard(p, status==='pending')).join('')
+    : `<div class="panel"><span class="muted">no ${status} proposals</span></div>`;
+}
+async function sApprove(pid){
+  if(!confirm('Approve this signal? It will be written into the graph as a validated Signal node.')) return;
+  try{ const r=await (await fetch(`/api/signals/${state.alias}/proposals/${pid}/approve`,{method:'POST'})).json();
+    if(!r.ok){ alert('approve failed: '+(r.detail||'')); return; } }catch(e){ alert('approve failed: '+e.message); return; }
+  afterSignals();
+}
+async function sReject(pid){
+  const reason=prompt('Reject reason (optional):','')||'';
+  try{ await fetch(`/api/signals/${state.alias}/proposals/${pid}/reject`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason})}); }
+  catch(e){ alert('reject failed: '+e.message); return; }
+  afterSignals();
+}
+
+/* ====================== Dispatch — user-defined tasks, manual or scheduled ====================== */
+let DTASKS=[];
+const WD=[['','Any day'],['1','Sun'],['2','Mon'],['3','Tue'],['4','Wed'],['5','Thu'],['6','Fri'],['7','Sat']];
+async function afterDispatch(){
+  const a=state.alias;
+  try{ DTASKS=(await (await fetch(`/api/dispatch/${a}`)).json()).tasks||[]; }catch(e){ DTASKS=[]; }
+  if(state.tab!=='dispatch'||state.alias!==a) return;
+  renderDispatch();
+}
+function schedSummary(t){
+  if(!t.schedule) return 'manual only';
+  const s=t.schedule, wd=(WD.find(w=>String(w[0])===String(s.weekday??''))||['','Any day'])[1];
+  return `${wd} ${String(s.hour??9).padStart(2,'0')}:${String(s.minute??0).padStart(2,'0')}`;
+}
+function renderDispatch(){
+  const wrap=$('#dwrap'); if(!wrap) return;
+  wrap.innerHTML = `
+    <div class="note" style="margin-bottom:12px">User-defined tasks. They run <b>only</b> when you click <b>Run now</b> or on a schedule you enable (a LaunchAgent). Nothing here runs automatically.</div>
+    ${DTASKS.map(dCard).join('')}
+    <div class="panel" style="border-style:dashed">
+      <h3><i class="ti ti-plus"></i> New task</h3>
+      <div class="edit" style="flex-wrap:wrap;gap:8px">
+        <input id="dn_name" placeholder="name" style="width:170px">
+        <input id="dn_cmd" placeholder="command (e.g. marketdata/.venv/bin/python -m signals.sweep --project hedgefund)" style="flex:1;min-width:260px">
+      </div>
+      <div class="edit" style="flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center">
+        <input id="dn_desc" placeholder="description (optional)" style="flex:1;min-width:200px">
+        <span class="spacer"></span>
+        <button onclick="dSave()"><i class="ti ti-plus"></i> Add task</button>
+      </div>
+      <div class="note" id="dnote" style="margin-top:6px"></div>
+    </div>
+    <div class="panel"><h3><i class="ti ti-history"></i> Run log</h3><div id="djobs"><span class="muted">none yet</span></div></div>`;
+  loadDJobs();
+}
+function dCard(t){
+  const s=t.schedule||{};
+  return `<div class="panel" style="margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="font-weight:600">${esc(t.name)}</div>
+      ${t.scheduled?`<span class="chip" style="color:#34d399">scheduled · ${esc(schedSummary(t))}</span>`:`<span class="chip">manual</span>`}
+      <span class="spacer"></span><span class="muted" style="font-size:11px">${esc(t.id)}</span>
+    </div>
+    ${t.description?`<div class="note" style="margin-top:3px">${esc(t.description)}</div>`:''}
+    <pre style="margin:8px 0;white-space:pre-wrap;word-break:break-all"><code>${esc(t.command)}</code></pre>
+    <div class="edit" style="flex-wrap:wrap;gap:8px;align-items:center">
+      <span class="note">at</span>
+      <input id="dh_${t.id}" type="number" min="0" max="23" value="${s.hour??9}" style="width:54px" title="hour">
+      <span>:</span>
+      <input id="dm_${t.id}" type="number" min="0" max="59" value="${s.minute??0}" style="width:54px" title="minute">
+      <select id="dw_${t.id}">${WD.map(([v,l])=>`<option value="${v}" ${String(v)===String(s.weekday??'')?'selected':''}>${l}</option>`).join('')}</select>
+      <span class="spacer"></span>
+      <button onclick="dRun('${t.id}')"><i class="ti ti-player-play"></i> Run now</button>
+      ${t.scheduled
+        ? `<button class="ghost" onclick="dUnschedule('${t.id}')"><i class="ti ti-calendar-off"></i> Disable schedule</button>`
+        : `<button class="ghost" onclick="dSchedule('${t.id}')"><i class="ti ti-calendar-plus"></i> Enable schedule</button>`}
+      <button class="ghost" onclick="dDelete('${t.id}')"><i class="ti ti-trash"></i></button>
+    </div>
+  </div>`;
+}
+function dTaskById(id){ return DTASKS.find(t=>t.id===id); }
+function dSchedFields(id){
+  const wd=$(`#dw_${id}`)?.value||'';
+  return {hour:parseInt($(`#dh_${id}`)?.value||'9',10), minute:parseInt($(`#dm_${id}`)?.value||'0',10),
+          ...(wd!==''?{weekday:parseInt(wd,10)}:{})};
+}
+async function dSave(){
+  const name=($('#dn_name')?.value||'').trim(), command=($('#dn_cmd')?.value||'').trim(), description=($('#dn_desc')?.value||'').trim(), note=$('#dnote');
+  if(!command){ note.textContent='command required'; return; }
+  let r; try{ r=await (await fetch(`/api/dispatch/${state.alias}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,command,description})})).json(); }
+  catch(e){ note.textContent='failed: '+e.message; return; }
+  if(r.ok) afterDispatch(); else note.textContent='✗ '+(r.detail||'failed');
+}
+async function dRun(id){
+  try{ const r=await (await fetch(`/api/dispatch/${state.alias}/${id}/run`,{method:'POST'})).json(); if(!r.ok){ alert('run failed'); return; } }
+  catch(e){ alert('run failed: '+e.message); return; }
+  loadDJobs();
+}
+async function dSchedule(id){
+  const t=dTaskById(id); if(!t) return;
+  // persist the (possibly edited) schedule, then enable the LaunchAgent
+  await fetch(`/api/dispatch/${state.alias}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:t.id,name:t.name,description:t.description,command:t.command,cwd:t.cwd,schedule:dSchedFields(id)})});
+  try{ const r=await (await fetch(`/api/dispatch/${state.alias}/${id}/schedule`,{method:'POST'})).json(); if(!r.ok){ alert('schedule failed: '+(r.detail||'')); } }
+  catch(e){ alert('schedule failed: '+e.message); }
+  afterDispatch();
+}
+async function dUnschedule(id){
+  try{ await fetch(`/api/dispatch/${state.alias}/${id}/unschedule`,{method:'POST'}); }catch(e){}
+  afterDispatch();
+}
+async function dDelete(id){
+  if(!confirm('Delete this task?')) return;
+  try{ await fetch(`/api/dispatch/${state.alias}/${id}`,{method:'DELETE'}); }catch(e){}
+  afterDispatch();
+}
+async function loadDJobs(){
+  const a=state.alias;
+  let jobs=[]; try{ jobs=(await (await fetch(`/api/dispatch/${a}/jobs`)).json()).jobs||[]; }catch(e){}
+  if(state.tab!=='dispatch'||state.alias!==a) return;
+  const el=$('#djobs'); if(el) el.innerHTML = jobs.length? jobs.map(j=>`<div class="jobitem collapsed"><div class="jh" onclick="this.parentNode.classList.toggle('collapsed')"><span class="jbadge ${j.status}">${j.status==='running'?'<span class="spin"></span> running':j.status}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.name||('job '+j.id))}</span><i class="ti ti-chevron-down"></i></div><div class="jlog">${esc(j.log||'(no output yet)')}</div></div>`).join('') : '<span class="muted">none yet</span>';
+  if(jobs.some(j=>j.status==='running')) setTimeout(loadDJobs, 3000);
 }
 
 /* --- ontology (tags / custom types / OWL) --- */

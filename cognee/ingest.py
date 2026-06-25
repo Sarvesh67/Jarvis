@@ -23,6 +23,7 @@ from collections import defaultdict
 import jarvis_cognee as jc
 import preprocess
 import routing
+import linker
 import cognee
 
 BASE = pathlib.Path(__file__).resolve().parent
@@ -182,6 +183,11 @@ async def main():
     files = job.get("files") or []
     tags = [t for t in (job.get("tags") or []) if t]
     doc_type = (job.get("doc_type") or "").strip() or None
+    # Timeseries linkage: explicit as_of/tickers from the job; tickers also auto-resolved from
+    # the doc text via the curated symbols.json (never guessed). Stamped into the graph as
+    # namespaced node_set tags so the backtester can join doc events to price history.
+    as_of = linker.normalize_asof(job.get("as_of"))
+    explicit_tickers = [t for t in (job.get("tickers") or []) if t]
     do_preprocess = job.get("preprocess", True)
     # Manual extractor override (e.g. "openai/extractor-pro"): wins over routing for the
     # whole job. Empty / "auto" defers to the configured cognify strategy.
@@ -204,6 +210,19 @@ async def main():
         _say(f"pre-processing on: {len([s for s in steps if s.get('enabled', True)])} step(s)"
              + (f", doc_type={doc_type}" if doc_type else ""))
 
+    # --- Resolve ticker(s) + as_of BEFORE preprocessing, so feature-engine steps (e.g. price
+    #     relevance) have their timeseries context. Resolve from the raw inputs (job text + any
+    #     readable text files). Tickers/as_of also become provenance node_set tags at cognify. ---
+    symbols = linker.load_symbols(project)
+    _resolve_parts = [text] + [_read_text(f) for f in files if _is_textfile(f)]
+    raw_blob = " ".join(p for p in _resolve_parts if p)
+    tickers = linker.resolve_tickers(raw_blob, symbols, explicit=explicit_tickers)
+    benchmarks = {t: linker.benchmark_for(t, symbols) for t in tickers}
+    link_ctx = {"tickers": tickers, "as_of": as_of, "benchmarks": benchmarks}
+    prov_tags = linker.provenance_tags(tickers, as_of)  # ['ticker:INFY.NS', 'asof:2024-06-14']
+    node_set = (tags + prov_tags) or None
+    _say(f"linked: tickers={tickers or '—'} as_of={as_of or '—'}")
+
     # --- Preprocess each item into cleaned prose (+meta), or drop it. ---
     prepared: list[tuple[str, dict]] = []   # (text, meta)
     raw_files: list[str] = []               # binary/unknown files → straight to Cognee
@@ -215,7 +234,8 @@ async def main():
         if not pp_on:
             return raw, {"docType": dtype}
         preprocess_tokens += _est_tokens(raw) * 2  # in + out, rough
-        out = preprocess.run_steps(steps_resolved, raw, key, doc_type=dtype, tags=tags)
+        out = preprocess.run_steps(steps_resolved, raw, key, doc_type=dtype, tags=tags,
+                                   link=link_ctx)
         for t in out.get("trace", []):
             flag = "DROP" if t.get("dropped") else (t.get("error") or "ok")
             extra = f" meta={t['meta']}" if t.get("meta") else ""
@@ -283,7 +303,7 @@ async def main():
         _say(f"  → {model_alias}: {len(items)} item(s)")
         # cognify is incremental (processes only un-cognified data), so adding a bucket and
         # cognifying it with its model, then the next, gives per-document model routing.
-        await cognee.add(items, dataset_name=project, node_set=tags or None)
+        await cognee.add(items, dataset_name=project, node_set=node_set)
         cognee.config.set_llm_model(model_alias)
         await cognee.cognify(**cog_kwargs)
 

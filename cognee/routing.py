@@ -28,8 +28,10 @@ Routing config shape:
 
 A rule matches when **every** condition in its `if` holds (AND). Supported conditions:
 `docType` (in list), `tag` (any overlap), `pattern` (regex over text), `relevance` (in list,
-typically set by a classify preprocessing step), `minLength` / `maxLength` (chars). An empty
-`if` never matches — use `defaultModel` for the catch-all. First matching rule wins.
+typically set by a classify preprocessing step), `signal` (a `{metaKey: [values]}` map matching
+ANY preprocess meta signal — e.g. `{"pricemove": ["high"]}` from the price-relevance feature
+step), `minLength` / `maxLength` (chars). An empty `if` never matches — use `defaultModel` for
+the catch-all. First matching rule wins.
 """
 from __future__ import annotations
 
@@ -75,13 +77,17 @@ def _as_list(v) -> list:
 
 
 def signals_for(text: str, meta: dict | None, tags: list | None) -> dict:
-    """Build the signal dict the router evaluates, from an item's text + preprocessing meta."""
+    """Build the signal dict the router evaluates, from an item's text + preprocessing meta.
+
+    `meta` is passed through whole so a rule's generic `signal` condition can match ANY
+    preprocess output (e.g. a `pricemove` feature signal), not just docType/relevance."""
     meta = meta or {}
     return {
         "docType": meta.get("docType"),
         "relevance": meta.get("relevance"),
         "tags": list(tags or []),
         "text": text or "",
+        "meta": {k: v for k, v in meta.items() if not str(k).startswith("_")},
     }
 
 
@@ -104,6 +110,12 @@ def _rule_matches(cond: dict, signals: dict) -> bool:
     if "relevance" in cond:
         if relevance is None or relevance not in _as_list(cond["relevance"]):
             return False
+    if "signal" in cond:
+        # Generic: match arbitrary preprocess meta signals, e.g. {"signal": {"pricemove": ["high"]}}.
+        meta = signals.get("meta") or {}
+        for skey, allowed in (cond["signal"] or {}).items():
+            if meta.get(skey) not in _as_list(allowed):
+                return False
     if cond.get("pattern"):
         try:
             if not re.search(cond["pattern"], text, re.IGNORECASE):

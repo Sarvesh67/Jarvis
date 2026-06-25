@@ -13,7 +13,9 @@ import base64
 import json
 import os
 import pathlib
+import plistlib
 import re
+import subprocess
 
 import httpx
 import yaml
@@ -1090,6 +1092,385 @@ async def knowledge_ingest(alias: str, body: IngestBody):
 def knowledge_jobs(alias: str):
     _kproj(alias)
     return {"jobs": JOBS.get(alias, [])}
+
+
+# =====================================================================================
+# Signals — "agent proposes, you approve". The orchestrator (signals/orchestrate.py) runs a
+# headless Hermes agent that writes a proposal JSON, then auto-backtests it (deterministic) into
+# the review queue. Endpoints below drive the queue + the approve/reject gate. hedgefund-style
+# projects only (they have a Cognee graph + linked timeseries).
+# =====================================================================================
+REPO_DIR = BASE.parent
+SIGNAL_JOBS: dict = {}  # alias -> [recent propose jobs]
+_SIG_SEQ = 0
+
+
+def _signals_dirs(alias: str) -> dict:
+    base = COGNEE_DIR / "data" / alias / "proposals"
+    return {k: base / k for k in ("inbox", "pending", "approved", "rejected")}
+
+
+def _list_proposals(alias: str, status: str) -> list:
+    d = _signals_dirs(alias).get(status)
+    out = []
+    if d and d.exists():
+        for f in d.glob("*.json"):
+            if f.name.startswith(".bt_"):
+                continue
+            try:
+                out.append(json.loads(f.read_text()))
+            except Exception:  # noqa: BLE001
+                pass
+    out.sort(key=lambda p: p.get("createdAt", ""), reverse=True)
+    return out
+
+
+class ProposeBody(BaseModel):
+    seed: str = ""
+    horizon: str = "5d"
+    direction: str = "long"  # long | short
+
+
+class RejectBody(BaseModel):
+    reason: str = ""
+
+
+async def _run_propose(alias: str, jid: int, seed: str, horizon: str, direction: str):
+    job = next((j for j in SIGNAL_JOBS.get(alias, []) if j["id"] == jid), None)
+    if not job:
+        return
+    ansi = re.compile(r"\x1b\[[0-9;]*m")
+    ts = re.compile(r"^\d{4}-\d\d-\d\dT")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            str(COGNEE_PY), "-m", "signals.orchestrate", "propose", "--project", alias,
+            "--seed", seed, "--horizon", horizon, "--direction", direction,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            cwd=str(REPO_DIR), env=_proc_env(),
+        )
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            s = ansi.sub("", line.decode(errors="replace"))
+            if s.strip() and not ts.match(s.strip()):
+                job["log"] = (job["log"] + s)[-6000:]
+        rc = await proc.wait()
+        job["status"] = "done" if (rc == 0 and "PROPOSE_DONE" in job["log"]) else "failed"
+    except Exception as e:  # noqa: BLE001
+        job["log"] += f"\nerror: {e}"
+        job["status"] = "failed"
+
+
+@app.post("/api/signals/{alias}/propose")
+async def signals_propose(alias: str, body: ProposeBody):
+    _kproj(alias)
+    seed = (body.seed or "").strip()
+    if not seed:
+        raise HTTPException(400, "seed required")
+    if not HERMES_BIN.exists():
+        raise HTTPException(500, "hermes not found")
+    global _SIG_SEQ
+    _SIG_SEQ += 1
+    jid = _SIG_SEQ
+    SIGNAL_JOBS.setdefault(alias, []).insert(
+        0, {"id": jid, "status": "running", "log": "", "seed": seed[:80]})
+    SIGNAL_JOBS[alias] = SIGNAL_JOBS[alias][:20]
+    asyncio.create_task(_run_propose(alias, jid, seed, body.horizon, body.direction))
+    return {"ok": True, "job": jid}
+
+
+@app.get("/api/signals/{alias}/jobs")
+def signals_jobs(alias: str):
+    _kproj(alias)
+    return {"jobs": SIGNAL_JOBS.get(alias, [])}
+
+
+@app.get("/api/signals/{alias}/proposals")
+def signals_proposals(alias: str):
+    _kproj(alias)
+    return {k: _list_proposals(alias, k) for k in ("pending", "approved", "rejected")}
+
+
+def _write_signal_node(graph_name: str, p: dict):
+    """Write an APPROVED proposal as an isolated :Signal node (its own label, NOT mixed into the
+    doc graph) linked to the ticker NodeSets it trades. Direct FalkorDB write — no cognify, $0 LLM,
+    so approved signals never feed back into doc retrieval/extraction."""
+    stats = ((p.get("backtest") or {}).get("stats")) or {}
+    g = _falkor().select_graph(graph_name)
+    g.query(
+        "MERGE (s:Signal {id:$id}) SET s.thesis=$thesis, s.direction=$direction, "
+        "s.horizon=$horizon, s.hitRate=$hitRate, s.n=$n, s.avgFwdRet=$avg, s.ic=$ic, "
+        "s.tStat=$t, s.createdAt=$createdAt, s.approvedAt=$approvedAt",
+        params={"id": p["id"], "thesis": p.get("thesis", ""),
+                "direction": p.get("direction", ""), "horizon": str(p.get("horizon", "")),
+                "hitRate": stats.get("hitRate"), "n": stats.get("n"),
+                "avg": stats.get("avgFwdRet"), "ic": stats.get("ic"), "t": stats.get("tStat"),
+                "createdAt": p.get("createdAt", ""), "approvedAt": _now_iso()},
+    )
+    tickers = ((p.get("trigger") or {}).get("match") or {}).get("tickers") or p.get("universe") or []
+    for tk in tickers:
+        g.query(
+            "MATCH (s:Signal {id:$id}), (n:NodeSet {name:$name}) MERGE (s)-[:SIGNAL_ON]->(n)",
+            params={"id": p["id"], "name": f"ticker:{tk}"},
+        )
+
+
+@app.post("/api/signals/{alias}/proposals/{pid}/approve")
+def signals_approve(alias: str, pid: str):
+    proj = _kproj(alias)
+    dirs = _signals_dirs(alias)
+    src = dirs["pending"] / f"{pid}.json"
+    if not src.exists():
+        raise HTTPException(404, "proposal not found in pending")
+    p = json.loads(src.read_text())
+    p["status"] = "approved"
+    p["approvedAt"] = _now_iso()
+    try:
+        _write_signal_node(proj["graph"], p)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"failed to write signal node: {e}")
+    dirs["approved"].mkdir(parents=True, exist_ok=True)
+    (dirs["approved"] / f"{pid}.json").write_text(json.dumps(p, indent=2))
+    src.unlink(missing_ok=True)
+    return {"ok": True, "status": "approved"}
+
+
+@app.post("/api/signals/{alias}/proposals/{pid}/reject")
+def signals_reject(alias: str, pid: str, body: RejectBody):
+    _kproj(alias)
+    dirs = _signals_dirs(alias)
+    src = dirs["pending"] / f"{pid}.json"
+    if not src.exists():
+        raise HTTPException(404, "proposal not found in pending")
+    p = json.loads(src.read_text())
+    p["status"] = "rejected"
+    p["rejectedAt"] = _now_iso()
+    p["rejectReason"] = (body.reason or "").strip()
+    dirs["rejected"].mkdir(parents=True, exist_ok=True)
+    (dirs["rejected"] / f"{pid}.json").write_text(json.dumps(p, indent=2))
+    src.unlink(missing_ok=True)
+    return {"ok": True, "status": "rejected"}
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# =====================================================================================
+# Dispatch — a generic, user-defined task runner. A task is any command; it runs ONLY when the
+# user clicks "Run now" or on a schedule the user enables (a LaunchAgent the user owns). Nothing
+# runs automatically/event-driven. The weekly signal sweep and the 1-minute capture are just
+# seeded example tasks. Dashboard is bound 127.0.0.1, so blast radius is local-only.
+# =====================================================================================
+DISPATCH_DIR = pathlib.Path.home() / ".jarvis-dashboard" / "dispatch"
+LAUNCHAGENTS = pathlib.Path.home() / "Library" / "LaunchAgents"
+DISPATCH_JOBS: dict = {}
+_DISP_SEQ = 0
+MD_PY = REPO_DIR / "marketdata" / ".venv" / "bin" / "python"
+
+
+def _dispatch_file(alias: str) -> pathlib.Path:
+    return DISPATCH_DIR / f"{alias}.json"
+
+
+def _seed_dispatch(alias: str) -> list:
+    """Curated example tasks (unscheduled — user enables). Only for the hedgefund project."""
+    if alias != "hedgefund":
+        return []
+    return [
+        {"id": "weekly-sweep", "name": "Weekly signal sweep",
+         "description": "Rank high-value doc-events and propose signals for the top picks.",
+         "command": f"{MD_PY} -m signals.sweep --project hedgefund --top-n 3",
+         "cwd": str(REPO_DIR), "schedule": None},
+        {"id": "capture-1m", "name": "Capture 1-minute bars (NSE)",
+         "description": "Append the last few days of 1m bars (yfinance) — accumulates intraday history.",
+         "command": (f"{MD_PY} -m marketdata.cli load --freq 1m "
+                     "--spec '{\"kind\":\"yfinance\"}' --tickers TATAMOTORS.NS RELIANCE.NS INFY.NS"),
+         "cwd": str(REPO_DIR), "schedule": None},
+    ]
+
+
+def _read_dispatch(alias: str) -> list:
+    f = _dispatch_file(alias)
+    if f.exists():
+        try:
+            return json.loads(f.read_text())
+        except Exception:  # noqa: BLE001
+            pass
+    tasks = _seed_dispatch(alias)
+    _write_dispatch(alias, tasks)
+    return tasks
+
+
+def _write_dispatch(alias: str, tasks: list):
+    DISPATCH_DIR.mkdir(parents=True, exist_ok=True)
+    _dispatch_file(alias).write_text(json.dumps(tasks, indent=2))
+
+
+def _plist_path(alias: str, tid: str) -> pathlib.Path:
+    return LAUNCHAGENTS / f"com.jarvis.dispatch.{alias}.{tid}.plist"
+
+
+def _is_scheduled(alias: str, tid: str) -> bool:
+    return _plist_path(alias, tid).exists()
+
+
+def _task_view(alias: str, t: dict) -> dict:
+    return {**t, "scheduled": _is_scheduled(alias, t["id"])}
+
+
+class DispatchTask(BaseModel):
+    id: str = ""
+    name: str = ""
+    description: str = ""
+    command: str = ""
+    cwd: str = ""
+    schedule: dict | None = None  # {hour, minute, weekday?} or null (manual-only)
+
+
+@app.get("/api/dispatch/{alias}")
+def dispatch_list(alias: str):
+    if not any(p["alias"] == alias for p in PROJECTS):
+        raise HTTPException(404, "unknown project")
+    return {"tasks": [_task_view(alias, t) for t in _read_dispatch(alias)]}
+
+
+@app.post("/api/dispatch/{alias}")
+def dispatch_upsert(alias: str, body: DispatchTask):
+    if not any(p["alias"] == alias for p in PROJECTS):
+        raise HTTPException(404, "unknown project")
+    if not body.command.strip():
+        raise HTTPException(400, "command required")
+    tasks = _read_dispatch(alias)
+    tid = body.id.strip() or re.sub(r"[^a-z0-9]+", "-", (body.name or "task").lower()).strip("-") \
+        or f"task-{len(tasks) + 1}"
+    rec = {"id": tid, "name": body.name or tid, "description": body.description,
+           "command": body.command, "cwd": body.cwd or str(REPO_DIR), "schedule": body.schedule}
+    tasks = [t for t in tasks if t["id"] != tid] + [rec]
+    _write_dispatch(alias, tasks)
+    # keep an enabled schedule in sync with the saved definition
+    if _is_scheduled(alias, tid):
+        _schedule_task(alias, rec)
+    return {"ok": True, "task": _task_view(alias, rec)}
+
+
+@app.delete("/api/dispatch/{alias}/{tid}")
+def dispatch_delete(alias: str, tid: str):
+    if not any(p["alias"] == alias for p in PROJECTS):
+        raise HTTPException(404, "unknown project")
+    if _is_scheduled(alias, tid):
+        _unschedule_task(alias, tid)
+    _write_dispatch(alias, [t for t in _read_dispatch(alias) if t["id"] != tid])
+    return {"ok": True}
+
+
+async def _run_dispatch(alias: str, jid: int, task: dict):
+    job = next((j for j in DISPATCH_JOBS.get(alias, []) if j["id"] == jid), None)
+    if not job:
+        return
+    ansi = re.compile(r"\x1b\[[0-9;]*m")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "/bin/zsh", "-lc", task["command"],
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            cwd=task.get("cwd") or str(REPO_DIR), env=_proc_env(),
+        )
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            job["log"] = (job["log"] + ansi.sub("", line.decode(errors="replace")))[-8000:]
+        rc = await proc.wait()
+        job["status"] = "done" if rc == 0 else "failed"
+        job["log"] += f"\n[exit {rc}]"
+    except Exception as e:  # noqa: BLE001
+        job["log"] += f"\nerror: {e}"
+        job["status"] = "failed"
+
+
+@app.post("/api/dispatch/{alias}/{tid}/run")
+async def dispatch_run(alias: str, tid: str):
+    if not any(p["alias"] == alias for p in PROJECTS):
+        raise HTTPException(404, "unknown project")
+    task = next((t for t in _read_dispatch(alias) if t["id"] == tid), None)
+    if not task:
+        raise HTTPException(404, "task not found")
+    global _DISP_SEQ
+    _DISP_SEQ += 1
+    jid = _DISP_SEQ
+    DISPATCH_JOBS.setdefault(alias, []).insert(
+        0, {"id": jid, "status": "running", "log": "", "name": task["name"]})
+    DISPATCH_JOBS[alias] = DISPATCH_JOBS[alias][:20]
+    asyncio.create_task(_run_dispatch(alias, jid, task))
+    return {"ok": True, "job": jid}
+
+
+@app.get("/api/dispatch/{alias}/jobs")
+def dispatch_jobs(alias: str):
+    if not any(p["alias"] == alias for p in PROJECTS):
+        raise HTTPException(404, "unknown project")
+    return {"jobs": DISPATCH_JOBS.get(alias, [])}
+
+
+def _launchctl(*args) -> subprocess.CompletedProcess:
+    return subprocess.run(["launchctl", *args], capture_output=True, text=True)
+
+
+def _schedule_task(alias: str, task: dict) -> str:
+    """Write + (re)load a LaunchAgent plist for the task's schedule. User-owned, manual to enable."""
+    sched = task.get("schedule") or {}
+    cal = {"Hour": int(sched.get("hour", 9)), "Minute": int(sched.get("minute", 0))}
+    if str(sched.get("weekday", "")) != "":
+        cal["Weekday"] = int(sched["weekday"])  # 0/7=Sun..6=Sat
+    logdir = DISPATCH_DIR / "logs"
+    logdir.mkdir(parents=True, exist_ok=True)
+    label = f"com.jarvis.dispatch.{alias}.{task['id']}"
+    pl = {
+        "Label": label,
+        "ProgramArguments": ["/bin/zsh", "-lc", task["command"]],
+        "WorkingDirectory": task.get("cwd") or str(REPO_DIR),
+        "StartCalendarInterval": cal,
+        "RunAtLoad": False,  # never run just because it was (re)loaded
+        "StandardOutPath": str(logdir / f"{task['id']}.out.log"),
+        "StandardErrorPath": str(logdir / f"{task['id']}.err.log"),
+    }
+    LAUNCHAGENTS.mkdir(parents=True, exist_ok=True)
+    path = _plist_path(alias, task["id"])
+    path.write_bytes(plistlib.dumps(pl))
+    uid = os.getuid()
+    _launchctl("bootout", f"gui/{uid}", str(path))  # idempotent: clear a prior load
+    _launchctl("bootstrap", f"gui/{uid}", str(path))
+    return label
+
+
+def _unschedule_task(alias: str, tid: str):
+    path = _plist_path(alias, tid)
+    if path.exists():
+        _launchctl("bootout", f"gui/{os.getuid()}", str(path))
+        path.unlink(missing_ok=True)
+
+
+@app.post("/api/dispatch/{alias}/{tid}/schedule")
+def dispatch_schedule(alias: str, tid: str):
+    if not any(p["alias"] == alias for p in PROJECTS):
+        raise HTTPException(404, "unknown project")
+    task = next((t for t in _read_dispatch(alias) if t["id"] == tid), None)
+    if not task:
+        raise HTTPException(404, "task not found")
+    if not task.get("schedule"):
+        raise HTTPException(400, "task has no schedule (set hour/minute first)")
+    label = _schedule_task(alias, task)
+    return {"ok": True, "scheduled": True, "label": label}
+
+
+@app.post("/api/dispatch/{alias}/{tid}/unschedule")
+def dispatch_unschedule(alias: str, tid: str):
+    if not any(p["alias"] == alias for p in PROJECTS):
+        raise HTTPException(404, "unknown project")
+    _unschedule_task(alias, tid)
+    return {"ok": True, "scheduled": False}
 
 
 @app.get("/", response_class=HTMLResponse)

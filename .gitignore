@@ -45,3 +45,6 @@ bench/bench-reports/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# ─── Market-data store (Parquet/DuckDB; regenerated from source adapters) ──────
+marketdata/store/

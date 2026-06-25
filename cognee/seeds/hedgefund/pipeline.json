@@ -5,6 +5,7 @@
       {
         "id": "clean-filter",
         "name": "Clean & filter",
+        "engine": "llm",
         "output": "rewrite",
         "enabled": true,
         "model": "preprocess",
@@ -16,6 +17,7 @@
       {
         "id": "relevance",
         "name": "Relevance classify",
+        "engine": "llm",
         "output": "signal",
         "enabled": true,
         "model": "preprocess",
@@ -25,6 +27,19 @@
         "intent": "Label a doc 'high' if it is market-moving or company-specific fundamental signal; 'low' otherwise.",
         "prompt": "Classify this financial document's importance for an investment knowledge graph. Output exactly one word, lowercase: 'high' if it carries market-moving or company-specific fundamental signal (earnings, guidance, M&A, rating changes, major management commentary), or 'low' if it is routine/general news with little actionable signal. Output ONLY one of: high, low",
         "compiledBy": null
+      },
+      {
+        "id": "price-relevance",
+        "name": "Price relevance",
+        "engine": "feature",
+        "output": "signal",
+        "enabled": true,
+        "feature": "car_zscore",
+        "params": { "horizon": 5, "vol_window": 60 },
+        "metaKey": "pricemove",
+        "thresholds": { "high": 1.5, "by": "abs", "highLabel": "high", "lowLabel": "low" },
+        "appliesTo": { "docTypes": ["*"] },
+        "intent": "Tag a doc by how unusual the realised price move around its date was — forward 5-day abnormal-return z-score vs the ticker's benchmark. Deterministic, $0 LLM. HINDSIGHT label: prioritises cognify spend; never a backtested feature."
       }
     ]
   },
@@ -35,7 +50,8 @@
       "rules": [
         { "if": { "docType": ["concall", "quarterly", "brokerage"] }, "model": "extractor-pro" },
         { "if": { "pattern": "earnings|guidance|acquisition|merger|downgrade|upgrade|rating" }, "model": "extractor-pro" },
-        { "if": { "relevance": ["high"] }, "model": "extractor-pro" }
+        { "if": { "relevance": ["high"] }, "model": "extractor-pro" },
+        { "if": { "signal": { "pricemove": ["high"] } }, "model": "extractor-pro" }
       ]
     }
   }
