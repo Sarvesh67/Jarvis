@@ -162,6 +162,15 @@ bash setup/00_run_all.sh
 
 Then open the dashboard at **http://127.0.0.1:8080**.
 
+### Access it from your phone (PWA)
+
+The dashboard is an installable PWA — all processing stays on the host; your phone is just a
+remote screen. On the same LAN, browse to `http://<host-ip>:8080`; from anywhere, put both devices
+on [Tailscale](https://tailscale.com) and use the host's Tailscale IP. In **iPhone Safari**, open
+the URL, then **Share → Add to Home Screen** to install it as a standalone app. It auto-authenticates
+(the `DASHBOARD_TOKEN` is embedded in the page), so you never type a password. See **[RUNBOOK.md](RUNBOOK.md)**
+for the full walkthrough.
+
 Full operational reference (start/stop, reload, troubleshooting): see **[RUNBOOK.md](RUNBOOK.md)**.
 
 ---
@@ -222,7 +231,10 @@ RUNBOOK.md     Operational guide
 - **No secrets in the repo.** All keys live in `platform/.env` (gitignored). Configs
   reference them via `os.environ/...`, never inline.
 - **`cognee/data/` is gitignored** — it holds your ingested documents and graph state.
-- Everything binds to `127.0.0.1`; nothing is exposed to the network by default.
+- The data/gateway stack (FalkorDB, Postgres, LiteLLM) binds `127.0.0.1` only. The **dashboard**
+  binds `0.0.0.0` so you can reach it from a phone or another machine, but every `/api` and `/ws`
+  request requires a `DASHBOARD_TOKEN` bearer token (auto-generated into `platform/.env`). Keep it
+  on a trusted LAN or behind Tailscale — don't port-forward it to the public internet.
 - Before publishing a fork, double-check: `git status` should never show `platform/.env`
   or anything under `cognee/data/`.
 
