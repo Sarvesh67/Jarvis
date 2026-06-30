@@ -11,12 +11,14 @@ access, gated by a DASHBOARD_TOKEN bearer token (see _AuthMiddleware).
 """
 import asyncio
 import base64
+import datetime
 import hmac
 import json
 import os
 import pathlib
 import plistlib
 import re
+import shutil
 import subprocess
 from urllib.parse import parse_qs
 
@@ -38,6 +40,8 @@ HERMES_PROFILES = pathlib.Path.home() / ".hermes" / "profiles"
 HERMES_BIN = pathlib.Path.home() / ".local" / "bin" / "hermes"
 UPLOADS = pathlib.Path.home() / ".jarvis-dashboard" / "uploads"
 MCP_DIR = pathlib.Path.home() / ".jarvis-dashboard" / "mcp"  # canonical per-project MCP store
+PROJECTS_FILE = pathlib.Path.home() / ".jarvis-dashboard" / "projects.json"
+ARCHIVE_DIR = pathlib.Path.home() / ".jarvis-archive"
 
 # Markers delimiting the block the dashboard owns inside each profile's config.yaml.
 # Everything outside stays untouched (the profile config is heavily commented).
@@ -78,11 +82,28 @@ DASHBOARD_TOKEN = ENV.get("DASHBOARD_TOKEN", "")
 
 # Budget lines shown on the dashboard. Projects have a knowledge graph; the generic
 # `jarvis` agent has none (graph card shows empty) but its budget is still tracked here.
-PROJECTS = [
+_DEFAULT_PROJECTS = [
     {"alias": "hedgefund", "label": "AI Hedge Fund", "graph": "hedgefund_graph", "key_env": "HEDGEFUND_LLM_KEY"},
     {"alias": "msme", "label": "MSME Second Brain", "graph": "msme_graph", "key_env": "MSME_LLM_KEY"},
     {"alias": "jarvis", "label": "Jarvis (general)", "graph": "jarvis_graph", "key_env": "JARVIS_LLM_KEY"},
 ]
+
+
+def _load_projects() -> list:
+    if PROJECTS_FILE.exists():
+        try:
+            return json.loads(PROJECTS_FILE.read_text())
+        except Exception:  # noqa: BLE001
+            pass
+    return list(_DEFAULT_PROJECTS)
+
+
+def _save_projects(projects: list):
+    PROJECTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PROJECTS_FILE.write_text(json.dumps(projects, indent=2))
+
+
+PROJECTS = _load_projects()
 
 app = FastAPI(title="Jarvis Dashboard")
 
@@ -266,6 +287,128 @@ def graph_preview(alias: str, limit: int = 40):
         raise HTTPException(500, str(e))
 
 
+@app.get("/api/graph/{alias}/labels")
+def graph_labels(alias: str):
+    proj = next((p for p in PROJECTS if p["alias"] == alias), None)
+    if not proj or not proj.get("graph"):
+        raise HTTPException(404, "unknown project")
+    try:
+        g = _falkor().select_graph(proj["graph"])
+        rows = g.query("MATCH (n) RETURN DISTINCT labels(n)").result_set
+        labels = sorted({l for r in rows for l in (r[0] if isinstance(r[0], list) else [r[0]]) if l})
+        counts = {}
+        for lbl in labels:
+            cnt = g.query(f"MATCH (n:{lbl}) RETURN count(n)").result_set
+            counts[lbl] = cnt[0][0] if cnt else 0
+        return {"labels": [{"name": l, "count": counts.get(l, 0)} for l in labels]}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/graph/{alias}/browse")
+def graph_browse(alias: str, label: str = "", search: str = "", limit: int = 50):
+    proj = next((p for p in PROJECTS if p["alias"] == alias), None)
+    if not proj or not proj.get("graph"):
+        raise HTTPException(404, "unknown project")
+    try:
+        g = _falkor().select_graph(proj["graph"])
+        lim = min(int(limit), 200)
+        if label and search:
+            rows = g.query(
+                f"MATCH (n:{label}) WHERE n.name CONTAINS $s RETURN id(n), labels(n), n.name LIMIT {lim}",
+                params={"s": search},
+            ).result_set
+        elif label:
+            rows = g.query(
+                f"MATCH (n:{label}) RETURN id(n), labels(n), n.name LIMIT {lim}",
+            ).result_set
+        elif search:
+            rows = g.query(
+                f"MATCH (n) WHERE n.name CONTAINS $s RETURN id(n), labels(n), n.name LIMIT {lim}",
+                params={"s": search},
+            ).result_set
+        else:
+            rows = g.query(
+                f"MATCH (n) RETURN id(n), labels(n), n.name LIMIT {lim}",
+            ).result_set
+        nodes = []
+        for nid, labs, name in rows:
+            lab = (labs[0] if isinstance(labs, list) and labs else str(labs)) or "Node"
+            nodes.append({"id": nid, "label": lab, "name": name or ""})
+        return {"nodes": nodes}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/api/graph/{alias}/node/{node_id}")
+def graph_delete_node(alias: str, node_id: int):
+    proj = next((p for p in PROJECTS if p["alias"] == alias), None)
+    if not proj or not proj.get("graph"):
+        raise HTTPException(404, "unknown project")
+    try:
+        g = _falkor().select_graph(proj["graph"])
+        g.query("MATCH (n) WHERE id(n) = $id DETACH DELETE n", params={"id": node_id})
+        return {"ok": True, "deleted": node_id}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/api/graph/{alias}/label/{label}")
+def graph_delete_by_label(alias: str, label: str):
+    proj = next((p for p in PROJECTS if p["alias"] == alias), None)
+    if not proj or not proj.get("graph"):
+        raise HTTPException(404, "unknown project")
+    try:
+        g = _falkor().select_graph(proj["graph"])
+        cnt = g.query(f"MATCH (n:{label}) RETURN count(n)").result_set
+        count = cnt[0][0] if cnt else 0
+        g.query(f"MATCH (n:{label}) DETACH DELETE n")
+        return {"ok": True, "label": label, "deleted": count}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, str(e))
+
+
+class ResetBody(BaseModel):
+    mode: str = "reset"  # reset = keep source files (re-cognifiable) | wipe = delete dataset too
+
+
+@app.post("/api/graph/{alias}/reset")
+async def graph_reset(alias: str, body: ResetBody):
+    """Reset the graph through Cognee's unified forget() so the graph, vector store and pipeline
+    bookkeeping stay consistent (a raw FalkorDB DETACH DELETE would orphan embeddings + status).
+      mode=reset  → forget(dataset, memory_only=True): wipe graph+vectors, KEEP source files
+      mode=wipe   → forget(dataset): delete the whole dataset incl. raw data."""
+    proj = next((p for p in PROJECTS if p["alias"] == alias), None)
+    if not proj or not proj.get("graph"):
+        raise HTTPException(404, "unknown project")
+    if not COGNEE_PY.exists():
+        raise HTTPException(500, "cognee venv not found")
+    mode = "wipe" if body.mode == "wipe" else "reset"
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            str(COGNEE_PY), "-m", "admin", mode, "--project", alias,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            cwd=str(COGNEE_DIR), env=_proc_env(),
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=180)
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "reset timed out")
+    text = (out or b"").decode("utf-8", "replace")
+    # admin.py prints a single JSON summary line; pull the last JSON object out.
+    summary = None
+    for line in reversed(text.strip().splitlines()):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                summary = json.loads(line)
+                break
+            except Exception:  # noqa: BLE001
+                continue
+    if proc.returncode != 0 or not summary or not summary.get("ok"):
+        raise HTTPException(500, (summary or {}).get("error") or text[-400:] or "reset failed")
+    return {"ok": True, "mode": mode, "summary": summary}
+
+
 class BudgetUpdate(BaseModel):
     max_budget: float
 
@@ -288,6 +431,73 @@ async def set_budget(alias: str, body: BudgetUpdate):
         if r.status_code >= 400:
             raise HTTPException(r.status_code, r.text)
     return {"ok": True, "alias": alias, "max_budget": body.max_budget}
+
+
+class ProjectCreate(BaseModel):
+    alias: str
+    label: str
+    key_env: str = ""
+    has_graph: bool = True
+
+
+@app.get("/api/projects")
+def projects_list():
+    return {"projects": PROJECTS}
+
+
+@app.post("/api/projects")
+def project_create(body: ProjectCreate):
+    global PROJECTS
+    alias = re.sub(r"[^a-z0-9_-]", "", body.alias.lower())
+    if not alias:
+        raise HTTPException(400, "invalid alias — use lowercase letters, digits, hyphens, underscores")
+    if any(p["alias"] == alias for p in PROJECTS):
+        raise HTTPException(409, f"project '{alias}' already exists")
+    proj = {
+        "alias": alias,
+        "label": (body.label.strip() or alias),
+        "graph": f"{alias}_graph" if body.has_graph else "",
+        "key_env": (body.key_env.strip() or f"{alias.upper()}_LLM_KEY"),
+    }
+    PROJECTS.append(proj)
+    _save_projects(PROJECTS)
+    return {"ok": True, "project": proj}
+
+
+@app.delete("/api/projects/{alias}")
+def project_delete(alias: str):
+    global PROJECTS
+    proj = next((p for p in PROJECTS if p["alias"] == alias), None)
+    if not proj:
+        raise HTTPException(404, "unknown project")
+    ts = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    archive_dir = ARCHIVE_DIR / f"{alias}_{ts}"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    archived = []
+    # Cognee data
+    data_dir = COGNEE_DIR / "data" / alias
+    if data_dir.exists():
+        shutil.copytree(data_dir, archive_dir / "cognee_data")
+        shutil.rmtree(data_dir)
+        archived.append("cognee_data")
+    # MCP config
+    mcp_f = _mcp_store(alias)
+    if mcp_f.exists():
+        shutil.copy(mcp_f, archive_dir / "mcp.json")
+        mcp_f.unlink()
+        archived.append("mcp.json")
+    # Dispatch config (reference _dispatch_file at call-time since it's defined later)
+    disp_f = pathlib.Path.home() / ".jarvis-dashboard" / "dispatch" / f"{alias}.json"
+    if disp_f.exists():
+        shutil.copy(disp_f, archive_dir / "dispatch.json")
+        disp_f.unlink()
+        archived.append("dispatch.json")
+    (archive_dir / "manifest.json").write_text(json.dumps(
+        {"alias": alias, "label": proj.get("label"), "archived_at": ts}
+    ))
+    PROJECTS = [p for p in PROJECTS if p["alias"] != alias]
+    _save_projects(PROJECTS)
+    return {"ok": True, "archived_to": str(archive_dir), "archived": archived}
 
 
 def _short_model(m: str) -> str:
@@ -1199,24 +1409,28 @@ class ProposeBody(BaseModel):
     seed: str = ""
     horizon: str = "5d"
     direction: str = "long"  # long | short
+    source_task: str = ""  # dispatch task ID that triggered this proposal (empty = ad-hoc)
 
 
 class RejectBody(BaseModel):
     reason: str = ""
 
 
-async def _run_propose(alias: str, jid: int, seed: str, horizon: str, direction: str):
+async def _run_propose(alias: str, jid: int, seed: str, horizon: str, direction: str, source_task: str = ""):
     job = next((j for j in SIGNAL_JOBS.get(alias, []) if j["id"] == jid), None)
     if not job:
         return
     ansi = re.compile(r"\x1b\[[0-9;]*m")
     ts = re.compile(r"^\d{4}-\d\d-\d\dT")
     try:
+        env_extra = dict(_proc_env())
+        if source_task:
+            env_extra["JARVIS_SOURCE_TASK"] = source_task
         proc = await asyncio.create_subprocess_exec(
             str(COGNEE_PY), "-m", "signals.orchestrate", "propose", "--project", alias,
             "--seed", seed, "--horizon", horizon, "--direction", direction,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            cwd=str(REPO_DIR), env=_proc_env(),
+            cwd=str(REPO_DIR), env=env_extra,
         )
         while True:
             line = await proc.stdout.readline()
@@ -1246,7 +1460,7 @@ async def signals_propose(alias: str, body: ProposeBody):
     SIGNAL_JOBS.setdefault(alias, []).insert(
         0, {"id": jid, "status": "running", "log": "", "seed": seed[:80]})
     SIGNAL_JOBS[alias] = SIGNAL_JOBS[alias][:20]
-    asyncio.create_task(_run_propose(alias, jid, seed, body.horizon, body.direction))
+    asyncio.create_task(_run_propose(alias, jid, seed, body.horizon, body.direction, body.source_task or ""))
     return {"ok": True, "job": jid}
 
 
@@ -1323,9 +1537,20 @@ def signals_reject(alias: str, pid: str, body: RejectBody):
     return {"ok": True, "status": "rejected"}
 
 
+@app.get("/api/dispatch/{alias}/proposals")
+def dispatch_proposals(alias: str):
+    """All proposals grouped by source_task (dispatch task ID). Ad-hoc proposals use '__adhoc__'."""
+    out: dict = {}
+    for status in ("pending", "approved", "rejected"):
+        for p in _list_proposals(alias, status):
+            p = dict(p, _status=status)
+            tid = p.get("source_task") or "__adhoc__"
+            out.setdefault(tid, []).append(p)
+    return {"by_task": out}
+
+
 def _now_iso() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # =====================================================================================
@@ -1346,19 +1571,22 @@ def _dispatch_file(alias: str) -> pathlib.Path:
 
 
 def _seed_dispatch(alias: str) -> list:
-    """Curated example tasks (unscheduled — user enables). Only for the hedgefund project."""
+    """Curated default tasks (unscheduled — user enables). Only for the hedgefund project."""
     if alias != "hedgefund":
         return []
     return [
-        {"id": "weekly-sweep", "name": "Weekly signal sweep",
+        {"id": "weekly-sweep", "name": "Weekly signal sweep", "type": "script",
          "description": "Rank high-value doc-events and propose signals for the top picks.",
          "command": f"{MD_PY} -m signals.sweep --project hedgefund --top-n 3",
          "cwd": str(REPO_DIR), "schedule": None},
-        {"id": "capture-1m", "name": "Capture 1-minute bars (NSE)",
+        {"id": "capture-1m", "name": "Capture 1-minute bars (NSE)", "type": "script",
          "description": "Append the last few days of 1m bars (yfinance) — accumulates intraday history.",
          "command": (f"{MD_PY} -m marketdata.cli load --freq 1m "
                      "--spec '{\"kind\":\"yfinance\"}' --tickers TATAMOTORS.NS RELIANCE.NS INFY.NS"),
          "cwd": str(REPO_DIR), "schedule": None},
+        {"id": "signal-adhoc", "name": "Ad-hoc analysis", "type": "prompt",
+         "description": "Ask anything; the agent retrieves from the knowledge graph and answers.",
+         "prompt": "", "schedule": None},
     ]
 
 
@@ -1366,7 +1594,14 @@ def _read_dispatch(alias: str) -> list:
     f = _dispatch_file(alias)
     if f.exists():
         try:
-            return json.loads(f.read_text())
+            tasks = json.loads(f.read_text())
+            # Merge any new seeds that aren't in the file yet (one-time per seed addition)
+            existing = {t["id"] for t in tasks}
+            new_seeds = [s for s in _seed_dispatch(alias) if s["id"] not in existing]
+            if new_seeds:
+                tasks = tasks + new_seeds
+                _write_dispatch(alias, tasks)
+            return tasks
         except Exception:  # noqa: BLE001
             pass
     tasks = _seed_dispatch(alias)
@@ -1395,8 +1630,12 @@ class DispatchTask(BaseModel):
     id: str = ""
     name: str = ""
     description: str = ""
+    type: str = "script"   # "script" | "prompt"
+    # script fields
     command: str = ""
     cwd: str = ""
+    # prompt fields
+    prompt: str = ""
     schedule: dict | None = None  # {hour, minute, weekday?} or null (manual-only)
 
 
@@ -1411,13 +1650,19 @@ def dispatch_list(alias: str):
 def dispatch_upsert(alias: str, body: DispatchTask):
     if not any(p["alias"] == alias for p in PROJECTS):
         raise HTTPException(404, "unknown project")
-    if not body.command.strip():
-        raise HTTPException(400, "command required")
+    task_type = body.type or "script"
+    if task_type == "script" and not body.command.strip():
+        raise HTTPException(400, "command required for script tasks")
     tasks = _read_dispatch(alias)
     tid = body.id.strip() or re.sub(r"[^a-z0-9]+", "-", (body.name or "task").lower()).strip("-") \
         or f"task-{len(tasks) + 1}"
-    rec = {"id": tid, "name": body.name or tid, "description": body.description,
-           "command": body.command, "cwd": body.cwd or str(REPO_DIR), "schedule": body.schedule}
+    rec: dict = {"id": tid, "name": body.name or tid, "description": body.description,
+                 "type": task_type, "schedule": body.schedule}
+    if task_type == "prompt":
+        rec["prompt"] = body.prompt
+    else:
+        rec["command"] = body.command
+        rec["cwd"] = body.cwd or str(REPO_DIR)
     tasks = [t for t in tasks if t["id"] != tid] + [rec]
     _write_dispatch(alias, tasks)
     # keep an enabled schedule in sync with the saved definition
@@ -1442,10 +1687,14 @@ async def _run_dispatch(alias: str, jid: int, task: dict):
         return
     ansi = re.compile(r"\x1b\[[0-9;]*m")
     try:
+        # Stamp the task id so any signal proposals this task generates (e.g. the weekly sweep
+        # → orchestrate.propose) are attributed back to it and surface nested under the task.
+        env = dict(_proc_env())
+        env["JARVIS_SOURCE_TASK"] = task["id"]
         proc = await asyncio.create_subprocess_exec(
             "/bin/zsh", "-lc", task["command"],
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            cwd=task.get("cwd") or str(REPO_DIR), env=_proc_env(),
+            cwd=task.get("cwd") or str(REPO_DIR), env=env,
         )
         while True:
             line = await proc.stdout.readline()
@@ -1460,8 +1709,53 @@ async def _run_dispatch(alias: str, jid: int, task: dict):
         job["status"] = "failed"
 
 
+async def _run_prompt_dispatch(alias: str, jid: int, task: dict, prompt: str):
+    """Run a prompt-type dispatch task: Hermes retrieves from Cognee and answers."""
+    job = next((j for j in DISPATCH_JOBS.get(alias, []) if j["id"] == jid), None)
+    if not job:
+        return
+    if not HERMES_BIN.exists():
+        job["log"] = f"hermes not found at {HERMES_BIN}"
+        job["status"] = "failed"
+        return
+    home = str(pathlib.Path.home())
+    env = {
+        **os.environ,
+        "HOME": home,
+        "PATH": f"{home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:"
+        + os.environ.get("PATH", ""),
+    }
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            str(HERMES_BIN), "-p", alias, "-c", f"dispatch-{task['id']}", "-z", prompt,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+            cwd=home,
+        )
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=240)
+        reply = (out or b"").decode("utf-8", "replace").strip()
+        if reply:
+            job["log"] = reply
+            job["status"] = "done"
+        else:
+            errtxt = (err or b"").decode("utf-8", "replace").strip()
+            job["log"] = errtxt[-4000:] or "(no output from agent)"
+            job["status"] = "failed"
+    except asyncio.TimeoutError:
+        job["log"] += "\n[timed out after 240s]"
+        job["status"] = "failed"
+    except Exception as e:  # noqa: BLE001
+        job["log"] += f"\nerror: {e}"
+        job["status"] = "failed"
+
+
+class DispatchRunBody(BaseModel):
+    prompt: str = ""   # runtime prompt override for prompt-type tasks
+
+
 @app.post("/api/dispatch/{alias}/{tid}/run")
-async def dispatch_run(alias: str, tid: str):
+async def dispatch_run(alias: str, tid: str, body: DispatchRunBody = DispatchRunBody()):
     if not any(p["alias"] == alias for p in PROJECTS):
         raise HTTPException(404, "unknown project")
     task = next((t for t in _read_dispatch(alias) if t["id"] == tid), None)
@@ -1473,7 +1767,15 @@ async def dispatch_run(alias: str, tid: str):
     DISPATCH_JOBS.setdefault(alias, []).insert(
         0, {"id": jid, "status": "running", "log": "", "name": task["name"]})
     DISPATCH_JOBS[alias] = DISPATCH_JOBS[alias][:20]
-    asyncio.create_task(_run_dispatch(alias, jid, task))
+    if task.get("type") == "prompt":
+        prompt = (body.prompt or task.get("prompt") or "").strip()
+        if not prompt:
+            DISPATCH_JOBS[alias][0]["status"] = "failed"
+            DISPATCH_JOBS[alias][0]["log"] = "no prompt provided"
+            return {"ok": False, "error": "prompt required"}
+        asyncio.create_task(_run_prompt_dispatch(alias, jid, task, prompt))
+    else:
+        asyncio.create_task(_run_dispatch(alias, jid, task))
     return {"ok": True, "job": jid}
 
 
@@ -1497,10 +1799,17 @@ def _schedule_task(alias: str, task: dict) -> str:
     logdir = DISPATCH_DIR / "logs"
     logdir.mkdir(parents=True, exist_ok=True)
     label = f"com.jarvis.dispatch.{alias}.{task['id']}"
+    if task.get("type") == "prompt":
+        prog_args = [str(HERMES_BIN), "-p", alias, "-c", f"dispatch-{task['id']}",
+                     "-z", task.get("prompt") or ""]
+        work_dir = str(pathlib.Path.home())
+    else:
+        prog_args = ["/bin/zsh", "-lc", task["command"]]
+        work_dir = task.get("cwd") or str(REPO_DIR)
     pl = {
         "Label": label,
-        "ProgramArguments": ["/bin/zsh", "-lc", task["command"]],
-        "WorkingDirectory": task.get("cwd") or str(REPO_DIR),
+        "ProgramArguments": prog_args,
+        "WorkingDirectory": work_dir,
         "StartCalendarInterval": cal,
         "RunAtLoad": False,  # never run just because it was (re)loaded
         "StandardOutPath": str(logdir / f"{task['id']}.out.log"),

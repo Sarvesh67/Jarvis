@@ -216,7 +216,10 @@ def process_inbox(project: str) -> list[dict]:
     return out
 
 
-def propose(project: str, seed: str, *, horizon: str = "5d", direction: str = "long") -> dict:
+def propose(project: str, seed: str, *, horizon: str = "5d", direction: str = "long",
+            source_task: str = "") -> dict:
+    import os
+    source_task = source_task or os.environ.get("JARVIS_SOURCE_TASK", "")
     dirs = _ensure_dirs(project)
     pid = new_proposal_id(project, seed)
     inbox_file = dirs["inbox"] / f"{pid}.json"
@@ -246,6 +249,8 @@ def propose(project: str, seed: str, *, horizon: str = "5d", direction: str = "l
     proposal.setdefault("seed", seed)
     proposal.setdefault("direction", direction)
     proposal.setdefault("horizon", horizon)
+    if source_task:
+        proposal["source_task"] = source_task
     errs = validate(proposal)
     if errs:
         _say(f"PROPOSE_FAILED: invalid proposal {errs}")

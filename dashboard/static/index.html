@@ -7,313 +7,355 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Jarvis" />
-<meta name="theme-color" content="#080b10" />
+<meta name="theme-color" content="#f4efe7" />
 <link rel="manifest" href="/static/manifest.json" />
 <link rel="apple-touch-icon" href="/static/icon-192.png" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.24.0/dist/tabler-icons.min.css" />
 <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
 <style>
   :root{
-    --bg:#080b10; --bg2:#0e131b; --panel:#11171f; --panel2:#151c26;
-    --line:#1c2430; --line2:#283342; --fg:#e7eef6; --mut:#8a99ad; --faint:#5a6678;
-    --cyan:#38bdf8; --cyandim:#1f6f99; --ok:#36d399; --warn:#fbbf24; --bad:#f87171;
-    --glow:0 0 14px rgba(56,189,248,.45);
+    /* Warm enterprise palette — paper canvas, clay accent, soft shadows */
+    --bg:#f3ede3; --bg2:#ece4d6; --panel:#fffdf9; --panel2:#f8f2e8;
+    --line:#e7ddcc; --line2:#dacdb4; --fg:#2c2823; --mut:#6f6557; --faint:#9b9183;
+    --accent:#b15a31; --accent-soft:#c47a52; --accent-dim:#efdccc; --accent-ink:#fff;
+    --ok:#4d7c54; --warn:#b0851d; --bad:#b04a3c;
+    --okdim:#e2ecdf; --warndim:#f2e8cf; --baddim:#f1ddd8;
+    --shadow:0 1px 2px rgba(74,54,30,.05),0 3px 12px rgba(74,54,30,.05);
+    --shadow-md:0 2px 6px rgba(74,54,30,.07),0 8px 28px rgba(74,54,30,.08);
+    --shadow-lg:0 12px 48px rgba(74,54,30,.18);
+    --radius:13px; --radius-sm:9px;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
-    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 var(--sans);
-    background-image:radial-gradient(900px 500px at 78% -10%,rgba(56,189,248,.07),transparent 60%),
-      linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
-    background-size:auto,46px 46px,46px 46px;background-position:0 0;}
-  body::after{content:"";position:fixed;inset:0;pointer-events:none;
-    background:linear-gradient(rgba(8,11,16,.0),rgba(8,11,16,.55));z-index:0}
-  .app{position:relative;z-index:1;display:grid;grid-template-columns:236px 1fr;height:100vh;overflow:hidden}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14.5px/1.6 var(--sans);
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    background-image:radial-gradient(1100px 620px at 82% -8%,rgba(177,90,49,.06),transparent 62%),
+      radial-gradient(900px 500px at 0% 110%,rgba(177,90,49,.04),transparent 60%);}
+  ::selection{background:var(--accent-dim);color:var(--accent)}
+  .app{position:relative;z-index:1;display:grid;grid-template-columns:250px 1fr;height:100vh;overflow:hidden}
 
   /* sidebar */
-  .side{background:linear-gradient(180deg,rgba(17,23,31,.92),rgba(11,15,21,.92));
-    border-right:1px solid var(--line);display:flex;flex-direction:column;backdrop-filter:blur(6px)}
-  .brand{padding:18px 18px 14px;border-bottom:1px solid var(--line)}
-  .brand .logo{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:700;letter-spacing:.14em}
-  .brand .logo i{color:var(--cyan);text-shadow:var(--glow)}
-  .brand .tag{color:var(--faint);font-size:10px;letter-spacing:.34em;text-transform:uppercase;margin-top:3px;padding-left:1px}
-  .navlbl{color:var(--faint);font-size:10px;letter-spacing:.2em;text-transform:uppercase;padding:16px 18px 8px}
-  .nav{padding:0 10px;display:flex;flex-direction:column;gap:3px}
-  .nitem{position:relative;display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;
-    color:var(--mut);cursor:pointer;border:1px solid transparent;transition:.16s}
-  .nitem i{font-size:17px;width:18px;text-align:center}
-  .nitem:hover{background:var(--panel);color:var(--fg)}
-  .nitem.active{background:var(--panel2);color:var(--fg);border-color:var(--line2)}
-  .nitem.active::before{content:"";position:absolute;left:-10px;top:8px;bottom:8px;width:3px;border-radius:3px;
-    background:var(--cyan);box-shadow:var(--glow)}
-  .nitem .nm{flex:1;font-size:13.5px}
-  .nitem .mini{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
-  .side .foot{margin-top:auto;border-top:1px solid var(--line);padding:14px 16px;display:flex;flex-direction:column;gap:10px}
-  .led{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--mut)}
-  .led .d{width:8px;height:8px;border-radius:50%;background:var(--bad)}
-  .led.up .d{background:var(--ok);box-shadow:0 0 10px rgba(54,211,153,.8);animation:pulse 2s infinite}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .side{background:linear-gradient(180deg,#fffdf9,#f6efe3);
+    border-right:1px solid var(--line);display:flex;flex-direction:column}
+  .brand{padding:20px 20px 16px;border-bottom:1px solid var(--line)}
+  .brand .logo{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700;letter-spacing:.02em;color:var(--fg)}
+  .brand .logo i{color:var(--accent);font-size:21px}
+  .brand .tag{color:var(--faint);font-size:10px;letter-spacing:.22em;text-transform:uppercase;margin-top:4px;padding-left:1px}
+  .navlbl{display:flex;align-items:center;justify-content:space-between;
+    color:var(--faint);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;padding:18px 18px 8px}
+  .navlbl .add{cursor:pointer;color:var(--accent);font-size:16px;width:22px;height:22px;border-radius:6px;
+    display:flex;align-items:center;justify-content:center;transition:.15s}
+  .navlbl .add:hover{background:var(--accent-dim)}
+  .nav{padding:0 11px;display:flex;flex-direction:column;gap:3px}
+  .nitem{position:relative;display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:var(--radius-sm);
+    color:var(--mut);cursor:pointer;border:1px solid transparent;transition:.15s}
+  .nitem i{font-size:18px;width:19px;text-align:center;color:var(--faint);transition:.15s}
+  .nitem:hover{background:var(--panel2);color:var(--fg)}
+  .nitem:hover i{color:var(--mut)}
+  .nitem.active{background:#fff;color:var(--fg);border-color:var(--line);box-shadow:var(--shadow)}
+  .nitem.active i{color:var(--accent)}
+  .nitem.active::before{content:"";position:absolute;left:-11px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;
+    background:var(--accent)}
+  .nitem .nm{flex:1;font-size:14px;font-weight:500}
+  .nitem .mini{font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .side .foot{margin-top:auto;border-top:1px solid var(--line);padding:15px 18px;display:flex;flex-direction:column;gap:11px}
+  .led{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)}
+  .led .d{width:8px;height:8px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 3px var(--baddim)}
+  .led.up .d{background:var(--ok);box-shadow:0 0 0 3px var(--okdim);animation:pulse 2.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
   .total{font-family:var(--mono);font-size:12px;color:var(--mut)}
   .total b{color:var(--fg);font-weight:600}
   .xlinks{display:flex;gap:8px}
-  .xlinks a{flex:1;text-align:center;font-size:11px;color:var(--mut);border:1px solid var(--line2);
-    border-radius:8px;padding:6px 4px;text-decoration:none;transition:.16s}
-  .xlinks a:hover{color:var(--cyan);border-color:var(--cyandim)}
+  .xlinks a{flex:1;text-align:center;font-size:11px;color:var(--mut);background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:7px 4px;text-decoration:none;transition:.15s}
+  .xlinks a:hover{color:var(--accent);border-color:var(--accent-soft);background:#fff}
 
   /* main */
-  .main{display:flex;flex-direction:column;height:100vh;min-width:0}
-  .topbar{display:flex;align-items:center;gap:14px;padding:16px 26px;border-bottom:1px solid var(--line)}
-  .topbar h1{margin:0;font-size:19px;font-weight:650}
-  .topbar .sub{color:var(--mut);font-size:12px;margin-top:2px}
-  .chip{font-family:var(--mono);font-size:11px;color:var(--mut);border:1px solid var(--line2);border-radius:20px;padding:3px 11px}
-  .chip b{color:var(--cyan);font-weight:600}
+  .main{display:flex;flex-direction:column;height:100vh;min-width:0;background:var(--bg)}
+  .topbar{display:flex;align-items:center;gap:14px;padding:18px 30px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .topbar h1{margin:0;font-size:21px;font-weight:680;letter-spacing:-.01em}
+  .topbar .sub{color:var(--mut);font-size:12.5px;margin-top:3px}
+  .chip{font-family:var(--mono);font-size:11.5px;color:var(--mut);background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:4px 12px}
+  .chip b{color:var(--accent);font-weight:600}
   .spacer{flex:1}
-  .tabs{display:flex;gap:4px;padding:0 22px;border-bottom:1px solid var(--line)}
-  .tab{display:flex;align-items:center;gap:7px;padding:12px 14px;color:var(--mut);cursor:pointer;
-    font-size:13.5px;border-bottom:2px solid transparent;transition:.16s}
-  .tab i{font-size:16px}
+  .tabs{display:flex;gap:2px;padding:0 26px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .tab{display:flex;align-items:center;gap:8px;padding:13px 15px;color:var(--mut);cursor:pointer;
+    font-size:13.5px;font-weight:500;border-bottom:2.5px solid transparent;transition:.15s;margin-bottom:-1px}
+  .tab i{font-size:17px}
   .tab:hover{color:var(--fg)}
-  .tab.active{color:var(--cyan);border-bottom-color:var(--cyan);text-shadow:0 0 12px rgba(56,189,248,.4)}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
   .content{flex:1;min-height:0;position:relative}
-  .scroll{height:100%;overflow:auto;padding:24px 26px}
+  .scroll{height:100%;overflow:auto;padding:26px 30px}
 
   /* cards / metrics */
-  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:20px}
-  .metric{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:15px 16px}
-  .metric .l{color:var(--faint);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase}
-  .metric .v{font-family:var(--mono);font-size:25px;font-weight:600;margin-top:7px}
-  .metric .v.glow{color:var(--cyan);text-shadow:var(--glow)}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:15px;margin-bottom:22px}
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:17px 18px;box-shadow:var(--shadow)}
+  .metric .l{color:var(--faint);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;font-weight:600}
+  .metric .v{font-family:var(--mono);font-size:26px;font-weight:600;margin-top:8px;color:var(--fg)}
+  .metric .v.glow{color:var(--accent)}
   .metric .v.ok{color:var(--ok)} .metric .v.warn{color:var(--warn)} .metric .v.bad{color:var(--bad)}
-  .metric .d{color:var(--faint);font-size:11px;margin-top:5px;font-family:var(--mono)}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:18px 20px;margin-bottom:18px}
-  .panel h3{margin:0 0 14px;font-size:12px;color:var(--faint);letter-spacing:.12em;text-transform:uppercase;
-    display:flex;align-items:center;gap:8px}
-  .panel h3 i{color:var(--cyan);font-size:15px}
-  .bar{height:9px;background:#0a0f16;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:10px 0}
-  .bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--cyandim),var(--cyan));
-    box-shadow:0 0 12px rgba(56,189,248,.5);transition:width .5s ease}
-  .row{display:flex;justify-content:space-between;align-items:center;margin:7px 0;font-size:13px}
+  .metric .d{color:var(--faint);font-size:11.5px;margin-top:6px;font-family:var(--mono)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-bottom:18px;box-shadow:var(--shadow)}
+  .panel h3{margin:0 0 15px;font-size:12px;color:var(--mut);letter-spacing:.06em;text-transform:uppercase;font-weight:600;
+    display:flex;align-items:center;gap:9px}
+  .panel h3 i{color:var(--accent);font-size:16px}
+  .bar{height:10px;background:var(--bg2);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:11px 0}
+  .bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--accent-soft),var(--accent));transition:width .5s ease}
+  .row{display:flex;justify-content:space-between;align-items:center;margin:8px 0;font-size:13.5px}
   .row .k{color:var(--mut)}
-  .row .val{font-family:var(--mono)}
+  .row .val{font-family:var(--mono);color:var(--fg)}
   .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-  .tag{font-size:11px;background:#0c121a;color:var(--mut);border:1px solid var(--line2);border-radius:6px;padding:3px 9px;font-family:var(--mono)}
-  .edit{display:flex;gap:9px;margin-top:8px;align-items:center}
-  input,textarea,select{background:#0a0f16;border:1px solid var(--line2);color:var(--fg);border-radius:9px;
-    padding:9px 11px;font:13px var(--sans);outline:none}
-  input:focus,textarea:focus,select:focus{border-color:var(--cyandim);box-shadow:0 0 0 3px rgba(56,189,248,.12)}
+  .tag{font-size:11.5px;background:var(--panel2);color:var(--mut);border:1px solid var(--line);border-radius:7px;padding:3px 10px;font-family:var(--mono)}
+  .edit{display:flex;gap:10px;margin-top:9px;align-items:center}
+  input,textarea,select{background:#fff;border:1px solid var(--line2);color:var(--fg);border-radius:var(--radius-sm);
+    padding:10px 12px;font:13.5px var(--sans);outline:none;transition:.15s}
+  input::placeholder,textarea::placeholder{color:var(--faint)}
+  input:focus,textarea:focus,select:focus{border-color:var(--accent-soft);box-shadow:0 0 0 3px var(--accent-dim)}
   input[type=number]{width:110px;font-family:var(--mono)}
-  button{background:var(--cyan);color:#04121d;border:0;border-radius:9px;padding:9px 16px;font-weight:600;
-    cursor:pointer;font-size:13px;transition:.16s}
-  button:hover{box-shadow:var(--glow)}
-  button.ghost{background:transparent;color:var(--cyan);border:1px solid var(--line2)}
-  button.ghost:hover{border-color:var(--cyandim);box-shadow:none}
-  button:disabled{opacity:.5;cursor:default;box-shadow:none}
-  .note{font-size:12px;color:var(--mut);font-family:var(--mono)}
+  button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:var(--radius-sm);padding:10px 17px;font-weight:600;
+    cursor:pointer;font-size:13.5px;transition:.15s;box-shadow:var(--shadow)}
+  button:hover{background:#9d4d28;box-shadow:var(--shadow-md)}
+  button.ghost{background:#fff;color:var(--accent);border:1px solid var(--line2);box-shadow:none}
+  button.ghost:hover{border-color:var(--accent-soft);background:var(--panel2)}
+  button:disabled{opacity:.45;cursor:default;box-shadow:none}
+  .note{font-size:12.5px;color:var(--mut);line-height:1.55}
   .muted{color:var(--faint)}
 
   /* chat */
   .chat{display:flex;flex-direction:column;height:100%}
-  .chathead{display:flex;align-items:center;gap:10px;padding:13px 26px;border-bottom:1px solid var(--line);color:var(--mut);font-size:12px;font-family:var(--mono)}
-  .chathead .av{width:24px;height:24px;border-radius:7px;background:var(--panel2);border:1px solid var(--line2);
-    display:flex;align-items:center;justify-content:center;color:var(--cyan)}
-  .chathead .ghost{margin-left:auto;padding:5px 10px;font-size:11px}
-  .msgs{flex:1;overflow:auto;padding:22px 26px;display:flex;flex-direction:column;gap:16px}
-  .msg{display:flex;gap:11px;max-width:860px}
-  .msg .ava{width:28px;height:28px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px}
-  .msg.bot .ava{background:var(--panel2);border:1px solid var(--line2);color:var(--cyan)}
+  .chathead{display:flex;align-items:center;gap:10px;padding:14px 30px;border-bottom:1px solid var(--line);color:var(--mut);font-size:12.5px;background:var(--panel)}
+  .chathead .av{width:25px;height:25px;border-radius:7px;background:var(--accent-dim);border:1px solid var(--line2);
+    display:flex;align-items:center;justify-content:center;color:var(--accent)}
+  .chathead .ghost{margin-left:auto;padding:6px 11px;font-size:11px}
+  .msgs{flex:1;overflow:auto;padding:24px 30px;display:flex;flex-direction:column;gap:16px}
+  .msg{display:flex;gap:11px;max-width:880px}
+  .msg .ava{width:29px;height:29px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px}
+  .msg.bot .ava{background:var(--accent-dim);border:1px solid var(--line2);color:var(--accent)}
   .msg.user{align-self:flex-end;flex-direction:row-reverse}
-  .msg.user .ava{background:rgba(56,189,248,.12);border:1px solid var(--cyandim);color:var(--cyan)}
-  .bubble{border-radius:12px;padding:11px 14px;font-size:14px;line-height:1.6}
-  .msg.bot .bubble{background:var(--panel);border:1px solid var(--line)}
-  .msg.user .bubble{background:rgba(56,189,248,.10);border:1px solid var(--cyandim)}
-  .bubble pre{background:#06090d;border:1px solid var(--line2);border-radius:8px;padding:11px;overflow:auto;font:12px var(--mono);margin:8px 0}
-  .bubble code{font-family:var(--mono);font-size:12.5px;background:#06090d;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
-  .bubble pre code{border:0;padding:0;background:none}
+  .msg.user .ava{background:var(--accent);border:1px solid var(--accent);color:#fff}
+  .bubble{border-radius:13px;padding:12px 15px;font-size:14.5px;line-height:1.62}
+  .msg.bot .bubble{background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow)}
+  .msg.user .bubble{background:var(--accent-dim);border:1px solid #e3c9b6}
+  .bubble pre{background:#2c2823;color:#f3ede3;border:1px solid #46403a;border-radius:9px;padding:12px;overflow:auto;font:12.5px var(--mono);margin:9px 0}
+  .bubble code{font-family:var(--mono);font-size:12.5px;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+  .bubble pre code{border:0;padding:0;background:none;color:inherit}
   .think{display:flex;gap:5px;align-items:center;color:var(--mut);font-size:13px}
-  .think .dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);animation:blink 1.2s infinite}
+  .think .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:blink 1.2s infinite}
   .think .dot:nth-child(2){animation-delay:.2s}.think .dot:nth-child(3){animation-delay:.4s}
   @keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
-  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-  .schip{font-size:12.5px;color:var(--mut);border:1px solid var(--line2);border-radius:20px;padding:6px 13px;cursor:pointer;transition:.16s}
-  .schip:hover{color:var(--cyan);border-color:var(--cyandim)}
-  .empty{margin:auto;text-align:center;color:var(--faint);max-width:460px}
-  .empty .big{font-size:34px;color:var(--cyan);text-shadow:var(--glow);margin-bottom:10px}
-  .composer{display:flex;gap:10px;padding:14px 26px;border-top:1px solid var(--line);align-items:flex-end}
-  .composer textarea{flex:1;resize:none;max-height:160px;min-height:44px;line-height:1.5}
+  .chips{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}
+  .schip{font-size:12.5px;color:var(--mut);background:var(--panel);border:1px solid var(--line2);border-radius:20px;padding:7px 14px;cursor:pointer;transition:.15s;box-shadow:var(--shadow)}
+  .schip:hover{color:var(--accent);border-color:var(--accent-soft)}
+  .empty{margin:auto;text-align:center;color:var(--mut);max-width:480px}
+  .empty .big{font-size:38px;color:var(--accent);margin-bottom:12px}
+  .composer{display:flex;gap:11px;padding:16px 30px;border-top:1px solid var(--line);align-items:flex-end;background:var(--panel)}
+  .composer textarea{flex:1;resize:none;max-height:160px;min-height:46px;line-height:1.5}
 
   /* ledger */
   .ledger{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
-  .ledger th{text-align:left;color:var(--faint);font-weight:500;font-size:10.5px;letter-spacing:.08em;
-    text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--line2);position:sticky;top:0;background:var(--bg)}
-  .ledger td{padding:9px 10px;border-bottom:1px solid var(--line)}
-  .ledger tr:hover td{background:var(--panel)}
+  .ledger th{text-align:left;color:var(--faint);font-weight:600;font-size:10.5px;letter-spacing:.06em;
+    text-transform:uppercase;padding:9px 11px;border-bottom:1px solid var(--line2);position:sticky;top:0;background:var(--panel)}
+  .ledger td{padding:10px 11px;border-bottom:1px solid var(--line)}
+  .ledger tr:hover td{background:var(--panel2)}
   .ledger .r{text-align:right}
   .gmodel{display:flex;align-items:center;gap:8px}
-  .gbar{height:7px;border-radius:4px;background:linear-gradient(90deg,var(--cyandim),var(--cyan));box-shadow:0 0 8px rgba(56,189,248,.4)}
-  #cy{height:100%;width:100%;background:
-      radial-gradient(700px 360px at 70% 0,rgba(56,189,248,.05),transparent 60%),#080b10;
-    border:1px solid var(--line);border-radius:13px}
+  .gbar{height:8px;border-radius:4px;background:linear-gradient(90deg,var(--accent-soft),var(--accent))}
+  #cy{height:100%;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow) inset}
   .kwrap{display:flex;flex-direction:column;height:100%;gap:14px}
   .kbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-  .loading{color:var(--mut);font-family:var(--mono);font-size:13px;padding:20px}
+  .loading{color:var(--mut);font-family:var(--mono);font-size:13px;padding:22px}
 
   /* live agent chat */
-  .cfgbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 26px;border-bottom:1px solid var(--line);background:var(--bg2)}
-  .cfgbar .lbl{font-size:10.5px;color:var(--faint);letter-spacing:.08em;text-transform:uppercase}
-  .cfgbar select{padding:6px 9px;font-size:12.5px;font-family:var(--mono)}
-  .seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
-  .seg button{background:transparent;color:var(--mut);border:0;border-radius:0;padding:6px 12px;font-size:12px;font-weight:500}
-  .seg button.on{background:var(--cyan);color:#04121d}
-  .seg button:hover{box-shadow:none;color:var(--fg)} .seg button.on:hover{color:#04121d}
-  .cfgbtn{display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--mut);border:1px solid var(--line2);border-radius:8px;padding:6px 11px;font-size:12px;font-weight:500}
-  .cfgbtn:hover{color:var(--cyan);border-color:var(--cyandim);box-shadow:none}
+  .cfgbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 30px;border-bottom:1px solid var(--line);background:var(--bg2)}
+  .cfgbar .lbl{font-size:10.5px;color:var(--faint);letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+  .cfgbar select{padding:7px 10px;font-size:12.5px;font-family:var(--mono)}
+  .seg{display:inline-flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden;background:#fff}
+  .seg button{background:transparent;color:var(--mut);border:0;border-radius:0;padding:7px 13px;font-size:12px;font-weight:600;box-shadow:none}
+  .seg button.on{background:var(--accent);color:#fff}
+  .seg button:hover{box-shadow:none;color:var(--fg);background:var(--panel2)} .seg button.on:hover{color:#fff;background:var(--accent)}
+  .cfgbtn{display:inline-flex;align-items:center;gap:6px;background:#fff;color:var(--mut);border:1px solid var(--line2);border-radius:9px;padding:7px 12px;font-size:12px;font-weight:500;box-shadow:none}
+  .cfgbtn:hover{color:var(--accent);border-color:var(--accent-soft);background:var(--panel2)}
   .ctxmeter{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--faint)}
-  .ctxmeter .b{width:62px;height:6px;border:1px solid var(--line2);border-radius:4px;overflow:hidden}
-  .ctxmeter .b>span{display:block;height:100%;background:var(--cyan)}
-  .pop{background:var(--panel2);border:1px solid var(--line2);border-radius:10px;padding:12px;overflow:auto;box-shadow:0 12px 40px rgba(0,0,0,.5)}
-  .pop h4{margin:0 0 8px;font-size:10.5px;color:var(--faint);letter-spacing:.1em;text-transform:uppercase}
-  .pop label{display:flex;align-items:center;gap:9px;padding:5px 4px;font-size:13px;color:var(--fg);cursor:pointer}
+  .ctxmeter .b{width:64px;height:7px;border:1px solid var(--line2);border-radius:4px;overflow:hidden;background:var(--bg2)}
+  .ctxmeter .b>span{display:block;height:100%;background:var(--accent)}
+  .pop{background:var(--panel);border:1px solid var(--line2);border-radius:var(--radius);padding:13px;overflow:auto;box-shadow:var(--shadow-lg)}
+  .pop h4{margin:0 0 9px;font-size:10.5px;color:var(--faint);letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+  .pop label{display:flex;align-items:center;gap:9px;padding:6px 4px;font-size:13px;color:var(--fg);cursor:pointer}
   .pop label small{color:var(--faint);margin-left:auto;font-size:11px}
-  .pop input[type=checkbox]{width:15px;height:15px;accent-color:var(--cyan)}
+  .pop input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent)}
   .turn{display:flex;flex-direction:column;margin-bottom:18px}
   .turn.user{align-items:flex-end}
-  .ubub{background:rgba(56,189,248,.10);border:1px solid var(--cyandim);border-radius:12px;padding:10px 14px;max-width:80%;font-size:14px;line-height:1.55}
+  .ubub{background:var(--accent-dim);border:1px solid #e3c9b6;border-radius:13px;padding:11px 15px;max-width:80%;font-size:14.5px;line-height:1.55}
   .ufiles{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
-  .afile{font-family:var(--mono);font-size:11px;color:var(--mut);border:1px solid var(--line2);border-radius:6px;padding:2px 8px}
-  .aturn{border-left:2px solid var(--cyandim);padding-left:15px;display:flex;flex-direction:column;gap:9px;max-width:900px}
+  .afile{font-family:var(--mono);font-size:11px;color:var(--mut);border:1px solid var(--line2);border-radius:6px;padding:2px 8px;background:var(--panel)}
+  .aturn{border-left:2.5px solid var(--accent-soft);padding-left:16px;display:flex;flex-direction:column;gap:10px;max-width:920px}
   .aturn>*:empty{display:none}
-  .thoughts{color:var(--faint);font-size:12.5px;font-style:italic;white-space:pre-wrap;line-height:1.5}
-  .toolcard{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
-  .toolcard .h{display:flex;align-items:center;gap:9px;padding:9px 12px;cursor:pointer}
-  .toolcard .h i.k{color:var(--cyan);font-size:16px}
+  .thoughts{color:var(--mut);font-size:12.5px;font-style:italic;white-space:pre-wrap;line-height:1.55}
+  .toolcard{border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--panel);overflow:hidden;box-shadow:var(--shadow)}
+  .toolcard .h{display:flex;align-items:center;gap:9px;padding:10px 13px;cursor:pointer}
+  .toolcard .h i.k{color:var(--accent);font-size:16px}
   .toolcard .h .t{flex:1;font-family:var(--mono);font-size:12.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .toolcard .st{font-size:11px;font-family:var(--mono);display:flex;align-items:center;gap:5px;flex:none}
-  .toolcard .st.running{color:var(--cyan)} .toolcard .st.completed{color:var(--ok)} .toolcard .st.failed{color:var(--bad)}
-  .spin{width:11px;height:11px;border:2px solid var(--line2);border-top-color:var(--cyan);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+  .toolcard .st.running{color:var(--accent)} .toolcard .st.completed{color:var(--ok)} .toolcard .st.failed{color:var(--bad)}
+  .spin{width:11px;height:11px;border:2px solid var(--line2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
   @keyframes spin{to{transform:rotate(360deg)}}
   /* MCP servers */
-  button.ghost.danger{color:var(--bad);border-color:transparent}
-  button.ghost.danger:hover{border-color:var(--bad)}
-  .mcpitem{display:flex;align-items:flex-start;gap:14px;padding:13px 0;border-top:1px solid var(--line)}
+  button.ghost.danger{color:var(--bad);border-color:var(--line2);background:#fff}
+  button.ghost.danger:hover{border-color:var(--bad);background:var(--baddim)}
+  .mcpitem{display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-top:1px solid var(--line)}
   .mcpitem:first-child{border-top:0}
   .mcpname{font-weight:600;display:flex;align-items:center;gap:7px}
-  .mcptag{font-size:10px;font-family:var(--mono);color:var(--mut);border:1px solid var(--line2);border-radius:6px;padding:1px 6px;text-transform:uppercase;letter-spacing:.06em}
+  .mcptag{font-size:10px;font-family:var(--mono);color:var(--mut);border:1px solid var(--line2);border-radius:6px;padding:1px 6px;text-transform:uppercase;letter-spacing:.05em;background:var(--panel2)}
   .mcpmeta{font-family:var(--mono);font-size:12px;color:var(--mut);margin-top:4px;word-break:break-all}
   .mcptest{font-family:var(--mono);font-size:11.5px;margin-top:6px;white-space:pre-wrap}
   .mcptest.good{color:var(--ok)} .mcptest.bad{color:var(--bad)}
-  .toolcard .body{border-top:1px solid var(--line);padding:10px 12px;font-family:var(--mono);font-size:12px;color:var(--mut);white-space:pre-wrap;max-height:280px;overflow:auto}
+  .toolcard .body{border-top:1px solid var(--line);padding:11px 13px;font-family:var(--mono);font-size:12px;color:var(--mut);white-space:pre-wrap;max-height:280px;overflow:auto;background:var(--panel2)}
   .toolcard.collapsed .body{display:none}
-  .planbox{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:11px 14px}
-  .planbox h5{margin:0 0 7px;font-size:10.5px;color:var(--faint);letter-spacing:.1em;text-transform:uppercase}
+  .planbox{border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--panel);padding:12px 15px;box-shadow:var(--shadow)}
+  .planbox h5{margin:0 0 8px;font-size:10.5px;color:var(--faint);letter-spacing:.08em;text-transform:uppercase;font-weight:600}
   .planbox .pi{display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;color:var(--mut)}
   .planbox .pi i{font-size:15px;flex:none}
-  .planbox .pi.completed{color:var(--ok)} .planbox .pi.in_progress{color:var(--cyan)}
-  .atext{font-size:14px;line-height:1.65}
-  .permcard{border:1px solid var(--warn);border-radius:10px;background:rgba(251,191,36,.08);padding:12px 14px}
-  .permcard .q{font-size:13px;color:var(--fg);margin-bottom:10px}
+  .planbox .pi.completed{color:var(--ok)} .planbox .pi.in_progress{color:var(--accent)}
+  .atext{font-size:14.5px;line-height:1.68}
+  .permcard{border:1px solid var(--warn);border-radius:var(--radius-sm);background:var(--warndim);padding:13px 15px}
+  .permcard .q{font-size:13.5px;color:var(--fg);margin-bottom:11px}
   .permcard .q b{color:var(--warn);font-family:var(--mono)}
   .permcard .acts{display:flex;gap:8px;flex-wrap:wrap}
-  .permcard button{padding:6px 14px;font-size:12.5px}
-  .btn-deny{background:transparent;color:var(--bad);border:1px solid var(--bad)}
-  .btn-deny:hover{box-shadow:none;background:rgba(248,113,113,.1)}
-  .attachbar{display:flex;gap:6px;flex-wrap:wrap;padding:8px 26px 0}
+  .permcard button{padding:7px 15px;font-size:12.5px}
+  .btn-deny{background:#fff;color:var(--bad);border:1px solid var(--bad);box-shadow:none}
+  .btn-deny:hover{box-shadow:none;background:var(--baddim)}
+  .attachbar{display:flex;gap:6px;flex-wrap:wrap;padding:8px 30px 0}
   .attachbar:empty{padding:0}
-  .attachchip{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);border:1px solid var(--line2);border-radius:20px;padding:4px 11px;font-family:var(--mono)}
+  .attachchip{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);border:1px solid var(--line2);border-radius:20px;padding:4px 11px;font-family:var(--mono);background:var(--panel)}
   .attachchip i{cursor:pointer;font-size:14px}
   .attachchip i:hover{color:var(--bad)}
-  .iconbtn{background:transparent;border:1px solid var(--line2);color:var(--mut);border-radius:9px;padding:0 12px;font-size:17px;display:flex;align-items:center}
-  .iconbtn:hover{color:var(--cyan);border-color:var(--cyandim);box-shadow:none}
+  .iconbtn{background:#fff;border:1px solid var(--line2);color:var(--mut);border-radius:var(--radius-sm);padding:0 13px;font-size:17px;display:flex;align-items:center;box-shadow:none}
+  .iconbtn:hover{color:var(--accent);border-color:var(--accent-soft);background:var(--panel2)}
 
   /* knowledge engine sub-tabs + ontology */
-  .ksub{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--line)}
-  .kst{display:flex;align-items:center;gap:7px;padding:10px 14px;color:var(--mut);cursor:pointer;font-size:13.5px;border-bottom:2px solid transparent}
+  .ksub{display:flex;gap:2px;margin-bottom:20px;border-bottom:1px solid var(--line)}
+  .kst{display:flex;align-items:center;gap:7px;padding:11px 15px;color:var(--mut);cursor:pointer;font-size:13.5px;font-weight:500;border-bottom:2.5px solid transparent;margin-bottom:-1px}
   .kst i{font-size:16px}
   .kst:hover{color:var(--fg)}
-  .kst.on{color:var(--cyan);border-bottom-color:var(--cyan);text-shadow:0 0 12px rgba(56,189,248,.4)}
+  .kst.on{color:var(--accent);border-bottom-color:var(--accent)}
   .relrow{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
   .relrow select,.relrow input{font-size:12.5px}
-  .chiprm{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;background:#0c121a;color:var(--fg);border:1px solid var(--line2);border-radius:7px;padding:5px 10px;margin:3px 5px 0 0}
+  .chiprm{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;background:var(--panel2);color:var(--fg);border:1px solid var(--line2);border-radius:8px;padding:5px 11px;margin:3px 5px 0 0}
   .chiprm small{color:var(--faint)}
   .chiprm i{cursor:pointer;color:var(--faint);font-size:14px} .chiprm i:hover{color:var(--bad)}
-  .chiprm.sel{border-color:var(--cyandim);color:var(--cyan);cursor:pointer}
+  .chiprm.sel{border-color:var(--accent-soft);color:var(--accent);cursor:pointer;background:var(--accent-dim)}
   .chiprm.sel i{display:none}
-  .jobitem{border:1px solid var(--line);border-radius:9px;margin-bottom:8px;overflow:hidden}
-  .jobitem .jh{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;font-size:13px}
-  .jobitem .jlog{border-top:1px solid var(--line);padding:10px 12px;font-family:var(--mono);font-size:11.5px;color:var(--mut);white-space:pre-wrap;max-height:220px;overflow:auto}
+  .jobitem{border:1px solid var(--line);border-radius:var(--radius-sm);margin-bottom:8px;overflow:hidden;background:var(--panel)}
+  .jobitem .jh{display:flex;align-items:center;gap:10px;padding:10px 13px;cursor:pointer;font-size:13px}
+  .jobitem .jlog{border-top:1px solid var(--line);padding:11px 13px;font-family:var(--mono);font-size:11.5px;color:var(--mut);white-space:pre-wrap;max-height:220px;overflow:auto;background:var(--panel2)}
   .jobitem.collapsed .jlog{display:none}
-  .jbadge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;padding:2px 9px;border-radius:6px}
-  .jbadge.running{color:var(--cyan);border:1px solid var(--cyandim)}
-  .jbadge.done{color:var(--ok);border:1px solid var(--ok)}
-  .jbadge.failed{color:var(--bad);border:1px solid var(--bad)}
+  .jbadge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:6px}
+  .jbadge.running{color:var(--accent);background:var(--accent-dim)}
+  .jbadge.done{color:var(--ok);background:var(--okdim)}
+  .jbadge.failed{color:var(--bad);background:var(--baddim)}
+
+  /* modal (project create / delete confirm) */
+  .modal-bg{position:fixed;inset:0;background:rgba(44,40,35,.42);backdrop-filter:blur(3px);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px;max-width:460px;width:100%;box-shadow:var(--shadow-lg)}
+  .modal h2{margin:0 0 6px;font-size:18px;font-weight:680}
+  .modal .sub{color:var(--mut);font-size:13px;margin-bottom:18px;line-height:1.55}
+  .modal label{display:block;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin:12px 0 5px}
+  .modal input{width:100%}
+  .modal .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:22px}
+  .modal .acts button{min-width:96px}
+  .btn-danger{background:var(--bad);color:#fff}
+  .btn-danger:hover{background:#963d31}
+  .btn-danger:disabled{background:var(--bad)}
+  .danger-zone{border:1px solid #e6c4bc;background:var(--baddim);border-radius:var(--radius);padding:18px 20px;margin-bottom:18px}
+  .danger-zone h3{color:var(--bad)!important}
+  .danger-zone h3 i{color:var(--bad)!important}
+  .delname{color:var(--bad);font-weight:700}
+
+  /* graph data management */
+  .noderow{display:flex;align-items:center;gap:11px;padding:9px 11px;border-bottom:1px solid var(--line);font-size:13px}
+  .noderow:hover{background:var(--panel2)}
+  .noderow .nlbl{font-family:var(--mono);font-size:10.5px;color:var(--accent);background:var(--accent-dim);border-radius:5px;padding:1px 7px;flex:none}
+  .noderow .nnm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .noderow .ndel{cursor:pointer;color:var(--faint);font-size:16px;flex:none}
+  .noderow .ndel:hover{color:var(--bad)}
+  .lblpill{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:6px 12px;margin:0 7px 7px 0}
+  .lblpill b{font-family:var(--mono);color:var(--accent)}
+  .lblpill.sel{border-color:var(--accent-soft);background:var(--accent-dim)}
+  .lblpill .x{cursor:pointer;color:var(--faint);font-size:15px} .lblpill .x:hover{color:var(--bad)}
+
+  /* dispatch → nested signal proposals */
+  .subpanel{border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--panel2);margin-top:12px;overflow:hidden}
+  .subpanel .sph{display:flex;align-items:center;gap:9px;padding:11px 14px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--mut)}
+  .subpanel .sph:hover{color:var(--fg)}
+  .subpanel .spbody{border-top:1px solid var(--line);padding:14px}
+  .subpanel.collapsed .spbody{display:none}
+  .pcard{border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--panel);padding:13px 15px;margin-bottom:10px;box-shadow:var(--shadow)}
+  .pcard:last-child{margin-bottom:0}
+  .stbadge{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:5px}
+  .stbadge.pending{color:var(--warn);background:var(--warndim)}
+  .stbadge.approved{color:var(--ok);background:var(--okdim)}
+  .stbadge.rejected{color:var(--bad);background:var(--baddim)}
 
   /* =========================== mobile / iPhone PWA =========================== */
   @media (max-width:640px){
-    /* layout: sidebar becomes a fixed bottom bar of project switchers */
     .app{grid-template-columns:1fr;grid-template-rows:1fr auto;height:100vh;height:100dvh}
     .main{order:1;height:auto;min-height:0}
     .side{order:2;flex-direction:row;border-right:none;border-top:1px solid var(--line);
-      padding:0;height:calc(58px + env(safe-area-inset-bottom));backdrop-filter:blur(6px);overflow-x:auto}
+      padding:0;height:calc(58px + env(safe-area-inset-bottom));overflow-x:auto;background:var(--panel)}
     .brand,.navlbl,.side .foot{display:none}
     .nav{flex-direction:row;padding:0;gap:0;flex:1}
     .nitem{flex-direction:column;gap:2px;padding:8px 8px calc(8px + env(safe-area-inset-bottom));
-      border-radius:0;border:none;font-size:10px;min-width:64px;align-items:center;justify-content:center}
-    .nitem .nm{font-size:10px}
+      border-radius:0;border:none;font-size:10px;min-width:64px;align-items:center;justify-content:center;box-shadow:none}
+    .nitem.active{box-shadow:none}
+    .nitem .nm{font-size:10px;font-weight:600}
     .nitem .mini{display:none}
     .nitem.active{background:transparent}
-    .nitem.active::before{left:0;right:0;bottom:0;top:auto;width:auto;height:2px;border-radius:2px 2px 0 0}
+    .nitem.active::before{left:0;right:0;bottom:0;top:auto;width:auto;height:2.5px;border-radius:2px 2px 0 0}
 
-    /* iOS notch / dynamic island */
-    .topbar{padding-top:calc(14px + env(safe-area-inset-top))}
-
-    /* tighter horizontal padding everywhere */
-    .topbar{padding-left:14px;padding-right:14px;gap:10px}
+    .topbar{padding-top:calc(16px + env(safe-area-inset-top))}
+    .topbar{padding-left:16px;padding-right:16px;gap:10px}
     .tabs{padding:0 6px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}
-    .tab{padding:10px 8px;font-size:11.5px;gap:4px;flex:0 0 auto}
-    .tab i{font-size:14px}
-    .scroll{padding:12px 10px}
-    .msgs{padding:12px 10px}
-    .composer{padding:8px 10px}
-    .chathead{padding:8px 12px}
-    .cfgbar{padding:6px 10px;gap:6px}
-    .panel{padding:12px 12px}
+    .tab{padding:11px 9px;font-size:11.5px;gap:4px;flex:0 0 auto}
+    .tab i{font-size:15px}
+    .scroll{padding:14px 12px}
+    .msgs{padding:14px 12px}
+    .composer{padding:10px 12px}
+    .chathead{padding:9px 14px}
+    .cfgbar{padding:7px 12px;gap:6px}
+    .panel{padding:14px 14px}
 
-    .topbar h1{font-size:15px}
-    .chip{padding:2px 7px;font-size:11px}
+    .topbar h1{font-size:16px}
+    .chip{padding:3px 9px;font-size:11px}
 
-    /* metrics: 2-up */
-    .metrics{grid-template-columns:1fr 1fr;gap:10px}
+    .metrics{grid-template-columns:1fr 1fr;gap:11px}
 
-    /* touch targets */
-    button{min-height:40px}
-    button.ghost{min-height:36px}
-    input,textarea,select{font-size:16px}  /* >=16px stops iOS auto-zoom on focus */
+    button{min-height:42px}
+    button.ghost{min-height:38px}
+    input,textarea,select{font-size:16px}
 
-    /* chat: use full width */
     .msg{max-width:100%}
     .aturn{max-width:100%}
     .ubub{max-width:94%}
     .cfgbar .lbl{display:none}
 
-    /* ledger: drop low-value columns (Type, In, Out, Latency) to fit */
     .ledger th:nth-child(3),.ledger td:nth-child(3),
     .ledger th:nth-child(4),.ledger td:nth-child(4),
     .ledger th:nth-child(5),.ledger td:nth-child(5),
     .ledger th:nth-child(8),.ledger td:nth-child(8){display:none}
     .ledger{font-size:11.5px}
-    .ledger th,.ledger td{padding:6px 5px}
+    .ledger th,.ledger td{padding:7px 6px}
 
-    /* knowledge graph canvas */
     #cy{height:280px !important}
 
-    /* form inputs that hardcode wide min-widths */
     #mcpfields input,#mcpfields select,
     .relrow select,.relrow input{width:100% !important;min-width:unset !important}
     .relrow{flex-wrap:wrap}
 
-    /* signals sub-tabs + dispatch rows wrap cleanly */
     .ksub{flex-wrap:wrap;gap:4px}
     .edit{flex-wrap:wrap}
+    .modal{padding:20px}
   }
 </style>
 </head>
@@ -324,7 +366,7 @@
       <div class="logo"><i class="ti ti-diamond"></i>JARVIS</div>
       <div class="tag">control center</div>
     </div>
-    <div class="navlbl">Projects</div>
+    <div class="navlbl">Projects <i class="ti ti-plus add" title="New project" onclick="openCreateProject()"></i></div>
     <div class="nav" id="nav"></div>
     <div class="foot">
       <span class="led" id="led"><span class="d"></span>gateway …</span>
@@ -359,7 +401,6 @@ const TABS = [
   {id:"chat", lbl:"Chat", icon:"ti-message-2"},
   {id:"transactions", lbl:"Transactions", icon:"ti-receipt"},
   {id:"knowledge", lbl:"Knowledge engine", icon:"ti-affiliate"},
-  {id:"signals", lbl:"Signals", icon:"ti-bolt"},
   {id:"dispatch", lbl:"Dispatch", icon:"ti-calendar-bolt"},
   {id:"mcp", lbl:"MCP servers", icon:"ti-plug-connected"},
 ];
@@ -421,7 +462,7 @@ function renderTopbar(){
   $("#topbar").innerHTML = `
     <div>
       <h1>${esc(p.label)}</h1>
-      <div class="sub">${p.alias} · agent <b style="color:var(--cyan)">${esc(p.agent?.model||"—")}</b></div>
+      <div class="sub">${p.alias} · agent <b style="color:var(--accent)">${esc(p.agent?.model||"—")}</b></div>
     </div>
     <span class="spacer"></span>
     <span class="chip">budget <b>${money(p.spend)}</b> / ${money(p.budget)}</span>
@@ -429,7 +470,7 @@ function renderTopbar(){
 }
 function renderTabs(){
   const p=curProj();
-  const tabs = TABS.filter(t=>(t.id!=="knowledge"&&t.id!=="signals") || hasGraph(p));
+  const tabs = TABS.filter(t=>t.id!=="knowledge" || hasGraph(p));
   if(!tabs.find(t=>t.id===state.tab)) state.tab="overview";
   $("#tabs").innerHTML = tabs.map(t=>`<div class="tab ${t.id===state.tab?"active":""}" onclick="selectTab('${t.id}')">
     <i class="ti ${t.icon}"></i>${t.lbl}</div>`).join("");
@@ -437,6 +478,69 @@ function renderTabs(){
 function selectProject(a){ state.alias=a; state.tab="overview"; renderAll(); }
 function selectTab(t){ state.tab=t; renderTabs(); renderContent(); }
 function renderAll(){ renderSidebar(); renderTopbar(); renderTabs(); renderContent(); }
+
+/* ---------- project management (create / delete) ---------- */
+function closeModal(){ const m=$("#modalmount"); if(m) m.remove(); }
+function mountModal(html){
+  closeModal();
+  const d=document.createElement("div"); d.id="modalmount"; d.className="modal-bg";
+  d.innerHTML=html;
+  d.addEventListener("click",e=>{ if(e.target===d) closeModal(); });
+  document.body.appendChild(d);
+}
+function openCreateProject(){
+  mountModal(`<div class="modal">
+    <h2>New project</h2>
+    <div class="sub">Creates a workspace with its own budget, agent profile and knowledge graph. The graph and config are provisioned on first ingest.</div>
+    <label>Alias <span class="muted" style="text-transform:none;letter-spacing:0">— lowercase id, used in URLs &amp; the agent profile</span></label>
+    <input id="np_alias" placeholder="e.g. retailco" oninput="npSync()">
+    <label>Display name</label>
+    <input id="np_label" placeholder="e.g. RetailCo Research">
+    <label style="display:flex;align-items:center;gap:9px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--fg);margin-top:16px">
+      <input type="checkbox" id="np_graph" checked style="width:16px;height:16px;accent-color:var(--accent)"> Provision a knowledge graph for this project</label>
+    <div class="acts">
+      <button class="ghost" onclick="closeModal()">Cancel</button>
+      <button id="np_btn" onclick="createProject()">Create project</button>
+    </div>
+    <div class="note" id="np_note" style="margin-top:10px"></div>
+  </div>`);
+  setTimeout(()=>$("#np_alias")?.focus(),50);
+}
+function npSync(){ const a=($("#np_alias")?.value||"").toLowerCase().replace(/[^a-z0-9_-]/g,""); if($("#np_alias")) $("#np_alias").value=a; }
+async function createProject(){
+  const alias=($("#np_alias")?.value||"").trim(), label=($("#np_label")?.value||"").trim(), has_graph=$("#np_graph")?.checked;
+  const note=$("#np_note"), btn=$("#np_btn");
+  if(!alias){ note.textContent="enter an alias"; return; }
+  btn.disabled=true; note.textContent="creating…";
+  let r; try{ r=await (await apiFetch("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({alias,label,has_graph})})).json(); }
+  catch(e){ note.textContent="failed: "+e.message; btn.disabled=false; return; }
+  if(r.ok){ closeModal(); await refreshOverview(); selectProject(alias); }
+  else { note.textContent="✗ "+(r.detail||"failed"); btn.disabled=false; }
+}
+function openDeleteProject(){
+  const p=curProj(); if(!p) return;
+  mountModal(`<div class="modal">
+    <h2 style="color:var(--bad)">Delete project</h2>
+    <div class="sub">This removes <b>${esc(p.label)}</b>'s config (knowledge data, MCP servers, dispatch tasks) and <b>archives all data</b> to <code>~/.jarvis-archive/</code>. The LiteLLM budget key and any LaunchAgents are left untouched. This cannot be undone from here.</div>
+    <label>Type the alias <span class="delname">${esc(p.alias)}</span> to confirm</label>
+    <input id="dp_confirm" placeholder="${esc(p.alias)}" oninput="dpSync()" autocomplete="off">
+    <div class="acts">
+      <button class="ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn-danger" id="dp_btn" disabled onclick="deleteProject()">Delete &amp; archive</button>
+    </div>
+    <div class="note" id="dp_note" style="margin-top:10px"></div>
+  </div>`);
+  setTimeout(()=>$("#dp_confirm")?.focus(),50);
+}
+function dpSync(){ const p=curProj(); const ok=($("#dp_confirm")?.value||"").trim()===p.alias; const b=$("#dp_btn"); if(b) b.disabled=!ok; }
+async function deleteProject(){
+  const p=curProj(); const note=$("#dp_note"), btn=$("#dp_btn");
+  btn.disabled=true; note.textContent="archiving + deleting…";
+  let r; try{ r=await (await apiFetch("/api/projects/"+p.alias,{method:"DELETE"})).json(); }
+  catch(e){ note.textContent="failed: "+e.message; btn.disabled=false; return; }
+  if(r.ok){ closeModal(); state.alias=null; state.tab="overview"; await refreshOverview(); renderContent(); }
+  else { note.textContent="✗ "+(r.detail||"failed"); btn.disabled=false; }
+}
 
 /* ---------- content router ---------- */
 function renderContent(){
@@ -446,7 +550,6 @@ function renderContent(){
   else if(state.tab==="chat"){ c.innerHTML=viewChat(); afterChat(); }
   else if(state.tab==="transactions"){ c.innerHTML=`<div class="scroll"><div class="loading">loading ledger…</div></div>`; loadTxns(); }
   else if(state.tab==="knowledge"){ c.innerHTML=viewKnowledge(); afterKnowledge(); }
-  else if(state.tab==="signals"){ c.innerHTML=viewSignals(); afterSignals(); }
   else if(state.tab==="dispatch"){ c.innerHTML=`<div class="scroll" id="dwrap"><div class="loading">loading tasks…</div></div>`; afterDispatch(); }
   else if(state.tab==="mcp"){ c.innerHTML=`<div class="scroll" id="mcpwrap"><div class="loading">loading MCP servers…</div></div>`; afterMcp(); }
 }
@@ -477,7 +580,7 @@ function viewOverview(){
   <div class="panel">
     <h3><i class="ti ti-cpu"></i>Agent</h3>
     <div class="row"><span class="k">Profile</span><span class="val">${esc(p.alias)}</span></div>
-    <div class="row"><span class="k">Model</span><span class="val" style="color:var(--cyan)">${esc(p.agent?.model||"—")}</span></div>
+    <div class="row"><span class="k">Model</span><span class="val" style="color:var(--accent)">${esc(p.agent?.model||"—")}</span></div>
     <div class="row"><span class="k">Wrapper</span><span class="val">${esc(p.agent?.wrapper||"—")}</span></div>
     <div class="row"><span class="k">Chat session</span><span class="val">ui-${esc(p.alias)}</span></div>
   </div>
@@ -488,6 +591,11 @@ function viewOverview(){
       <div class="tags">${(g.labels||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join("")||'<span class="muted">no labels yet</span>'}</div>
       <div style="margin-top:12px"><button class="ghost" onclick="selectTab('knowledge')">Open knowledge engine →</button></div>
     `:`<span class="muted">No knowledge graph for the general agent.</span>`}
+  </div>
+  <div class="danger-zone">
+    <h3><i class="ti ti-alert-triangle"></i>Danger zone</h3>
+    <div class="row"><span class="k">Delete this project — archives all data, removes config. Requires typing the alias to confirm.</span>
+      <button class="ghost danger" onclick="openDeleteProject()"><i class="ti ti-trash"></i> Delete project</button></div>
   </div>`;
 }
 async function setBudget(){
@@ -706,7 +814,7 @@ async function loadTxns(){
         <td class="r muted">${r.prompt_tokens??"—"}</td>
         <td class="r muted">${r.completion_tokens??"—"}</td>
         <td class="r">${ktok(r.total_tokens)}</td>
-        <td class="r" style="color:var(--cyan)">${money(r.spend)}</td>
+        <td class="r" style="color:var(--accent)">${money(r.spend)}</td>
         <td class="r muted">${r.duration_ms!=null?(r.duration_ms/1000).toFixed(1)+"s":"—"}</td>
       </tr>`).join("")||'<tr><td colspan="8" class="muted" style="padding:18px">no transactions on this key yet</td></tr>'}
       </tbody></table></div>
@@ -867,6 +975,7 @@ async function afterKnowledge(){
 }
 
 /* --- graph --- */
+let GBROWSE={label:'',search:''};
 function renderKGraph(){
   const sc=KSCHEMA[state.alias]||{};
   $('#kbody').innerHTML=`<div class="kbar" style="margin-bottom:14px">
@@ -875,10 +984,31 @@ function renderKGraph(){
     <span class="spacer"></span>
     <label class="note">show <select id="glim"><option>40</option><option selected>80</option><option>150</option><option>300</option></select> relations</label>
     <button class="ghost" onclick="loadKGraph()">↻ Reload</button></div>
-    <div class="tags" style="margin-bottom:14px">${(sc.labels||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join('')}</div>
-    <div style="height:460px"><div id="cy"></div></div>
-    <div class="note" id="gcount" style="margin-top:10px"></div>`;
+    <div style="height:420px"><div id="cy"></div></div>
+    <div class="note" id="gcount" style="margin:10px 0 4px"></div>
+
+    <div class="panel" style="margin-top:18px">
+      <h3><i class="ti ti-list-search"></i>Manage data</h3>
+      <div class="note" style="margin-bottom:12px">Browse and delete individual nodes, or clear all nodes of a type. Deleting a node detaches its relationships. For a full rebuild use <b>Reset graph</b> below.</div>
+      <div style="margin-bottom:10px">${(sc.labels||[]).map(l=>`<span class="lblpill ${GBROWSE.label===l?'sel':''}"><span onclick="gPickLabel('${esc(l)}')"><b>${esc(l)}</b></span> <i class="ti ti-x x" title="Delete all ${esc(l)} nodes" onclick="gDeleteLabel('${esc(l)}')"></i></span>`).join('')||'<span class="muted">no node types yet</span>'}</div>
+      <div class="edit" style="gap:8px">
+        <input id="gsearch" placeholder="search node names…" style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter')gSearch()">
+        <button class="ghost" onclick="gSearch()"><i class="ti ti-search"></i> Search</button>
+        ${GBROWSE.label||GBROWSE.search?`<button class="ghost" onclick="gClearBrowse()">Clear</button>`:''}
+      </div>
+      <div id="gnodes" style="margin-top:12px"></div>
+    </div>
+
+    <div class="danger-zone">
+      <h3><i class="ti ti-alert-triangle"></i>Reset graph</h3>
+      <div class="row"><span class="k"><b>Reset</b> wipes all nodes &amp; embeddings but keeps your source files so you can re-cognify. <b>Wipe</b> also deletes the source files.</span></div>
+      <div class="edit" style="gap:8px;margin-top:6px">
+        <button class="ghost danger" onclick="gReset('reset')"><i class="ti ti-refresh"></i> Reset (keep sources)</button>
+        <button class="ghost danger" onclick="gReset('wipe')"><i class="ti ti-trash"></i> Wipe everything</button>
+      </div>
+    </div>`;
   loadKGraph();
+  if(GBROWSE.label||GBROWSE.search) gLoadNodes();
 }
 async function loadKGraph(){
   const a=state.alias, lim=$('#glim')?.value||80;
@@ -888,9 +1018,50 @@ async function loadKGraph(){
   $('#glim')?.addEventListener('change',loadKGraph,{once:true});
   state.cy=cytoscape({ container:$('#cy'), elements:[...d.nodes,...d.edges],
     style:[
-      {selector:'node',style:{'background-color':'#0e2433','border-color':'#38bdf8','border-width':1.4,'label':'data(label)','color':'#cfe8f7','font-size':'9px','width':20,'height':20,'text-wrap':'wrap','text-max-width':'82px','text-valign':'bottom','text-margin-y':3}},
-      {selector:'edge',style:{'width':1,'line-color':'#27384a','target-arrow-color':'#2f4459','target-arrow-shape':'triangle','curve-style':'bezier','label':'data(label)','font-size':'7px','color':'#5a6678'}}
+      {selector:'node',style:{'background-color':'#fbf3ea','border-color':'#b15a31','border-width':1.5,'label':'data(label)','color':'#5a4736','font-size':'9px','width':21,'height':21,'text-wrap':'wrap','text-max-width':'82px','text-valign':'bottom','text-margin-y':3}},
+      {selector:'edge',style:{'width':1.1,'line-color':'#d8ccb8','target-arrow-color':'#c4a988','target-arrow-shape':'triangle','curve-style':'bezier','label':'data(label)','font-size':'7px','color':'#9b9183'}}
     ], layout:{name:'cose',animate:false,padding:24,nodeRepulsion:9000} });
+}
+function gPickLabel(l){ GBROWSE.label=(GBROWSE.label===l?'':l); renderKGraph(); }
+function gSearch(){ GBROWSE.search=($('#gsearch')?.value||'').trim(); gLoadNodes(); }
+function gClearBrowse(){ GBROWSE={label:'',search:''}; renderKGraph(); }
+async function gLoadNodes(){
+  const a=state.alias, el=$('#gnodes'); if(!el) return;
+  el.innerHTML='<div class="loading">loading nodes…</div>';
+  const qs=new URLSearchParams(); if(GBROWSE.label)qs.set('label',GBROWSE.label); if(GBROWSE.search)qs.set('search',GBROWSE.search);
+  let d; try{ d=await (await apiFetch(`/api/graph/${a}/browse?${qs}`)).json(); }catch(e){ el.innerHTML='<span class="muted">failed to load</span>'; return; }
+  if(state.tab!=='knowledge'||state.alias!==a||state.ktab!=='graph') return;
+  const nodes=d.nodes||[];
+  el.innerHTML = nodes.length
+    ? `<div style="border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden">${nodes.map(n=>`<div class="noderow"><span class="nlbl">${esc(n.label)}</span><span class="nnm">${esc(n.name||'(unnamed)')}</span><i class="ti ti-trash ndel" title="Delete node" onclick="gDeleteNode(${n.id},this)"></i></div>`).join('')}</div><div class="note" style="margin-top:8px">${nodes.length} node${nodes.length===1?'':'s'} shown</div>`
+    : '<span class="muted">no matching nodes</span>';
+}
+async function gDeleteNode(id, elm){
+  if(!confirm('Delete this node and detach its relationships?')) return;
+  try{ const r=await (await apiFetch(`/api/graph/${state.alias}/node/${id}`,{method:'DELETE'})).json(); if(!r.ok){ alert('delete failed'); return; } }
+  catch(e){ alert('delete failed: '+e.message); return; }
+  const row=elm.closest('.noderow'); if(row) row.remove();
+  loadSchema(state.alias,true);
+}
+async function gDeleteLabel(label){
+  if(!confirm(`Delete ALL "${label}" nodes? This detaches their relationships and cannot be undone.`)) return;
+  try{ const r=await (await apiFetch(`/api/graph/${state.alias}/label/${encodeURIComponent(label)}`,{method:'DELETE'})).json();
+    if(!r.ok){ alert('delete failed'); return; } if(GBROWSE.label===label) GBROWSE.label=''; }
+  catch(e){ alert('delete failed: '+e.message); return; }
+  await loadSchema(state.alias,true); renderKGraph();
+}
+async function gReset(mode){
+  const p=curProj();
+  const msg = mode==='wipe'
+    ? `WIPE EVERYTHING for ${p.label}?\n\nDeletes all graph nodes, embeddings AND source files. You'll need to re-add data from scratch.`
+    : `Reset the ${p.label} graph?\n\nWipes all nodes & embeddings but KEEPS your source files, so you can re-cognify to rebuild.`;
+  if(!confirm(msg)) return;
+  if(!confirm('Are you sure? This cannot be undone.')) return;
+  const body=$('#kbody'); if(body) body.innerHTML='<div class="loading">'+(mode==='wipe'?'wiping':'resetting')+' graph…</div>';
+  let r; try{ r=await (await apiFetch(`/api/graph/${state.alias}/reset`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})})).json(); }
+  catch(e){ alert('reset failed: '+e.message); afterKnowledge(); return; }
+  if(!r.ok) alert('reset failed: '+(r.detail||''));
+  await loadSchema(state.alias,true); renderKGraph();
 }
 
 /* --- add data --- */
@@ -950,123 +1121,28 @@ async function loadKJobs(){
   else if(jobs.length){ loadSchema(a,true); }  // refresh stats once a job finishes
 }
 
-/* ====================== Signals — agent proposes, you approve ====================== */
-let SIGNALS={pending:[],approved:[],rejected:[]};
-function viewSignals(){
-  const sub=state.stab||(state.stab='propose');
-  const T=[['propose','ti-wand','Propose'],['pending','ti-inbox','Pending'],['approved','ti-checks','Approved'],['rejected','ti-trash','Rejected']];
-  return `<div class="scroll" style="display:flex;flex-direction:column">
-    <div class="ksub">${T.map(([k,i,l])=>`<span class="kst ${k===sub?'on':''}" onclick="sSub('${k}')"><i class="ti ${i}"></i>${l}${k!=='propose'?` <b style="opacity:.6">${(SIGNALS[k]||[]).length}</b>`:''}</span>`).join('')}</div>
-    <div id="sbody" style="flex:1;min-height:0"></div>
-  </div>`;
-}
-function sSub(k){ state.stab=k; renderContent(); }
-async function afterSignals(){
-  const a=state.alias;
-  try{ SIGNALS=await (await apiFetch(`/api/signals/${a}/proposals`)).json(); }catch(e){ SIGNALS={pending:[],approved:[],rejected:[]}; }
-  if(state.tab!=='signals'||state.alias!==a) return;
-  const sub=state.stab||'propose';
-  if(sub==='propose') renderSPropose();
-  else renderSList(sub);
-}
+/* ====================== Dispatch — tasks + their agent-generated signal proposals ======================
+   Signals are the proposals a dispatch task (e.g. the weekly sweep) generates. They live nested
+   under the task that produced them; ad-hoc proposals get their own group. */
+let DTASKS=[], DPROPS={};
+const WD=[['','Any day'],['1','Sun'],['2','Mon'],['3','Tue'],['4','Wed'],['5','Thu'],['6','Fri'],['7','Sat']];
 function pct(v){ return v==null?'—':(v*100).toFixed(2)+'%'; }
 function sparkline(eq){
   if(!eq||eq.length<2) return '';
   const w=120,h=28,mn=Math.min(...eq),mx=Math.max(...eq),rng=(mx-mn)||1;
   const pts=eq.map((v,i)=>`${(i/(eq.length-1)*w).toFixed(1)},${(h-((v-mn)/rng)*h).toFixed(1)}`).join(' ');
   const up=eq[eq.length-1]>=eq[0];
-  return `<svg width="${w}" height="${h}" style="vertical-align:middle"><polyline points="${pts}" fill="none" stroke="${up?'#34d399':'#f87171'}" stroke-width="1.4"/></svg>`;
+  return `<svg width="${w}" height="${h}" style="vertical-align:middle"><polyline points="${pts}" fill="none" stroke="${up?'var(--ok)':'var(--bad)'}" stroke-width="1.6"/></svg>`;
 }
-function renderSPropose(){
-  $('#sbody').innerHTML=`
-    <div class="panel">
-      <h3><i class="ti ti-wand"></i> Propose a signal from a seed</h3>
-      <div class="note" style="margin-bottom:8px">The agent queries the knowledge graph around your seed, forms one testable signal, and writes a proposal. It's auto-backtested against price history (deterministic, no extra LLM) and lands in <b>Pending</b> for your review.</div>
-      <textarea id="sseed" placeholder="An event or news to build a signal around, e.g. 'Morgan Stanley upgraded Tata Motors to Overweight citing JLR order book and FY26 margins'" style="width:100%;min-height:90px"></textarea>
-      <div class="edit" style="margin-top:10px;flex-wrap:wrap;align-items:center;gap:10px">
-        <span class="note">direction</span>
-        <select id="sdir"><option value="long">long</option><option value="short">short</option></select>
-        <span class="note">horizon</span>
-        <input id="shorizon" value="5d" style="width:64px" title="forward window, e.g. 5d">
-        <span class="spacer"></span>
-        <button onclick="sPropose()"><i class="ti ti-bolt"></i> Propose signal</button>
-      </div>
-      <div class="note" id="snote" style="margin-top:8px"></div>
-    </div>
-    <div class="panel"><h3><i class="ti ti-history"></i> Proposal runs</h3><div id="sjobs"><span class="muted">none yet</span></div></div>`;
-  loadSJobs();
-}
-async function sPropose(){
-  const seed=($('#sseed')?.value||'').trim(), note=$('#snote');
-  if(!seed){ note.textContent='enter a seed first'; return; }
-  note.textContent='starting agent…';
-  const direction=$('#sdir')?.value||'long', horizon=($('#shorizon')?.value||'5d').trim();
-  let r; try{ r=await (await apiFetch(`/api/signals/${state.alias}/propose`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seed,direction,horizon})})).json(); }
-  catch(e){ note.textContent='failed: '+e.message; return; }
-  if(r.ok){ note.textContent=`✓ run #${r.job} started — the agent is proposing, then backtesting`; $('#sseed').value=''; loadSJobs(); }
-  else note.textContent='✗ '+(r.detail||r.error||'failed');
-}
-async function loadSJobs(){
-  const a=state.alias;
-  let jobs=[]; try{ jobs=(await (await apiFetch(`/api/signals/${a}/jobs`)).json()).jobs||[]; }catch(e){}
-  if(state.tab!=='signals'||state.alias!==a||state.stab!=='propose') return;
-  const el=$('#sjobs'); if(el) el.innerHTML = jobs.length? jobs.map(j=>`<div class="jobitem collapsed"><div class="jh" onclick="this.parentNode.classList.toggle('collapsed')"><span class="jbadge ${j.status}">${j.status==='running'?'<span class="spin"></span> running':j.status}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.seed||('run '+j.id))}</span><i class="ti ti-chevron-down"></i></div><div class="jlog">${esc(j.log||'(no output yet)')}</div></div>`).join('') : '<span class="muted">none yet</span>';
-  if(jobs.some(j=>j.status==='running')) setTimeout(loadSJobs, 4000);
-  else if(jobs.some(j=>j.status==='done')) afterSignals();  // refresh pending once a run lands
-}
-function sCard(p, actions){
-  const st=(p.backtest&&p.backtest.stats)||{}, tr=(p.trigger&&p.trigger.match)||{};
-  const bterr=(p.backtest&&p.backtest.error);
-  return `<div class="panel" style="margin-bottom:12px">
-    <div style="display:flex;align-items:flex-start;gap:10px">
-      <div style="flex:1">
-        <div style="font-weight:600;margin-bottom:3px">${esc(p.thesis||p.id)}</div>
-        <div class="note">${esc(p.seed||'')}</div>
-      </div>
-      <span class="chip">${esc(p.direction||'?')} · ${esc(String(p.horizon||''))}</span>
-    </div>
-    <div class="kbar" style="margin:10px 0 6px;flex-wrap:wrap">
-      ${bterr?`<span class="chip" style="color:#f87171">backtest error</span>`:`
-      <span class="chip">events <b>${st.n??'—'}</b></span>
-      <span class="chip">hit-rate <b>${st.hitRate==null?'—':pct(st.hitRate)}</b></span>
-      <span class="chip">avg fwd <b>${st.avgFwdRet==null?'—':pct(st.avgFwdRet)}</b></span>
-      <span class="chip">t-stat <b>${st.tStat??'—'}</b></span>
-      <span class="chip">IC <b>${st.ic??'—'}</b></span>
-      <span class="spacer"></span>${sparkline(st.equityCurve)}`}
-    </div>
-    <div class="tags" style="margin-bottom:8px">${(tr.tickers||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}${(tr.keywordAny||[]).slice(0,5).map(k=>`<span class="tag" style="opacity:.6">${esc(k)}</span>`).join('')}</div>
-    ${p.rejectReason?`<div class="note" style="color:#f87171">rejected: ${esc(p.rejectReason)}</div>`:''}
-    ${actions?`<div class="edit" style="margin-top:8px;gap:8px">
-      <button onclick="sApprove('${esc(p.id)}')"><i class="ti ti-check"></i> Approve</button>
-      <button class="ghost" onclick="sReject('${esc(p.id)}')"><i class="ti ti-x"></i> Reject</button>
-      <span class="spacer"></span><span class="muted" style="font-size:11px">${esc(p.id)}</span>
-    </div>`:`<div class="muted" style="font-size:11px;margin-top:4px">${esc(p.id)}</div>`}
-  </div>`;
-}
-function renderSList(status){
-  const list=SIGNALS[status]||[];
-  $('#sbody').innerHTML = list.length ? list.map(p=>sCard(p, status==='pending')).join('')
-    : `<div class="panel"><span class="muted">no ${status} proposals</span></div>`;
-}
-async function sApprove(pid){
-  if(!confirm('Approve this signal? It will be written into the graph as a validated Signal node.')) return;
-  try{ const r=await (await apiFetch(`/api/signals/${state.alias}/proposals/${pid}/approve`,{method:'POST'})).json();
-    if(!r.ok){ alert('approve failed: '+(r.detail||'')); return; } }catch(e){ alert('approve failed: '+e.message); return; }
-  afterSignals();
-}
-async function sReject(pid){
-  const reason=prompt('Reject reason (optional):','')||'';
-  try{ await apiFetch(`/api/signals/${state.alias}/proposals/${pid}/reject`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason})}); }
-  catch(e){ alert('reject failed: '+e.message); return; }
-  afterSignals();
-}
-
-/* ====================== Dispatch — user-defined tasks, manual or scheduled ====================== */
-let DTASKS=[];
-const WD=[['','Any day'],['1','Sun'],['2','Mon'],['3','Tue'],['4','Wed'],['5','Thu'],['6','Fri'],['7','Sat']];
 async function afterDispatch(){
   const a=state.alias;
-  try{ DTASKS=(await (await apiFetch(`/api/dispatch/${a}`)).json()).tasks||[]; }catch(e){ DTASKS=[]; }
+  try{
+    const [tk,pr]=await Promise.all([
+      apiFetch(`/api/dispatch/${a}`).then(r=>r.json()),
+      apiFetch(`/api/dispatch/${a}/proposals`).then(r=>r.json()).catch(()=>({by_task:{}})),
+    ]);
+    DTASKS=tk.tasks||[]; DPROPS=(pr&&pr.by_task)||{};
+  }catch(e){ DTASKS=[]; DPROPS={}; }
   if(state.tab!=='dispatch'||state.alias!==a) return;
   renderDispatch();
 }
@@ -1078,13 +1154,24 @@ function schedSummary(t){
 function renderDispatch(){
   const wrap=$('#dwrap'); if(!wrap) return;
   wrap.innerHTML = `
-    <div class="note" style="margin-bottom:12px">User-defined tasks. They run <b>only</b> when you click <b>Run now</b> or on a schedule you enable (a LaunchAgent). Nothing here runs automatically.</div>
+    <div class="note" style="margin-bottom:14px">Tasks run <b>only</b> when you click <b>Run now</b> or on a schedule you enable (a LaunchAgent). Nothing here runs automatically. <b>Script</b> tasks run a shell command. <b>Prompt</b> tasks send your question to the project's knowledge agent (Cognee retrieval + LLM).</div>
     ${DTASKS.map(dCard).join('')}
     <div class="panel" style="border-style:dashed">
       <h3><i class="ti ti-plus"></i> New task</h3>
-      <div class="edit" style="flex-wrap:wrap;gap:8px">
-        <input id="dn_name" placeholder="name" style="width:170px">
-        <input id="dn_cmd" placeholder="command (e.g. marketdata/.venv/bin/python -m signals.sweep --project hedgefund)" style="flex:1;min-width:260px">
+      <div class="edit" style="flex-wrap:wrap;gap:8px;align-items:center">
+        <input id="dn_name" placeholder="name" style="width:160px">
+        <select id="dn_type" onchange="ntypeChange()">
+          <option value="script">Script — run a command</option>
+          <option value="prompt">Prompt — query knowledge engine</option>
+        </select>
+      </div>
+      <div id="dn_script_fields" style="margin-top:8px">
+        <div class="edit" style="flex-wrap:wrap;gap:8px">
+          <input id="dn_cmd" placeholder="command (e.g. .venv/bin/python -m signals.sweep --project hedgefund)" style="flex:1;min-width:260px">
+        </div>
+      </div>
+      <div id="dn_prompt_fields" style="display:none;margin-top:8px">
+        <textarea id="dn_prompt" placeholder="Default prompt for this task (can edit before each run)…" style="width:100%;min-height:60px;box-sizing:border-box"></textarea>
       </div>
       <div class="edit" style="flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center">
         <input id="dn_desc" placeholder="description (optional)" style="flex:1;min-width:200px">
@@ -1096,16 +1183,85 @@ function renderDispatch(){
     <div class="panel"><h3><i class="ti ti-history"></i> Run log</h3><div id="djobs"><span class="muted">none yet</span></div></div>`;
   loadDJobs();
 }
+function ntypeChange(){
+  const t=$('#dn_type')?.value||'script';
+  const sf=$('#dn_script_fields'), pf=$('#dn_prompt_fields');
+  if(sf) sf.style.display=t==='script'?'':'none';
+  if(pf) pf.style.display=t==='prompt'?'':'none';
+}
+function propSummary(list){
+  const pend=list.filter(p=>p._status==='pending').length;
+  return `${list.length} proposal${list.length===1?'':''}${pend?` · <b style="color:var(--warn)">${pend} pending</b>`:''}`;
+}
+function propsSubpanel(tid, list){
+  if(!list||!list.length) return '';
+  const open=(state.dprops||{})[tid];
+  return `<div class="subpanel ${open?'':'collapsed'}">
+    <div class="sph" onclick="dToggleProps('${esc(tid)}')"><i class="ti ti-bolt" style="color:var(--accent)"></i> Signal proposals <span class="muted" style="font-weight:500">— ${propSummary(list)}</span><span class="spacer"></span><i class="ti ti-chevron-${open?'up':'down'}"></i></div>
+    <div class="spbody">${list.map(pCard).join('')}</div>
+  </div>`;
+}
+function dToggleProps(tid){ state.dprops=state.dprops||{}; state.dprops[tid]=!state.dprops[tid]; renderDispatch(); }
+function pCard(p){
+  const st=(p.backtest&&p.backtest.stats)||{}, tr=(p.trigger&&p.trigger.match)||{};
+  const bterr=(p.backtest&&p.backtest.error), status=p._status||'pending';
+  return `<div class="pcard">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="flex:1">
+        <div style="font-weight:600;margin-bottom:3px">${esc(p.thesis||p.id)}</div>
+        <div class="note">${esc(p.seed||'')}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex:none">
+        <span class="stbadge ${status}">${status}</span>
+        <span class="chip">${esc(p.direction||'?')} · ${esc(String(p.horizon||''))}</span>
+      </div>
+    </div>
+    <div class="kbar" style="margin:10px 0 6px;flex-wrap:wrap">
+      ${bterr?`<span class="chip" style="color:var(--bad)">backtest error</span>`:`
+      <span class="chip">events <b>${st.n??'—'}</b></span>
+      <span class="chip">hit-rate <b>${st.hitRate==null?'—':pct(st.hitRate)}</b></span>
+      <span class="chip">avg fwd <b>${st.avgFwdRet==null?'—':pct(st.avgFwdRet)}</b></span>
+      <span class="chip">t-stat <b>${st.tStat??'—'}</b></span>
+      <span class="chip">IC <b>${st.ic??'—'}</b></span>
+      <span class="spacer"></span>${sparkline(st.equityCurve)}`}
+    </div>
+    <div class="tags" style="margin-bottom:8px">${(tr.tickers||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}${(tr.keywordAny||[]).slice(0,5).map(k=>`<span class="tag" style="opacity:.65">${esc(k)}</span>`).join('')}</div>
+    ${p.rejectReason?`<div class="note" style="color:var(--bad)">rejected: ${esc(p.rejectReason)}</div>`:''}
+    ${status==='pending'?`<div class="edit" style="margin-top:8px;gap:8px">
+      <button onclick="sApprove('${esc(p.id)}')"><i class="ti ti-check"></i> Approve</button>
+      <button class="ghost" onclick="sReject('${esc(p.id)}')"><i class="ti ti-x"></i> Reject</button>
+      <span class="spacer"></span><span class="muted" style="font-size:11px">${esc(p.id)}</span>
+    </div>`:`<div class="muted" style="font-size:11px;margin-top:4px">${esc(p.id)}</div>`}
+  </div>`;
+}
+async function sApprove(pid){
+  if(!confirm('Approve this signal? It will be written into the graph as a validated Signal node.')) return;
+  try{ const r=await (await apiFetch(`/api/signals/${state.alias}/proposals/${pid}/approve`,{method:'POST'})).json();
+    if(!r.ok){ alert('approve failed: '+(r.detail||'')); return; } }catch(e){ alert('approve failed: '+e.message); return; }
+  afterDispatch();
+}
+async function sReject(pid){
+  const reason=prompt('Reject reason (optional):','')||'';
+  try{ await apiFetch(`/api/signals/${state.alias}/proposals/${pid}/reject`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason})}); }
+  catch(e){ alert('reject failed: '+e.message); return; }
+  afterDispatch();
+}
 function dCard(t){
-  const s=t.schedule||{};
+  const s=t.schedule||{}, isPrompt=(t.type||'script')==='prompt', props=isPrompt?[]:DPROPS[t.id]||[];
+  const typeIcon=isPrompt?'<i class="ti ti-messages" style="color:var(--accent);margin-right:6px;font-size:13px"></i>':'';
+  const bodyHtml=isPrompt
+    ? `<textarea id="dprompt_${t.id}" style="width:100%;min-height:72px;margin:8px 0;box-sizing:border-box" placeholder="Ask anything about this project's knowledge…">${esc(t.prompt||'')}</textarea>
+       <div class="note" id="dnote_${t.id}" style="margin-bottom:4px"></div>`
+    : `<pre style="margin:8px 0;white-space:pre-wrap;word-break:break-all"><code>${esc(t.command||'')}</code></pre>`;
+  const runIcon=isPrompt?'ti-bolt':'ti-player-play';
   return `<div class="panel" style="margin-bottom:12px">
     <div style="display:flex;align-items:center;gap:10px">
-      <div style="font-weight:600">${esc(t.name)}</div>
-      ${t.scheduled?`<span class="chip" style="color:#34d399">scheduled · ${esc(schedSummary(t))}</span>`:`<span class="chip">manual</span>`}
+      <div style="font-weight:600">${typeIcon}${esc(t.name)}</div>
+      ${t.scheduled?`<span class="chip" style="color:var(--ok)"><i class="ti ti-calendar-check" style="margin-right:4px"></i>${esc(schedSummary(t))}</span>`:`<span class="chip">manual</span>`}
       <span class="spacer"></span><span class="muted" style="font-size:11px">${esc(t.id)}</span>
     </div>
     ${t.description?`<div class="note" style="margin-top:3px">${esc(t.description)}</div>`:''}
-    <pre style="margin:8px 0;white-space:pre-wrap;word-break:break-all"><code>${esc(t.command)}</code></pre>
+    ${bodyHtml}
     <div class="edit" style="flex-wrap:wrap;gap:8px;align-items:center">
       <span class="note">at</span>
       <input id="dh_${t.id}" type="number" min="0" max="23" value="${s.hour??9}" style="width:54px" title="hour">
@@ -1113,12 +1269,13 @@ function dCard(t){
       <input id="dm_${t.id}" type="number" min="0" max="59" value="${s.minute??0}" style="width:54px" title="minute">
       <select id="dw_${t.id}">${WD.map(([v,l])=>`<option value="${v}" ${String(v)===String(s.weekday??'')?'selected':''}>${l}</option>`).join('')}</select>
       <span class="spacer"></span>
-      <button onclick="dRun('${t.id}')"><i class="ti ti-player-play"></i> Run now</button>
+      <button onclick="dRun('${t.id}')"><i class="ti ${runIcon}"></i> Run now</button>
       ${t.scheduled
         ? `<button class="ghost" onclick="dUnschedule('${t.id}')"><i class="ti ti-calendar-off"></i> Disable schedule</button>`
         : `<button class="ghost" onclick="dSchedule('${t.id}')"><i class="ti ti-calendar-plus"></i> Enable schedule</button>`}
-      <button class="ghost" onclick="dDelete('${t.id}')"><i class="ti ti-trash"></i></button>
+      <button class="ghost danger" onclick="dDelete('${t.id}')"><i class="ti ti-trash"></i></button>
     </div>
+    ${propsSubpanel(t.id, props)}
   </div>`;
 }
 function dTaskById(id){ return DTASKS.find(t=>t.id===id); }
@@ -1128,21 +1285,42 @@ function dSchedFields(id){
           ...(wd!==''?{weekday:parseInt(wd,10)}:{})};
 }
 async function dSave(){
-  const name=($('#dn_name')?.value||'').trim(), command=($('#dn_cmd')?.value||'').trim(), description=($('#dn_desc')?.value||'').trim(), note=$('#dnote');
-  if(!command){ note.textContent='command required'; return; }
-  let r; try{ r=await (await apiFetch(`/api/dispatch/${state.alias}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,command,description})})).json(); }
+  const name=($('#dn_name')?.value||'').trim(), type=($('#dn_type')?.value||'script'), description=($('#dn_desc')?.value||'').trim(), note=$('#dnote');
+  const body={name,type,description};
+  if(type==='prompt'){
+    body.prompt=($('#dn_prompt')?.value||'').trim();
+  } else {
+    const command=($('#dn_cmd')?.value||'').trim();
+    if(!command){ note.textContent='command required'; return; }
+    body.command=command;
+  }
+  let r; try{ r=await (await apiFetch(`/api/dispatch/${state.alias}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json(); }
   catch(e){ note.textContent='failed: '+e.message; return; }
   if(r.ok) afterDispatch(); else note.textContent='✗ '+(r.detail||'failed');
 }
 async function dRun(id){
-  try{ const r=await (await apiFetch(`/api/dispatch/${state.alias}/${id}/run`,{method:'POST'})).json(); if(!r.ok){ alert('run failed'); return; } }
-  catch(e){ alert('run failed: '+e.message); return; }
+  const t=dTaskById(id); if(!t) return;
+  const isPrompt=(t.type||'script')==='prompt';
+  let body={};
+  if(isPrompt){
+    const prompt=($(`#dprompt_${id}`)?.value||'').trim();
+    if(!prompt){ const n=$(`#dnote_${id}`); if(n) n.textContent='enter a prompt first'; return; }
+    body={prompt};
+    const n=$(`#dnote_${id}`); if(n) n.textContent='running…';
+  }
+  try{
+    const r=await (await apiFetch(`/api/dispatch/${state.alias}/${id}/run`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+    if(!r.ok){ const n=$(`#dnote_${id}`); if(n) n.textContent='✗ '+(r.error||'failed'); else alert('run failed'); return; }
+  }catch(e){ const n=$(`#dnote_${id}`); if(n) n.textContent='failed: '+e.message; else alert('run failed: '+e.message); return; }
   loadDJobs();
 }
 async function dSchedule(id){
   const t=dTaskById(id); if(!t) return;
-  // persist the (possibly edited) schedule, then enable the LaunchAgent
-  await apiFetch(`/api/dispatch/${state.alias}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:t.id,name:t.name,description:t.description,command:t.command,cwd:t.cwd,schedule:dSchedFields(id)})});
+  const isPrompt=(t.type||'script')==='prompt';
+  const upd={id:t.id,name:t.name,description:t.description,type:t.type||'script',schedule:dSchedFields(id)};
+  if(isPrompt){ upd.prompt=$(`#dprompt_${id}`)?.value||t.prompt||''; }
+  else { upd.command=t.command; upd.cwd=t.cwd; }
+  await apiFetch(`/api/dispatch/${state.alias}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(upd)});
   try{ const r=await (await apiFetch(`/api/dispatch/${state.alias}/${id}/schedule`,{method:'POST'})).json(); if(!r.ok){ alert('schedule failed: '+(r.detail||'')); } }
   catch(e){ alert('schedule failed: '+e.message); }
   afterDispatch();
