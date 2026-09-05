@@ -109,6 +109,7 @@ edges:
   # A company website evidences a claim by the COMPANY, not by a specific premises.
   # These carry the quoted sentence; the Facility-level edges above are derived (tier 4)
   # in Stage 6, and only where the company operates exactly one facility.
+  - {type: SUPPLIES_PACKAGING,        from: Company,         to: PackagingComponent}
   - {type: CLAIMS_CAPABILITY,         from: Company,         to: ProcessCapability, props: [evidence]}
   - {type: CLAIMS_CERTIFICATION,      from: Company,         to: Certification,     props: [evidence]}
   - {type: MAPS_TO_INCI,              from: TradeName,       to: Ingredient}

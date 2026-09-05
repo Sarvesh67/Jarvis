@@ -201,3 +201,13 @@
     with_licence_evidence is the number that matters for a factory recommendation and it
     is near zero until a state COS-8/COS-9 extract exists. Filter on `2 IN trust_rungs`,
     never on `trust_level >= 2`.
+
+- id: packaging_converters_in_a_wedge_cluster
+  q: "Who can pack it? Packaging converters by component type in a wedge cluster"
+  shape: Company->PackagingComponent + Company->Cluster
+  cypher: |
+    MATCH (c:Company)-[:SUPPLIES_PACKAGING]->(p:PackagingComponent)
+    MATCH (c)-[:LOCATED_IN]->(cl:Cluster {wedge:true})
+    RETURN cl.name AS cluster, p.type AS component, count(DISTINCT c) AS converters
+    ORDER BY converters DESC LIMIT 12
+  expect_min: 1

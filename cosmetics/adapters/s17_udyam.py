@@ -36,11 +36,33 @@ DEFAULT_PARQUET = lib.JARVIS_ROOT / "msme" / "out" / "firms.parquet"
 MANUFACTURE = {"20231", "20232", "20233", "20234", "20235", "20236", "20237", "20238", "20239"}
 WHOLESALE = {"46491"}
 RETAIL = {"47722"}
-WANTED = MANUFACTURE | WHOLESALE | RETAIL
+# Packaging converters. A cosmetics buyer's second question, after "who can make it?",
+# is "who packs it?" — and the spec's CAN_FILL rule needs component types on one side and
+# facility fill volumes (extracted by S14) on the other.
+#
+# The "n.e.c." catch-alls 22209 (1,940 firms), 25999 (1,807) and 32909 (11,229) are
+# DELIBERATELY EXCLUDED: they are residual buckets whose members are mostly not packaging
+# at all, and including them would triple the count while destroying precision.
+PACKAGING = {
+    "22203": ("plastic_container", "Plastic articles for packing of goods — bottles, "
+                                   "jars, containers, closures"),
+    "22201": ("plastic_film", "Semi-finished plastics — film, foil, sheet (laminates)"),
+    "22202": ("plastic_toiletware", "Plastic tableware, household and toilet articles"),
+    "23101": ("glass_primary", "Glass in primary or semi-manufactured form"),
+    "23109": ("glass_container", "Other glassware and glass products"),
+    "17022": ("corrugated_box", "Corrugated paperboard containers"),
+    "17023": ("carton", "Card board boxes"),
+    "17029": ("paper_container", "Other paper and paperboard containers"),
+    "25910": ("metal_formed", "Forged, pressed, stamped and roll-formed metal "
+                              "(closures, collapsible tubes, aerosol cans)"),
+    "25920": ("metal_coated", "Machining, treatment and coating of metals"),
+}
+
+WANTED = MANUFACTURE | WHOLESALE | RETAIL | set(PACKAGING)
 
 # The cosmetics-relevant subclasses, in the regulator's own words, so the graph can
 # explain WHY a firm is here rather than just asserting it.
-NIC_LABEL = {
+NIC_LABEL = {**{c: d for c, (_, d) in PACKAGING.items()}, **{
     "20231": "Manufacture of soap, all forms",
     "20232": "Manufacture of cleaning and polishing products",
     "20233": "Manufacture of detergent and similar washing agents excluding soap",
@@ -52,9 +74,10 @@ NIC_LABEL = {
     "20239": "Manufacture of other perfumes and toilet preparations n.e.c.",
     "46491": "Wholesale of toiletry, perfumery and cosmetics",
     "47722": "Retail sale of perfumery and cosmetic articles",
-}
+}}
 # subclasses whose output is a cosmetic in the Cosmetics Rules sense (drives the wedge)
 CORE_COSMETIC = {"20234", "20235", "20236", "20237", "20239"}
+
 
 
 def roles_for(codes: list[str]) -> list[str]:
@@ -68,6 +91,8 @@ def roles_for(codes: list[str]) -> list[str]:
             roles.add("retailer")
         if c in CORE_COSMETIC:
             roles.add("cosmetics_core")
+        if c in PACKAGING:
+            roles.add("packaging_converter")
     return sorted(roles)
 
 
@@ -134,13 +159,16 @@ def main() -> int:
                 "gst_status": r.gst_status,
                 "registered_on": r.reg_date,
                 "core_cosmetic": bool(set(codes) & CORE_COSMETIC),
+                "packaging_types": sorted({PACKAGING[c][0] for c in codes if c in PACKAGING}),
             }),
         })
 
     n = lib.upsert("raw_company", rows, "source_id, source_key")
     core = sum(1 for x in rows if json.loads(x["payload"])["core_cosmetic"])
+    pack = sum(1 for x in rows if json.loads(x["payload"])["packaging_types"])
     with_gstin = sum(1 for x in rows if x["gstin"])
-    print(f"S17 done: {n} Udyam companies ({core} core-cosmetic, {with_gstin} with GSTIN)")
+    print(f"S17 done: {n} Udyam companies — {core} core-cosmetic, {pack} packaging "
+          f"converters, {with_gstin} with GSTIN")
     print(f"  states present: {by_state}")
     if len(by_state) == 1:
         print(f"  ! coverage is limited to {list(by_state)[0]}; other states need an "

@@ -504,6 +504,43 @@ def load_products(s) -> None:
     """, in_cat, "IN_CATEGORY")
 
 
+def load_packaging(s) -> None:
+    """Packaging converters and the component types they make (S17, tier 1).
+
+    A buyer's second question after "who can make it?" is "who packs it?". Component
+    VOLUMES are not published by Udyam, so the spec's CAN_FILL rule (facility fill volume
+    contains packaging volume) still has no inputs and no CAN_FILL edge is invented.
+    Co-location is answered by traversing the shared Cluster rather than materialised:
+    1,136 manufacturers x 969 converters in one cluster is a clique, not information.
+    """
+    rows = q("""SELECT DISTINCT x.entity_id, r.payload FROM raw_company r
+                JOIN crosswalk x ON x.source_id=r.source_id AND x.source_key=r.source_key
+                 AND x.entity_type='company' AND x.superseded_by IS NULL
+                WHERE r.source_id='s17_udyam'
+                  AND jsonb_array_length(coalesce(r.payload->'packaging_types','[]'::jsonb)) > 0""")
+    comps, edges = {}, []
+    labels = q("""SELECT DISTINCT payload->'nic_labels' AS labels FROM raw_company
+                  WHERE source_id='s17_udyam' LIMIT 1""")
+    for r in rows:
+        p = r["payload"] or {}
+        for t in p.get("packaging_types") or []:
+            comps[t] = {"component_id": t, "props": {
+                "type": t, "material": t.split("_")[0], "volume_ml": None}}
+            edges.append({"company_id": r["entity_id"], "component_id": t,
+                          "prov": pv("s17_udyam", 1, 1.0, basis="udyam_nic_activity")})
+    run(s, """
+        UNWIND $rows AS row
+        MERGE (p:PackagingComponent {component_id: row.component_id}) SET p += row.props
+    """, list(comps.values()), "PackagingComponent")
+    run(s, """
+        UNWIND $rows AS row
+        MATCH (c:Company {company_id: row.company_id})
+        MATCH (p:PackagingComponent {component_id: row.component_id})
+        MERGE (c)-[e:SUPPLIES_PACKAGING]->(p)
+        SET e += row.prov
+    """, edges, "SUPPLIES_PACKAGING")
+
+
 def load_all(s) -> None:
     load_clusters(s)
     load_categories(s)
@@ -516,6 +553,7 @@ def load_all(s) -> None:
     load_site_claims(s)
     load_supplies(s)
     load_products(s)
+    load_packaging(s)
 
 
 def main() -> int:
