@@ -1,0 +1,129 @@
+# Single source of truth for the cosmetics graph schema.
+# constraints.cypher is GENERATED from this file (pipeline/gen_constraints.py) — never hand-edit it.
+version: 2
+jurisdictions: [IN, EU]
+
+# Provenance envelope carried on every property group and every edge (spec §3).
+provenance_envelope:
+  fields: [source_id, retrieved_at, tier, confidence, valid_from, valid_to]
+  tiers:
+    1: regulator
+    2: company-declared
+    3: observed/scraped
+    4: inferred
+
+nodes:
+  Company:
+    key: [company_id]
+    indexes: [norm_name, trust_level, pincode]
+    properties:
+      legal_name: str
+      norm_name: str
+      cin: str
+      gstins: list
+      pan: str
+      udyam_no: str
+      iec: str
+      constitution: str        # proprietorship | partnership | llp | pvt_ltd | public_ltd
+      roles: list              # ADDITIVE array, never a node label (hard rule 1)
+      website: str
+      trust_level: int         # L0..L6, computed nightly, never ingested
+      gst_status: str
+      last_gstr3b_period: str
+      filing_streak_mo: int
+      gst_verified_at: datetime
+  Facility:
+    key: [facility_id]
+    indexes: [pincode, cluster_id]
+    properties:
+      firm_name: str
+      norm_name: str
+      address_raw: str
+      pincode: str
+      district: str
+      state: str
+      cluster_id: str
+      gmp_schedule: str
+      geo_confidence: str
+  Licence:
+    key: [form_type, number, sla_state]
+    properties:
+      granted_on: date
+      expires_on: date
+      categories: list
+      status: str              # active | suspended | cancelled | unknown (default unknown)
+      is_loan_licence: bool
+      regime: str              # cosmetics | drugs | ayush
+  Ingredient:
+    key: [inci_name]
+    indexes: [cas_primary]
+    properties:
+      cas: list
+      ec_no: str
+      functions: list
+      origin_type: str
+      cosing_ref: str
+  ProductCategory:
+    key: [code]
+    properties: {name: str, source_vocab: str, parent_code: str}
+  Cluster:
+    key: [cluster_id]
+    properties: {name: str, state: str, districts: list, pincode_ranges: list}
+  # --- attachment nodes ---
+  ProcessCapability: {key: [capability_id], properties: {kind: str, detail: str}}
+  PackagingComponent: {key: [component_id], properties: {type: str, volume_ml: float, material: str}}
+  Certification:   {key: [cert_id], properties: {name: str, body: str, valid_to: date}}
+  TradeName:       {key: [name, supplier_id], properties: {supplier_name: str}}
+  RegulatoryRule:
+    key: [rule_id]
+    indexes: [jurisdiction]
+    required: [jurisdiction]   # HARD RULE 2 — enforced by an existence check in validate/checks.py
+    properties:
+      jurisdiction: str        # IN | EU
+      source_doc: str
+      clause: str
+      scope: str               # ingredient | category
+      status: str
+      max_concentration: str
+      conditions: str
+      standard_ref: str
+      applies_to_group: bool
+  Product:     {key: [product_id], properties: {name: str, brand: str, source: str}}
+  Signal:      {key: [signal_id], properties: {type: str, detail: str, observed_at: datetime}}
+  TradeFlow:   {key: [flow_id], properties: {hs_code: str, direction: str, period: str}}
+  Association: {key: [name], properties: {full_name: str}}
+  Event:       {key: [name, edition, year], properties: {city: str}}
+  DocChunk:
+    key: [chunk_id]
+    vector_index: {property: embedding, dimensions: 768, similarity: cosine}
+    properties: {text: str, doc_id: str, page: int, section: str}
+  # Person is DELIBERATELY ABSENT — hard rule 4: people live in Postgres only.
+
+edges:
+  - {type: OPERATES,                  from: Company,         to: Facility,        note: "inferred join; score >= 0.92 or shared GSTIN/pincode"}
+  - {type: LICENSED_UNDER,            from: Facility,        to: Licence}
+  - {type: PERMITS,                   from: Licence,         to: ProductCategory}
+  - {type: LOCATED_IN,                from: Facility,        to: Cluster}
+  - {type: HAS_CAPABILITY,            from: Facility,        to: ProcessCapability}
+  - {type: CERTIFIED_AS,              from: Facility,        to: Certification}
+  - {type: MAPS_TO_INCI,              from: TradeName,       to: Ingredient}
+  - {type: SUPPLIES,                  from: Company,         to: Ingredient,      props: [mode]}
+  - {type: DISTRIBUTES_FOR,           from: Company,         to: Company}
+  - {type: MARKETS,                   from: Company,         to: Product}
+  - {type: CONTAINS,                  from: Product,         to: Ingredient,      props: [position]}
+  - {type: IN_CATEGORY,               from: Product,         to: ProductCategory}
+  - {type: HOLDS_LOAN_LICENCE_AT,     from: Company,         to: Facility}
+  - {type: THIRD_PARTY_MANUFACTURED_BY, from: Company,       to: Company}
+  - {type: RESTRICTED_BY,             from: Ingredient,      to: RegulatoryRule}
+  - {type: GOVERNED_BY,               from: ProductCategory, to: RegulatoryRule}
+  - {type: MEMBER_OF,                 from: Company,         to: Association}
+  - {type: EXHIBITED_AT,              from: Company,         to: Event}
+  - {type: IMPORTED,                  from: Company,         to: TradeFlow}
+  - {type: MENTIONS,                  from: DocChunk,        to: [Ingredient, Company, ProductCategory]}
+
+derived_edges:                        # Stage 6 — all carry derived:true, rule_id, inputs[], tier:4
+  - {type: SUBSTITUTE_FOR,       from: Ingredient, to: Ingredient}
+  - {type: CAN_FILL,             from: Facility,   to: PackagingComponent}
+  - {type: SERVES_CATEGORY,      from: Facility,   to: ProductCategory}
+  - {type: IN_CLUSTER_WITH,      from: Company,    to: Company}
+  - {type: LIKELY_MANUFACTURES_FOR, from: Company, to: Company}

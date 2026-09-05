@@ -48,3 +48,17 @@ Thumbs.db
 
 # ─── Market-data store (Parquet/DuckDB; regenerated from source adapters) ──────
 marketdata/store/
+
+# MSME preprocessing — generated artifacts (bulk stays out of git, like marketdata/store)
+msme/out/
+msme/cache/
+msme/.venv/
+msme/data/
+
+# cosmetics subsystem
+cosmetics/.venv/
+cosmetics/raw/
+cosmetics/out/
+cosmetics/cache/
+cosmetics/neo4jdata/
+cosmetics/.env

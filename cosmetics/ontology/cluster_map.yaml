@@ -1,0 +1,130 @@
+# district -> cluster_id. Districts are matched case-insensitively on the normalized
+# district name from ref_pincode; pincode_prefixes are the fallback when a pincode
+# resolves but its district string does not match (spelling varies across sources).
+# wedge: true = the four clusters the product goes to market with.
+
+clusters:
+  HP_BBN:
+    name: Baddi-Barotiwala-Nalagarh
+    state: Himachal Pradesh
+    wedge: true
+    districts: [solan, sirmaur, sirmour]
+    pincode_prefixes: ["1732", "1741", "1735", "1730"]
+    note: Baddi 173205, Barotiwala 174103, Nalagarh 174101, Paonta Sahib 173025
+
+  UK_HARIDWAR_SELAQUI:
+    name: Haridwar-Roorkee-Selaqui
+    state: Uttarakhand
+    wedge: true
+    districts: [haridwar, hardwar, dehradun, udham singh nagar, udhamsingh nagar]
+    pincode_prefixes: ["2494", "2476", "2480", "2481", "2631"]
+    note: Haridwar 249403, Bhagwanpur/Roorkee 247661, Selaqui 248011, SIDCUL Pantnagar 263153
+
+  GJ_AHMEDABAD_VAPI:
+    name: Ahmedabad-Vapi-Ankleshwar
+    state: Gujarat
+    wedge: true
+    districts: [ahmedabad, ahmadabad, valsad, bharuch, surat, vadodara, gandhinagar, mehsana]
+    pincode_prefixes: ["380", "382", "396", "393", "392", "394"]
+    note: Ahmedabad 380xxx, Vapi 396191, Ankleshwar 393002, Sarigam 396155
+
+  MH_PALGHAR_TARAPUR:
+    name: Palghar-Tarapur-Navi Mumbai
+    state: Maharashtra
+    wedge: true
+    districts: [palghar, thane, mumbai, mumbai suburban, mumbai city, raigad, raigarh]
+    pincode_prefixes: ["401", "400", "410", "421"]
+    note: Tarapur/Boisar 401506, Vasai 401208, Navi Mumbai 400701/410210, Ambernath 421501
+
+  # --- non-wedge clusters: kept so nothing is silently dropped ---
+  DL_NCR:
+    name: Delhi NCR
+    state: Delhi/Haryana/Uttar Pradesh
+    wedge: false
+    districts: [new delhi, delhi, north delhi, south delhi, west delhi, east delhi, central delhi,
+                gautam buddha nagar, ghaziabad, faridabad, gurgaon, gurugram, sonipat]
+    pincode_prefixes: ["110", "201", "121", "122", "1310"]
+
+  RJ_ALWAR_JAIPUR:
+    name: Alwar-Bhiwadi-Jaipur
+    state: Rajasthan
+    wedge: false
+    districts: [alwar, jaipur, khairthal, bhiwadi]
+    pincode_prefixes: ["301", "302"]
+
+  MH_PUNE:
+    name: Pune-Sangli-Nashik
+    state: Maharashtra
+    wedge: false
+    districts: [pune, sangli, nashik, satara, aurangabad, chhatrapati sambhajinagar]
+    pincode_prefixes: ["411", "412", "413", "422", "431"]
+
+  TN_CHENNAI:
+    name: Chennai-Kancheepuram-Hosur
+    state: Tamil Nadu
+    wedge: false
+    districts: [chennai, kancheepuram, kanchipuram, tiruvallur, krishnagiri, coimbatore]
+    pincode_prefixes: ["600", "601", "602", "635", "641"]
+
+  TG_HYDERABAD:
+    name: Hyderabad-Medak
+    state: Telangana
+    wedge: false
+    districts: [hyderabad, rangareddy, ranga reddy, medak, sangareddy, medchal]
+    pincode_prefixes: ["500", "501", "502"]
+
+  KA_BENGALURU:
+    name: Bengaluru-Mysuru
+    state: Karnataka
+    wedge: false
+    districts: [bangalore, bengaluru, bangalore rural, bengaluru urban, mysore, mysuru, tumkur]
+    pincode_prefixes: ["560", "561", "562", "570"]
+
+  WB_KOLKATA:
+    name: Kolkata-Howrah
+    state: West Bengal
+    wedge: false
+    districts: [kolkata, howrah, north 24 parganas, south 24 parganas, hooghly, hugli]
+    pincode_prefixes: ["700", "711", "712"]
+
+  UP_KANPUR_NOIDA:
+    name: Kanpur-Lucknow-Agra
+    state: Uttar Pradesh
+    wedge: false
+    districts: [kanpur nagar, kanpur, lucknow, agra, aligarh, meerut, bareilly]
+    pincode_prefixes: ["208", "226", "282", "202", "250"]
+
+  JK_JAMMU:
+    name: Jammu-Kathua (excise-zone units)
+    state: Jammu and Kashmir
+    wedge: false
+    districts: [jammu, kathua, samba, udhampur]
+    pincode_prefixes: ["180", "181", "184"]
+
+  PB_HR_NORTH:
+    name: Punjab-Haryana north
+    state: Punjab/Haryana
+    wedge: false
+    districts: [ludhiana, mohali, sas nagar, ambala, panchkula, patiala, jalandhar, amritsar, karnal, panipat, yamunanagar]
+    pincode_prefixes: ["141", "160", "134", "147", "144", "143", "132"]
+
+  MP_INDORE:
+    name: Indore-Dewas-Bhopal
+    state: Madhya Pradesh
+    wedge: false
+    districts: [indore, dewas, bhopal, ujjain, gwalior]
+    pincode_prefixes: ["452", "455", "462", "456", "474"]
+
+  KL_ERNAKULAM:
+    name: Kerala (ayurvedic/cosmetic)
+    state: Kerala
+    wedge: false
+    districts: [ernakulam, thrissur, palakkad, kozhikode, thiruvananthapuram, malappuram]
+    pincode_prefixes: ["682", "680", "678", "673", "695"]
+
+  AS_GUWAHATI:
+    name: Guwahati-Kamrup
+    state: Assam
+    wedge: false
+    districts: [kamrup, kamrup metropolitan, guwahati]
+    pincode_prefixes: ["781"]

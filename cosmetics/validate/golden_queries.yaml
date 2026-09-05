@@ -1,0 +1,154 @@
+# Golden queries — run by validate/checks.py and by pytest.
+# `expect_min` is a FLOOR the current build must clear, not a target. Where coverage is
+# genuinely thin the floor is 0 and `coverage_gap` names what would raise it, so a thin
+# answer reads as a known gap rather than a silent pass.
+
+- id: skin_care_manufacturers_in_wedge_cluster
+  q: "COS-8 licensed skin-care manufacturers in a wedge cluster"
+  shape: Facility->Licence + Facility->Cluster
+  cypher: |
+    MATCH (f:Facility)-[:LICENSED_UNDER]->(l:Licence)
+    WHERE l.form_type IN ['COS-8','COS-9'] OR l.regime = 'cosmetics'
+    OPTIONAL MATCH (f)-[:LOCATED_IN]->(c:Cluster)
+    RETURN f.firm_name AS facility, l.form_type AS form, l.number AS licence,
+           c.name AS cluster
+  expect_min: 1
+  coverage_gap: >
+    No state FDA publishes a bulk COS-8/COS-9 list; CDSCO's approved-site listing carries
+    only 4 cosmetics-regime rows. A state licence extract is the binding input.
+
+- id: indian_suppliers_of_niacinamide
+  q: "Indian suppliers of Niacinamide"
+  shape: Company-[:SUPPLIES]->Ingredient
+  cypher: |
+    MATCH (i:Ingredient) WHERE i.inci_name = 'NIACINAMIDE'
+    OPTIONAL MATCH (c:Company)-[:SUPPLIES]->(i)
+    RETURN i.inci_name AS inci, i.cas_primary AS cas, count(c) AS suppliers
+  expect_min: 1
+  expect_contains: [NIACINAMIDE]
+  coverage_gap: >
+    SUPPLIES needs S14 (company websites) or a raw-material distributor source; the
+    ingredient itself resolves, the supplier edge does not exist yet.
+
+- id: loan_licence_holders
+  q: "Companies holding a loan licence (COS-9)"
+  shape: Licence{form_type:'COS-9'}
+  cypher: |
+    MATCH (f:Facility)-[:LICENSED_UNDER]->(l:Licence {form_type:'COS-9'})
+    OPTIONAL MATCH (c:Company)-[:OPERATES]->(f)
+    RETURN l.number AS licence, f.firm_name AS premises, c.legal_name AS company
+  expect_min: 1
+
+- id: eu_restricted_ingredients
+  q: "Ingredients prohibited in the EU"
+  shape: Ingredient->RegulatoryRule
+  cypher: |
+    MATCH (i:Ingredient)-[:RESTRICTED_BY]->(r:RegulatoryRule)
+    WHERE r.jurisdiction = 'EU' AND r.status = 'prohibited'
+    RETURN count(DISTINCT i) AS n
+  expect_min: 500
+
+- id: india_category_standards
+  q: "Which BIS standard applies to skin creams?"
+  shape: ProductCategory->RegulatoryRule
+  cypher: |
+    MATCH (p:ProductCategory)-[:GOVERNED_BY]->(r:RegulatoryRule)
+    WHERE r.jurisdiction = 'IN' AND r.standard_ref IS NOT NULL
+    RETURN p.code AS category, collect(DISTINCT r.standard_ref) AS standards
+    ORDER BY category
+  expect_min: 10
+
+- id: india_ingredient_restrictions
+  q: "Ingredient restrictions that apply in India"
+  shape: Ingredient->RegulatoryRule{jurisdiction:'IN'}
+  cypher: |
+    MATCH (i:Ingredient)-[:RESTRICTED_BY]->(r:RegulatoryRule {jurisdiction:'IN'})
+    RETURN i.inci_name AS ingredient, r.clause AS clause, r.status AS status,
+           r.max_concentration AS max_conc
+    ORDER BY ingredient
+  expect_min: 5
+
+- id: jurisdiction_never_leaks
+  q: "An India-scoped restriction query must never return an EU rule"
+  shape: negative test
+  cypher: |
+    MATCH (i:Ingredient)-[:RESTRICTED_BY]->(r:RegulatoryRule)
+    WHERE r.jurisdiction = 'IN'
+    RETURN count(CASE WHEN r.jurisdiction <> 'IN' THEN 1 END) AS leaks
+  expect_zero: leaks
+
+- id: every_rule_has_jurisdiction
+  q: "Every RegulatoryRule carries a jurisdiction (hard rule 2)"
+  shape: invariant
+  cypher: |
+    MATCH (r:RegulatoryRule)
+    WHERE r.jurisdiction IS NULL OR NOT r.jurisdiction IN ['IN','EU']
+    RETURN count(r) AS violations
+  expect_zero: violations
+
+- id: no_person_nodes
+  q: "No Person node exists (hard rule 4)"
+  shape: invariant
+  cypher: "MATCH (n:Person) RETURN count(n) AS violations"
+  expect_zero: violations
+
+- id: every_edge_has_provenance
+  q: "Every relationship carries provenance (hard rule 9)"
+  shape: invariant
+  cypher: |
+    MATCH ()-[r]->()
+    WHERE r._source_id IS NULL AND r._prov IS NULL
+    RETURN count(r) AS violations
+  expect_zero: violations
+
+- id: orphan_facilities
+  q: "No Facility without a licence or a cluster"
+  shape: referential
+  cypher: |
+    MATCH (f:Facility)
+    WHERE NOT (f)-[:LICENSED_UNDER]->() AND NOT (f)-[:LOCATED_IN]->()
+    RETURN count(f) AS violations
+  expect_zero: violations
+
+- id: orphan_licences
+  q: "No Licence detached from a facility"
+  shape: referential
+  cypher: |
+    MATCH (l:Licence) WHERE NOT ()-[:LICENSED_UNDER]->(l)
+    RETURN count(l) AS violations
+  expect_zero: violations
+
+- id: cosmetics_firms_in_wedge_clusters
+  q: "Cosmetics-active companies per wedge cluster"
+  shape: Company->Cluster
+  cypher: |
+    MATCH (c:Company)-[:LOCATED_IN]->(cl:Cluster {wedge:true})
+    RETURN cl.name AS cluster, count(DISTINCT c) AS companies
+    ORDER BY companies DESC
+  expect_min: 1
+
+- id: tier4_never_answers_compliance
+  q: "No PERMITS or RESTRICTED_BY edge is tier 4 (hard rule 3)"
+  shape: invariant
+  cypher: |
+    MATCH ()-[r:PERMITS|RESTRICTED_BY|LICENSED_UNDER]->()
+    WHERE r._tier = 4
+    RETURN count(r) AS violations
+  expect_zero: violations
+
+- id: trust_level_on_every_company
+  q: "Every Company carries a computed trust level"
+  shape: invariant
+  cypher: |
+    MATCH (c:Company) WHERE c.trust_level IS NULL RETURN count(c) AS violations
+  expect_zero: violations
+
+- id: substitutes_for_a_restricted_ingredient
+  q: "Alternatives to a restricted ingredient sharing its declared function"
+  shape: Ingredient-[:SUBSTITUTE_FOR]->Ingredient
+  cypher: |
+    MATCH (i:Ingredient)-[e:SUBSTITUTE_FOR]->(alt:Ingredient)
+    RETURN i.inci_name AS restricted, collect(alt.inci_name)[0..3] AS alternatives
+    LIMIT 5
+  expect_min: 0
+  coverage_gap: "Run `make derive` without --skip-substitutes to populate."

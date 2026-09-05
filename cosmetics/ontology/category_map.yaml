@@ -1,0 +1,93 @@
+# Canonical category spine + source-string mappings (spec §7.5).
+#
+# The SPINE comes from the regulator: the Cosmetics Rules 2020 Fourth Schedule
+# ("List of categories of cosmetics for import", 80 entries) is India's own category
+# vocabulary, and the Ninth Schedule attaches BIS standards to finished forms.
+# Retail / marketplace strings are TAGS. They never become spine codes.
+
+spine:
+  SKIN_CARE:       {name: Skin care, parent: null}
+  SKIN_CLEANSING:  {name: Skin cleansing, parent: SKIN_CARE}
+  SOAP:            {name: Soap and bathing bars, parent: SKIN_CLEANSING}
+  HAIR_REMOVAL:    {name: Depilatories and epilation, parent: null}
+  DEODORANT:       {name: Deodorants and antiperspirants, parent: null}
+  SHAVING:         {name: Shaving and pre/after-shave, parent: null}
+  MAKEUP:          {name: Make-up, parent: null}
+  FRAGRANCE:       {name: Perfumes and colognes, parent: null}
+  SUN_CARE:        {name: Sun and self-tanning, parent: null}
+  HAIR_CARE:       {name: Hair and scalp care, parent: null}
+  HAIR_COLOUR:     {name: Hair colouring, parent: HAIR_CARE}
+  HAIR_STYLING:    {name: Hair styling, parent: HAIR_CARE}
+  NAIL_CARE:       {name: Nail care and varnish, parent: null}
+  ORAL_CARE:       {name: Oral and dental hygiene, parent: null}
+  BABY_CARE:       {name: Baby and infant cosmetics, parent: null}
+  TRADITIONAL:     {name: Traditional Indian cosmetics (bindi, kumkum, sindoor, kajal, henna), parent: null}
+
+# Free-text -> spine code + tags. Sources: retail categories, OBF category tags,
+# exhibitor/marketplace product strings, licence category strings.
+mappings:
+  "face serum":            {code: SKIN_CARE, tags: [serum]}
+  "serum":                 {code: SKIN_CARE, tags: [serum]}
+  "moisturiser":           {code: SKIN_CARE, tags: [moisturiser]}
+  "moisturizer":           {code: SKIN_CARE, tags: [moisturiser]}
+  "face cream":            {code: SKIN_CARE, tags: [cream]}
+  "skin cream":            {code: SKIN_CARE, tags: [cream]}
+  "cold cream":            {code: SKIN_CARE, tags: [cream]}
+  "lotion":                {code: SKIN_CARE, tags: [lotion]}
+  "sunscreen":             {code: SUN_CARE,  tags: [sunscreen]}
+  "sun screen":            {code: SUN_CARE,  tags: [sunscreen]}
+  "face wash":             {code: SKIN_CLEANSING, tags: [face-wash]}
+  "cleanser":              {code: SKIN_CLEANSING, tags: [cleanser]}
+  "scrub":                 {code: SKIN_CLEANSING, tags: [scrub, exfoliation]}
+  "face pack":             {code: SKIN_CARE, tags: [face-pack, mask]}
+  "toilet soap":           {code: SOAP, tags: [toilet-soap]}
+  "soap":                  {code: SOAP, tags: [soap]}
+  "bathing bar":           {code: SOAP, tags: [bathing-bar]}
+  "handwash":              {code: SKIN_CLEANSING, tags: [handwash]}
+  "shampoo":               {code: HAIR_CARE, tags: [shampoo]}
+  "hair oil":              {code: HAIR_CARE, tags: [hair-oil]}
+  "hair cream":            {code: HAIR_CARE, tags: [hair-cream]}
+  "conditioner":           {code: HAIR_CARE, tags: [conditioner]}
+  "hair serum":            {code: HAIR_CARE, tags: [serum]}
+  "hair dye":              {code: HAIR_COLOUR, tags: [hair-dye]}
+  "hair colour":           {code: HAIR_COLOUR, tags: [hair-colour]}
+  "henna":                 {code: HAIR_COLOUR, tags: [henna, traditional]}
+  "hair gel":              {code: HAIR_STYLING, tags: [gel]}
+  "lipstick":              {code: MAKEUP, tags: [lipstick]}
+  "lip balm":              {code: MAKEUP, tags: [lip-balm]}
+  "kajal":                 {code: MAKEUP, tags: [kajal, traditional]}
+  "eyeliner":              {code: MAKEUP, tags: [eyeliner]}
+  "mascara":               {code: MAKEUP, tags: [mascara]}
+  "foundation":            {code: MAKEUP, tags: [foundation]}
+  "compact":               {code: MAKEUP, tags: [compact, powder]}
+  "talcum powder":         {code: SKIN_CARE, tags: [talc, powder]}
+  "nail polish":           {code: NAIL_CARE, tags: [nail-polish]}
+  "nail enamel":           {code: NAIL_CARE, tags: [nail-polish]}
+  "toothpaste":            {code: ORAL_CARE, tags: [toothpaste]}
+  "tooth powder":          {code: ORAL_CARE, tags: [tooth-powder]}
+  "mouthwash":             {code: ORAL_CARE, tags: [mouthwash]}
+  "perfume":               {code: FRAGRANCE, tags: [perfume]}
+  "deodorant":             {code: DEODORANT, tags: [deodorant]}
+  "attar":                 {code: FRAGRANCE, tags: [attar, traditional]}
+  "shaving cream":         {code: SHAVING, tags: [shaving-cream]}
+  "aftershave":            {code: SHAVING, tags: [aftershave]}
+  "hair remover":          {code: HAIR_REMOVAL, tags: [depilatory]}
+  "bleach":                {code: HAIR_REMOVAL, tags: [bleach]}
+  "bindi":                 {code: TRADITIONAL, tags: [bindi]}
+  "kumkum":                {code: TRADITIONAL, tags: [kumkum]}
+  "sindoor":               {code: TRADITIONAL, tags: [sindoor]}
+  "baby soap":             {code: BABY_CARE, tags: [soap, baby]}
+  "baby oil":              {code: BABY_CARE, tags: [baby]}
+  # Open Beauty Facts tag namespace
+  "en:skincare":           {code: SKIN_CARE, tags: []}
+  "en:face-care":          {code: SKIN_CARE, tags: [face]}
+  "en:hair-care":          {code: HAIR_CARE, tags: []}
+  "en:shampoos":           {code: HAIR_CARE, tags: [shampoo]}
+  "en:soaps":              {code: SOAP, tags: []}
+  "en:toothpastes":        {code: ORAL_CARE, tags: [toothpaste]}
+  "en:deodorants":         {code: DEODORANT, tags: []}
+  "en:perfumes":           {code: FRAGRANCE, tags: []}
+  "en:make-up":            {code: MAKEUP, tags: []}
+  "beauty & make-up":      {code: MAKEUP, tags: []}
+  "en:sunscreens":         {code: SUN_CARE, tags: []}
+  "en:nail-polish":        {code: NAIL_CARE, tags: [nail-polish]}

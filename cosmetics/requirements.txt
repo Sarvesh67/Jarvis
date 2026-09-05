@@ -1,0 +1,14 @@
+httpx
+tenacity
+pydantic
+pyyaml
+rapidfuzz
+pandas
+pyarrow
+duckdb
+beautifulsoup4
+lxml
+pdfplumber
+neo4j
+psycopg[binary]
+pytest
