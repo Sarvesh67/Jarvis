@@ -63,3 +63,9 @@ rebuild:                ## drop the graph and replay Stages 2-8 from Postgres
 
 clean-graph:
 	$(PY) -c "import lib; d=lib.neo4j_driver(); s=d.session(); s.run('MATCH (n) CALL (n) { DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS'); d.close(); print('wiped')"
+
+test:                   ## pytest: golden queries + hard-rule invariants
+	$(PY) -m pytest tests/ -q
+
+review:                 ## list the pending resolution decisions
+	$(PY) -m pipeline.review --list

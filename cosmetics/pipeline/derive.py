@@ -164,6 +164,27 @@ def substitute_for(s) -> None:
     """, rows, f"SUBSTITUTE_FOR (tier 4, top {SUBSTITUTE_TOP_K})")
 
 
+def capability_to_facility(s) -> None:
+    """Company claim -> Facility capability, ONLY where the company operates exactly one.
+
+    A capability claimed on a website belongs to the company; attaching it to a specific
+    premises is an inference, so it is tier 4 and is made only when there is no ambiguity
+    about which premises is meant. A company with two plants gets no facility-level edge.
+    """
+    res = s.run("""
+        MATCH (c:Company)-[claim:CLAIMS_CAPABILITY]->(p:ProcessCapability)
+        WITH c, p, claim, [(c)-[:OPERATES]->(f:Facility) | f] AS facs
+        WHERE size(facs) = 1
+        WITH c, p, claim, facs[0] AS f
+        MERGE (f)-[e:HAS_CAPABILITY]->(p)
+        SET e.derived = true, e.rule_id = 'capability_from_sole_facility',
+            e._tier = 4, e._source_id = 'stage6_derive', e._confidence = 0.7,
+            e.evidence = claim.evidence
+        RETURN count(e) AS n
+    """).single()
+    print(f"    HAS_CAPABILITY (company claim -> sole facility, tier 4): {res['n']}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-substitutes", action="store_true",
@@ -174,6 +195,7 @@ def main() -> int:
         company_located_in(s)
         serves_category_from_licence(s)
         serves_category_from_nic(s)
+        capability_to_facility(s)
         if not a.skip_substitutes:
             substitute_for(s)
     drv.close()

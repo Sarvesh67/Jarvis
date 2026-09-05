@@ -38,6 +38,14 @@ AUTO_MERGE = 0.92
 REVIEW_FLOOR = 0.75
 OPERATES_MIN = 0.92
 
+# Minimum weight mass that must be OBSERVABLE before a fuzzy score may auto-merge.
+# name(0.45) + address(0.25) = 0.70. Below this the only evidence is the name, and a
+# renormalised name-only score of 1.0 is not the same thing as a 1.0 corroborated match:
+# "SHREE ENTERPRISES" is thousands of unrelated firms. Sources like CHEMEXCIL publish a
+# name and a website and nothing else, so without this guard every generic name in the
+# directory collapses into one entity.
+CORROBORATION_FLOOR = 0.70
+
 
 def entity_id(prefix: str, seed: str) -> str:
     return prefix + hashlib.blake2b(seed.encode(), digest_size=8).hexdigest()[:12]
@@ -45,6 +53,34 @@ def entity_id(prefix: str, seed: str) -> str:
 
 def canonical_seed(cin, gstin, pan, norm, pincode) -> str:
     return cin or gstin or pan or f"{norm or ''}|{pincode or ''}"
+
+
+# Business-form and sector words that survive §7.1 suffix stripping. They carry no
+# identifying information: "SUDAMA ENTERPRISE" and "RAMU ENTERPRISE" are two unrelated
+# firms in one pincode, but token_set_ratio scores them 0.81 on the shared word alone.
+# Name similarity is therefore computed on the DISTINCTIVE tokens, and a pair whose only
+# common ground is generic vocabulary can never reach the auto-merge threshold.
+GENERIC_TOKENS = {
+    "ENT", "ENTERPRISE", "ENTERPRISES", "TRADERS", "TRADER", "TRADING", "INDS",
+    "INDUSTRY", "INDUSTRIAL", "CORPORATION", "CORP", "AGENCIES", "AGENCY", "PROD",
+    "CHEM", "INTL", "LABS", "PHARMA", "MFG", "EXPORT", "EXPORTS", "IMPORT", "IMPORTS",
+    "IMPEX", "GROUP", "SALES", "MARKETING", "COSMETIC", "COSMETICS", "INDIA", "INDIAN",
+    "BHARAT", "NEW", "THE", "AND", "OF", "CO", "COMPANY", "WORKS", "UDYOG", "TRADELINK",
+    "ORGANICS", "SPECIALITY", "SPECIALTY", "SOLUTIONS", "TECHNOLOGIES", "VENTURES",
+}
+
+
+def distinctive(name: str | None) -> list[str]:
+    return [t for t in (name or "").split() if t not in GENERIC_TOKENS and len(t) > 1]
+
+
+def name_similarity(a: str | None, b: str | None) -> tuple[float, bool]:
+    """(similarity, generic_only) — similarity over distinctive tokens where possible."""
+    da, db = distinctive(a), distinctive(b)
+    if da and db:
+        return fuzz.token_set_ratio(" ".join(da), " ".join(db)) / 100.0, False
+    # one side is nothing but generic vocabulary: fall back, and flag it
+    return fuzz.token_set_ratio(a or "", b or "") / 100.0, True
 
 
 def address_similarity(a: str | None, b: str | None) -> float:
@@ -65,7 +101,7 @@ def score_pair(l: dict, r: dict) -> tuple[float, dict]:
     """
     feats: list[tuple[str, float, float]] = []   # (name, weight, value)
 
-    name = fuzz.token_set_ratio(l["norm_name"] or "", r["norm_name"] or "") / 100.0
+    name, generic_only = name_similarity(l["norm_name"], r["norm_name"])
     feats.append(("name", 0.45, name))
 
     if l.get("address_raw") and r.get("address_raw"):
@@ -77,13 +113,29 @@ def score_pair(l: dict, r: dict) -> tuple[float, dict]:
         contact = 1.0 if ((l_phone and l_phone == r_phone) or (l_mail and l_mail == r_mail)) else 0.0
         feats.append(("contact", 0.20, contact))
 
+    # roles_claimed is an ADDITIVE claim vocabulary and each source stamps its own
+    # (CHEMEXCIL says `exporter`, an exhibitor list says `cosmetics_active`, Udyam says
+    # `manufacturer_candidate`). Two rows for the SAME company from two sources therefore
+    # have disjoint role sets by construction, so scoring the absence of overlap as
+    # evidence of difference penalises exactly the cross-source links we are trying to
+    # find. Overlap is counted only when it EXISTS, as positive evidence; its absence is
+    # not evidence at all.
     lc, rc = set(l.get("roles_claimed") or []), set(r.get("roles_claimed") or [])
-    if lc and rc:
+    if lc & rc:
         feats.append(("category", 0.10, len(lc & rc) / len(lc | rc)))
 
     total_w = sum(w for _, w, _ in feats)
     s = sum(w * v for _, w, v in feats) / total_w if total_w else 0.0
-    return s, {k: round(v, 3) for k, _, v in feats} | {"weights_used": round(total_w, 2)}
+    # A generic-only name is weak evidence, not zero evidence. Cap it ONLY when nothing
+    # else corroborates: "S.P. Pharmaceuticals" vs "S P Pharmaceuticals" at the same
+    # address is obviously one company even though every distinctive token is a single
+    # letter, while "SHREE VERAY ENTERPRISE" vs "A K ENTERPRISE" in one pincode is not.
+    if generic_only:
+        corroboration = max((v for k, _, v in feats if k != "name"), default=0.0)
+        if corroboration < 0.9:
+            s = min(s, REVIEW_FLOOR)
+    return s, ({k: round(v, 3) for k, _, v in feats}
+               | {"weights_used": round(total_w, 2), "generic_only": generic_only})
 
 
 def _digits(v: str | None) -> str:
@@ -134,7 +186,17 @@ def resolve_companies(dry: bool) -> dict[tuple[str, str], str]:
     members: dict[str, list[dict]] = defaultdict(list)
     new_links: list[tuple] = []
     reviews: list[dict] = []
-    stats = {"reused": 0, "exact": 0, "fuzzy": 0, "new": 0, "review": 0}
+    stats = {"reused": 0, "exact": 0, "fuzzy": 0, "name_only": 0, "new": 0, "review": 0}
+
+    # A norm_name seen at two or more distinct pincodes is a demonstrated collider and
+    # may never be merged on the name alone, however exact the match.
+    pin_by_name: dict[str, set] = defaultdict(set)
+    for r in rows:
+        if r["norm_name"] and r["pincode"]:
+            pin_by_name[r["norm_name"]].add(r["pincode"])
+    ambiguous_names = {n: True for n, pins in pin_by_name.items() if len(pins) > 1}
+    print(f"  {len(ambiguous_names)} normalised names occur at more than one pincode "
+          f"(never merged on name alone)")
 
     # deterministic keys resolve first so a fuzzy pass can never split them apart
     order = sorted(rows, key=lambda r: (0 if r["cin"] else 1 if r["gstin"] else 2, r["id"]))
@@ -168,9 +230,30 @@ def resolve_companies(dry: bool) -> dict[tuple[str, str], str]:
                     s, feat = score_pair(row, cand)
                     if s > best:
                         best, best_row, best_feat = s, cand, feat
-            if best_row is not None and best >= AUTO_MERGE:
-                eid, method, score = assigned[(best_row["source_id"], best_row["source_key"])], "fuzzy", best
-                stats["fuzzy"] += 1
+            thin = (best_feat.get("weights_used", 0.0) < CORROBORATION_FLOOR)
+            name_only_ok = (
+                thin
+                and best_feat.get("name", 0.0) >= 0.999      # exact normalised name
+                and len((row["norm_name"] or "").split()) >= 2
+                and not ambiguous_names.get(row["norm_name"])  # not a known collider
+            )
+            if best_row is not None and best >= AUTO_MERGE and (not thin or name_only_ok):
+                eid = assigned[(best_row["source_id"], best_row["source_key"])]
+                method = "fuzzy" if not thin else "name_exact_distinctive"
+                score = best
+                stats["fuzzy" if not thin else "name_only"] += 1
+            elif best_row is not None and best >= AUTO_MERGE and thin:
+                # strong name match, no corroborating feature -> a human decides
+                eid = entity_id("c_", canonical_seed(cin, gstin, pan, row["norm_name"], row["pincode"]))
+                method, score = "provisional", best
+                reviews.append({
+                    "entity_type": "company",
+                    "left_key": f"{row['source_id']}|{row['source_key']}"[:400],
+                    "right_key": f"{best_row['source_id']}|{best_row['source_key']}"[:400],
+                    "score": round(best, 4),
+                    "features": lib.jsonb({**best_feat, "reason": "name-only evidence"}),
+                })
+                stats["review"] += 1
             elif best_row is not None and best >= REVIEW_FLOOR:
                 eid = entity_id("c_", canonical_seed(cin, gstin, pan, row["norm_name"], row["pincode"]))
                 method, score = "provisional", best
@@ -216,8 +299,9 @@ def resolve_companies(dry: bool) -> dict[tuple[str, str], str]:
                      for r in reviews])
 
     print(f"  companies -> {len(set(assigned.values()))} entities "
-          f"(reused {stats['reused']}, exact {stats['exact']}, fuzzy {stats['fuzzy']}, "
-          f"new {stats['new']}, queued for review {stats['review']})")
+          f"(reused {stats['reused']}, exact-id {stats['exact']}, fuzzy {stats['fuzzy']}, "
+          f"name-only {stats['name_only']}, new {stats['new']}, "
+          f"queued for review {stats['review']})")
 
     # spec §15.3 false-merge detector: one entity must never carry two distinct CINs
     bad = [(eid, {m['cin'] for m in ms if m['cin']}) for eid, ms in members.items()

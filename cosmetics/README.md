@@ -45,6 +45,20 @@ cd cosmetics
 make ingest-all                # every source that needs no credentials
 make pipeline                  # Stages 2-8, ending in validation
 make coverage                  # the honest number
+make test                      # 25 pytest checks: golden queries + invariants
+```
+
+### Review queue
+
+`norm_name + pincode` is the primary resolution path for the MSME long tail, so the
+review queue is a staffed workflow, not an exception hopper:
+
+```bash
+python -m pipeline.review --list                 # most ambiguous first
+python -m pipeline.review --show 42              # full feature vector for one pair
+python -m pipeline.review --merge 42             # supersede + relink (append-only)
+python -m pipeline.review --distinct 42
+python -m pipeline.review --auto-distinct-below 0.80
 ```
 
 ## Sources
@@ -61,7 +75,10 @@ make coverage                  # the honest number
 | S3 | MCA company master | 1 | the company spine | **blocked — needs a data.gov.in key** |
 | S2 | State FDA / ONDLS | 1 | COS-8 / COS-9 licences | **no state publishes a bulk list** |
 | S16 | GSTIN verification | 1 | constitution, status, filing history -> trust L3 | **needs a provider key** |
-| S9/S10/S11/S12/S13/S14 | CHEMEXCIL, IndiaMART, NABL, retail, trade data, company sites | 2-4 | enrichment | not yet built |
+| S9 | CHEMEXCIL member directory | 2 | 4,005 members, 2,379 websites, export activity | **live** |
+| S14 | Company websites | 2 | contact, checksum-valid GSTIN, certifications, capabilities | **live** |
+| S14b | Ingredient supply claims from those pages | 3 | `Company -[:SUPPLIES]-> Ingredient` | **live** |
+| S10/S11/S12/S13 | IndiaMART, NABL, retail, trade data | 3-4 | enrichment | not built |
 
 ### Corrections to the build spec, found by building it
 
@@ -81,6 +98,12 @@ make coverage                  # the honest number
    `adapters/s05_ninth_schedule.py`.
 5. **Udyam is the answer to the spec's own stated blind spot.** MCA cannot see
    proprietorships and partnerships; Udyam registers by enterprise, not legal form.
+6. **CHEMEXCIL is the website source, not just the export source.** Its directory
+   enumerates at `/members-alpha/{A-Z,0-9}` and publishes a website per member — 2,379
+   of them — which is what makes S14 possible at all. Member *profiles* need a council
+   login, so membership type (manufacturer-exporter vs merchant-exporter) is not
+   available and that role split is not made. Do not parse `/members.html` search
+   results: the page wraps the matched term in markup and splits names mid-word.
 
 ## The hard rules, and where each is enforced
 
@@ -117,6 +140,32 @@ make coverage                  # the honest number
   provides the ranking path in the meantime.
 - **Embeddings will go through the platform's Ollama/LiteLLM gateway** rather than
   `sentence-transformers`, avoiding a ~2 GB torch install and matching the rest of Jarvis.
+- **Name similarity is computed on distinctive tokens.** "SUDAMA ENTERPRISE" and "RAMU
+  ENTERPRISE" share a pincode and score 0.81 on `token_set_ratio` because of one generic
+  word. Generic business/sector vocabulary is stripped before scoring, and a pair whose
+  only common ground is generic can only auto-merge when something else corroborates at
+  ≥ 0.9 — which is what still lets "S.P. Pharmaceuticals" and "S P Pharmaceuticals" at
+  one address merge correctly.
+- **`roles_claimed` is never scored as a discriminator.** Every source stamps its own
+  role vocabulary, so two rows for the same company from two sources have disjoint role
+  sets by construction. Overlap counts as positive evidence; its absence counts as
+  nothing. Before this fix, Galaxy Surfactants existed twice — once as an exhibitor and
+  once as a CHEMEXCIL member — because the disjoint role sets pushed the score below the
+  merge threshold.
+- **A fuzzy match on the name alone cannot auto-merge** unless the normalised name is an
+  exact match, has ≥ 2 tokens, and is not a name already seen at two different pincodes.
+  CHEMEXCIL publishes a name and a website and nothing else; without this guard every
+  generic name in a 4,000-row directory collapses into one entity.
+- **Identifiers scraped from a website are promoted to spine fields only when the
+  company's own name appears on that site.** Directories legitimately list a parent or
+  group site against a subsidiary (CHEMEXCIL lists Bombay Perfumery against aacipl.com,
+  verified against the raw HTML as their data, not a parse error). A GSTIN lifted from
+  the wrong company's site would merge two unrelated entities, so unconfirmed ones stay
+  in the payload. Every candidate is checksum-validated first.
+- **Ingredient mentions are matched only on unambiguous INCI names.** "MILK", "SAND",
+  "HONEY" and "TALC" are real INCI names and also ordinary English; they are excluded
+  rather than guessed at, and a page must yield ≥ 3 distinct ingredients before any of
+  them is believed.
 
 ## Two constraints that are not negotiable
 

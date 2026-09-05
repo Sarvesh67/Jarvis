@@ -21,8 +21,8 @@ import lib  # noqa: E402
 
 # properties lifted from raw_company onto the Company node
 COMPANY_PROPS = ["legal_name", "norm_name", "cin", "gstin", "pan", "udyam_no", "iec",
-                 "constitution", "website", "address_raw", "pincode", "district",
-                 "state", "cluster_id", "geo_confidence"]
+                 "constitution", "website", "email", "phone", "address_raw", "pincode",
+                 "district", "state", "cluster_id", "geo_confidence"]
 FACILITY_PROPS = ["firm_name", "norm_name", "address_raw", "pincode", "district",
                   "state", "cluster_id", "geo_confidence"]
 

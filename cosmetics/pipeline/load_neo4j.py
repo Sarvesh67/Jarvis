@@ -352,6 +352,158 @@ def counts(s) -> dict:
     return out
 
 
+def load_associations(s) -> None:
+    """Association membership — the only source in the register that evidences EXPORT."""
+    rows = q("""SELECT DISTINCT x.entity_id, r.payload FROM raw_company r
+                JOIN crosswalk x ON x.source_id=r.source_id AND x.source_key=r.source_key
+                 AND x.entity_type='company' AND x.superseded_by IS NULL
+                WHERE r.payload->>'association' IS NOT NULL""")
+    assoc, edges = {}, []
+    for r in rows:
+        p = r["payload"] or {}
+        name = p["association"]
+        assoc[name] = {"name": name, "props": {"full_name": p.get("association_full")}}
+        edges.append({"company_id": r["entity_id"], "name": name,
+                      "member_id": p.get("member_id"),
+                      "prov": pv("s09_chemexcil", 2)})
+    run(s, """
+        UNWIND $rows AS row
+        MERGE (a:Association {name: row.name})
+        SET a += row.props
+    """, list(assoc.values()), "Association")
+    run(s, """
+        UNWIND $rows AS row
+        MATCH (c:Company {company_id: row.company_id})
+        MATCH (a:Association {name: row.name})
+        MERGE (c)-[e:MEMBER_OF]->(a)
+        SET e += row.prov, e.member_id = row.member_id
+    """, edges, "MEMBER_OF")
+
+
+def load_site_claims(s) -> None:
+    """Certifications and process capabilities claimed on a company's own website.
+
+    Tier 2, and every edge carries the SENTENCE the company said it in — a capability
+    claim without its evidence is indistinguishable from an inference, and the whole
+    point of the tier split is that a buyer can see which one they are looking at.
+    """
+    rows = q("""SELECT x.entity_id, r.payload, r.website FROM raw_company r
+                JOIN crosswalk x ON x.source_id=r.source_id AND x.source_key=r.source_key
+                 AND x.entity_type='company' AND x.superseded_by IS NULL
+                WHERE r.source_id = 's14_sites'""")
+    certs, caps, cert_edges, cap_edges = {}, {}, [], []
+    for r in rows:
+        p = r["payload"] or {}
+        for name, evidence in (p.get("certifications") or {}).items():
+            certs[name] = {"cert_id": name, "props": {"name": name, "body": None}}
+            cert_edges.append({"company_id": r["entity_id"], "cert_id": name,
+                               "evidence": evidence, "prov": pv("s14_sites", 2, 0.9)})
+        for name, evidence in (p.get("capabilities") or {}).items():
+            caps[name] = {"capability_id": name,
+                          "props": {"kind": name.split("_")[0], "detail": name}}
+            cap_edges.append({"company_id": r["entity_id"], "capability_id": name,
+                              "evidence": evidence, "prov": pv("s14_sites", 2, 0.9)})
+    run(s, """
+        UNWIND $rows AS row
+        MERGE (c:Certification {cert_id: row.cert_id}) SET c += row.props
+    """, list(certs.values()), "Certification")
+    run(s, """
+        UNWIND $rows AS row
+        MERGE (p:ProcessCapability {capability_id: row.capability_id}) SET p += row.props
+    """, list(caps.values()), "ProcessCapability")
+    run(s, """
+        UNWIND $rows AS row
+        MATCH (co:Company {company_id: row.company_id})
+        MATCH (ce:Certification {cert_id: row.cert_id})
+        MERGE (co)-[e:CLAIMS_CERTIFICATION]->(ce)
+        SET e += row.prov, e.evidence = row.evidence
+    """, cert_edges, "CLAIMS_CERTIFICATION")
+    run(s, """
+        UNWIND $rows AS row
+        MATCH (co:Company {company_id: row.company_id})
+        MATCH (p:ProcessCapability {capability_id: row.capability_id})
+        MERGE (co)-[e:CLAIMS_CAPABILITY]->(p)
+        SET e += row.prov, e.evidence = row.evidence
+    """, cap_edges, "CLAIMS_CAPABILITY")
+
+
+def load_supplies(s) -> None:
+    """Company -[:SUPPLIES]-> Ingredient, observed on the supplier's own product pages."""
+    rows = q("""SELECT entity_id, inci_name, evidence, mode, tier, source_id
+                FROM raw_supplies""")
+    payload = [{"company_id": r["entity_id"], "inci": r["inci_name"],
+                "evidence": r["evidence"], "mode": r["mode"],
+                "prov": pv(r["source_id"], r["tier"], 0.7)} for r in rows]
+    run(s, """
+        UNWIND $rows AS row
+        MATCH (c:Company {company_id: row.company_id})
+        MATCH (i:Ingredient {inci_name: row.inci})
+        MERGE (c)-[e:SUPPLIES]->(i)
+        SET e += row.prov, e.mode = row.mode, e.evidence = row.evidence
+    """, payload, "SUPPLIES")
+
+
+def load_products(s) -> None:
+    """Observed Indian products (S7), tier 3.
+
+    No Company node is ever minted from this source (spec §6/S7) — brand strings are not
+    resolved entities and pretending otherwise would put crowd-sourced pack text into the
+    company spine. Products exist so that an ingredient can be traced to something on a
+    real Indian shelf, which is what makes the EU-vs-India jurisdiction split legible.
+    """
+    prods = q("""SELECT source_key, product_name, brands, categories_tags,
+                        ingredients_text, payload FROM raw_product
+                 WHERE source_id='s07_obf'""")
+    alias_map = {r["alias"]: r["inci_name"] for r in q(
+        "SELECT alias, inci_name FROM raw_ingredient WHERE alias IS NOT NULL")}
+    known = {r["inci_name"] for r in q(
+        "SELECT DISTINCT inci_name FROM raw_ingredient WHERE source_id='s06_cosing'")}
+    cat_map = lib.load_yaml("category_map.yaml")["mappings"]
+
+    nodes, contains, in_cat = [], [], []
+    for r in prods:
+        pid = f"p_obf_{r['source_key']}"
+        nodes.append({"product_id": pid, "props": {
+            "name": r["product_name"], "brand": (r["brands"] or [None])[0],
+            "source": "open_beauty_facts", "country": "IN",
+            "ingredients_text": (r["ingredients_text"] or "")[:2000] or None}})
+        toks = (r["payload"] or {}).get("tokens") or []
+        pos = 0
+        for t in toks:
+            inci = t if t in known else alias_map.get(t)
+            if not inci:
+                continue
+            pos += 1
+            contains.append({"product_id": pid, "inci": inci, "position": pos,
+                             "prov": pv("s07_obf", 3, 0.7)})
+        seen = set()
+        for tag in (r["categories_tags"] or []):
+            m = cat_map.get(tag.lower())
+            if m and m["code"] not in seen:
+                seen.add(m["code"])
+                in_cat.append({"product_id": pid, "code": m["code"],
+                               "tags": m.get("tags") or [], "prov": pv("s07_obf", 3, 0.7)})
+    run(s, """
+        UNWIND $rows AS row
+        MERGE (p:Product {product_id: row.product_id})
+        SET p += row.props, p.updated_at = datetime()
+    """, nodes, "Product")
+    run(s, """
+        UNWIND $rows AS row
+        MATCH (p:Product {product_id: row.product_id})
+        MATCH (i:Ingredient {inci_name: row.inci})
+        MERGE (p)-[e:CONTAINS]->(i)
+        SET e += row.prov, e.position = row.position
+    """, contains, "CONTAINS")
+    run(s, """
+        UNWIND $rows AS row
+        MATCH (p:Product {product_id: row.product_id})
+        MATCH (c:ProductCategory {code: row.code})
+        MERGE (p)-[e:IN_CATEGORY]->(c)
+        SET e += row.prov, e.tags = row.tags
+    """, in_cat, "IN_CATEGORY")
+
+
 def load_all(s) -> None:
     load_clusters(s)
     load_categories(s)
@@ -360,6 +512,10 @@ def load_all(s) -> None:
     load_facilities(s)
     load_operates(s)
     load_events(s)
+    load_associations(s)
+    load_site_claims(s)
+    load_supplies(s)
+    load_products(s)
 
 
 def main() -> int:

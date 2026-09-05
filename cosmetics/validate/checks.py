@@ -35,9 +35,16 @@ COVERAGE_FIELDS = [
                             "(l:Licence) WHERE l.regime='cosmetics' }"),
     ("licence categories stated",
      "EXISTS { (c)-[:OPERATES]->(:Facility)-[:LICENSED_UNDER]->(:Licence)-[:PERMITS]->() }"),
-    ("website or contact", "c.website IS NOT NULL"),
+    ("website", "c.website IS NOT NULL"),
+    ("email or phone", "c.email IS NOT NULL OR c.phone IS NOT NULL"),
+    ("a claimed capability", "EXISTS { (c)-[:CLAIMS_CAPABILITY]->() }"),
+    ("a claimed certification", "EXISTS { (c)-[:CLAIMS_CERTIFICATION]->() }"),
+    ("supplies a known ingredient", "EXISTS { (c)-[:SUPPLIES]->() }"),
     ("trust_level", "c.trust_level IS NOT NULL"),
-    ("trust_level >= 2", "c.trust_level >= 2"),
+    # ask for the rung, not the maximum: L4 (council/exhibitor corroboration) outranks
+    # L2 numerically but says nothing about whether the company may legally make the thing
+    ("L2 evidence (a cosmetics licence)", "2 IN c.trust_rungs"),
+    ("L4 evidence (corroborated)", "4 IN c.trust_rungs"),
 ]
 
 

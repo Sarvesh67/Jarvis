@@ -166,3 +166,15 @@ CREATE TABLE IF NOT EXISTS unresolved_ingredient (
   first_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (raw_string)
 );
+
+-- Ingredient supply claims observed on supplier websites (S14b). Tier 3.
+CREATE TABLE IF NOT EXISTS raw_supplies (
+  id BIGSERIAL PRIMARY KEY,
+  source_id TEXT NOT NULL, source_key TEXT NOT NULL,
+  entity_id TEXT NOT NULL, inci_name TEXT NOT NULL,
+  matched_text TEXT, evidence TEXT, mode TEXT,
+  tier SMALLINT NOT NULL, retrieved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (source_id, source_key, inci_name)
+);
+CREATE INDEX IF NOT EXISTS raw_supplies_inci ON raw_supplies (inci_name);
+ALTER TABLE trust_state ADD COLUMN IF NOT EXISTS trust_rungs SMALLINT[];  -- every rung whose evidence is present

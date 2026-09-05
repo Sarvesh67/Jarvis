@@ -152,3 +152,52 @@
     LIMIT 5
   expect_min: 0
   coverage_gap: "Run `make derive` without --skip-substitutes to populate."
+
+- id: eu_restricted_ingredient_in_an_indian_product
+  q: "Ingredients restricted or prohibited in the EU that appear in products on Indian shelves"
+  shape: Product->Ingredient->RegulatoryRule
+  cypher: |
+    MATCH (p:Product)-[:CONTAINS]->(i:Ingredient)-[:RESTRICTED_BY]->(r:RegulatoryRule)
+    WHERE r.jurisdiction = 'EU'
+      AND NOT EXISTS { (i)-[:RESTRICTED_BY]->(:RegulatoryRule {jurisdiction:'IN'}) }
+    RETURN i.inci_name AS ingredient, r.clause AS eu_clause, r.status AS eu_status,
+           'EU_ONLY — no equivalent India rule in the graph' AS jurisdiction_note,
+           count(DISTINCT p) AS indian_products
+    ORDER BY indian_products DESC LIMIT 10
+  expect_min: 1
+  coverage_gap: >
+    Open Beauty Facts carries 1,751 Indian products but only 287 with usable ingredient
+    text; this is observed shelf data (tier 3), not market coverage.
+
+- id: indian_products_by_category
+  q: "Observed Indian products per regulator category"
+  shape: Product->ProductCategory
+  cypher: |
+    MATCH (p:Product)-[:IN_CATEGORY]->(c:ProductCategory)
+    RETURN c.code AS category, count(p) AS products ORDER BY products DESC
+  expect_min: 0
+  coverage_gap: "Depends on Open Beauty Facts category tags being present on Indian rows."
+
+- id: supplier_of_a_named_ingredient
+  q: "Which Indian companies list a given ingredient on their own site?"
+  shape: Company-[:SUPPLIES]->Ingredient
+  cypher: |
+    MATCH (c:Company)-[e:SUPPLIES]->(i:Ingredient)
+    RETURN i.inci_name AS ingredient, count(DISTINCT c) AS suppliers
+    ORDER BY suppliers DESC LIMIT 10
+  expect_min: 0
+  coverage_gap: "Populated by S14b from landed company pages; grows with the S14 crawl."
+
+- id: trust_rungs_are_not_a_quality_ordering
+  q: "Companies with licence evidence (L2) specifically, not merely a high trust_level"
+  shape: invariant + coverage
+  cypher: |
+    MATCH (c:Company)
+    RETURN count(CASE WHEN 2 IN c.trust_rungs THEN 1 END) AS with_licence_evidence,
+           count(CASE WHEN 4 IN c.trust_rungs THEN 1 END) AS corroborated_only_evidence,
+           count(CASE WHEN c.trust_rungs IS NULL THEN 1 END) AS missing_rungs
+  expect_min: 1
+  coverage_gap: >
+    with_licence_evidence is the number that matters for a factory recommendation and it
+    is near zero until a state COS-8/COS-9 extract exists. Filter on `2 IN trust_rungs`,
+    never on `trust_level >= 2`.
