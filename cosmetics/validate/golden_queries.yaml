@@ -183,6 +183,7 @@
   shape: Company-[:SUPPLIES]->Ingredient
   cypher: |
     MATCH (c:Company)-[e:SUPPLIES]->(i:Ingredient)
+    WHERE e.cosmetics_relevant
     RETURN i.inci_name AS ingredient, count(DISTINCT c) AS suppliers
     ORDER BY suppliers DESC LIMIT 10
   expect_min: 0

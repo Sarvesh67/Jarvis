@@ -429,17 +429,19 @@ def load_site_claims(s) -> None:
 
 def load_supplies(s) -> None:
     """Company -[:SUPPLIES]-> Ingredient, observed on the supplier's own product pages."""
-    rows = q("""SELECT entity_id, inci_name, evidence, mode, tier, source_id
-                FROM raw_supplies""")
+    rows = q("""SELECT entity_id, inci_name, evidence, mode, tier, source_id,
+                       cosmetics_relevant FROM raw_supplies""")
     payload = [{"company_id": r["entity_id"], "inci": r["inci_name"],
                 "evidence": r["evidence"], "mode": r["mode"],
+                "cosmetics_relevant": r["cosmetics_relevant"],
                 "prov": pv(r["source_id"], r["tier"], 0.7)} for r in rows]
     run(s, """
         UNWIND $rows AS row
         MATCH (c:Company {company_id: row.company_id})
         MATCH (i:Ingredient {inci_name: row.inci})
         MERGE (c)-[e:SUPPLIES]->(i)
-        SET e += row.prov, e.mode = row.mode, e.evidence = row.evidence
+        SET e += row.prov, e.mode = row.mode, e.evidence = row.evidence,
+            e.cosmetics_relevant = row.cosmetics_relevant
     """, payload, "SUPPLIES")
 
 

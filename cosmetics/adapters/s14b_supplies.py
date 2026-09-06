@@ -34,6 +34,21 @@ import lib  # noqa: E402
 SOURCE = "s14b_supplies"
 TIER = 3
 MIN_HITS = 3            # distinct ingredients before a page is believed at all
+
+# A page must read like a SUPPLY offer before Company -[:SUPPLIES]-> Ingredient is
+# asserted. Two failure modes made this necessary, both caught by reading the evidence:
+#   * a cosmetics BRAND listing "Kojic Acid & Turmeric Face Wash — Rs 333" was being
+#     recorded as a supplier of kojic acid. It uses the ingredient; it does not sell it.
+#     That relationship is MARKETS -> Product -> CONTAINS, and asserting SUPPLIES for it
+#     is simply a different claim from the one the page supports.
+#   * a chemical company's own catalogue is unmistakable: "manufacturer & supplier",
+#     CAS numbers, grades, pack sizes.
+SUPPLY_CUES = ["MANUFACTURER", "SUPPLIER", "WE SUPPLY", "RAW MATERIAL", "CAS NO",
+               "CAS NUMBER", "SPECIFICATION", "TECHNICAL GRADE", "BP GRADE", "IP GRADE",
+               "USP", "PURITY", "MOQ", "BULK", "EXPORTER", "DISTRIBUTOR", "TRADER",
+               "PRODUCT LIST", "PRODUCT RANGE", "OUR PRODUCTS", "CHEMICALS"]
+RETAIL_CUES = ["ADD TO CART", "BUY NOW", "SHOP NOW", "WISHLIST", "CHECKOUT", "MRP",
+               "FREE SHIPPING", "OUT OF STOCK", "CUSTOMER REVIEWS", "RATED", "OFFER PRICE"]
 MIN_LEN_SINGLE = 9      # single-token INCI must be at least this long
 MIN_LEN_MULTI = 7
 
@@ -56,6 +71,30 @@ MODE_HINTS = {
     "agent": ["DISTRIBUTOR", "AUTHORISED AGENT", "AUTHORIZED AGENT", "TRADING",
               "IMPORTER", "SOLE AGENT", "STOCKIST"],
 }
+
+
+# Functions that mean the ingredient does something IN a cosmetic product. A supplier of
+# hydrochloric acid is correctly recorded, but nobody formulating a face serum is
+# shopping for it; the flag lets a query ask for the cosmetics-relevant slice without
+# the matcher silently deciding what counts (spec: surface thin answers, never hide them).
+COSMETIC_FUNCTIONS = {
+    "SKIN CONDITIONING", "SKIN PROTECTING", "MOISTURISING", "HUMECTANT", "EMOLLIENT",
+    "EMULSIFYING", "SURFACTANT", "SURFACTANT - CLEANSING", "SURFACTANT - EMULSIFYING",
+    "SURFACTANT - FOAM BOOSTING", "CLEANSING", "FOAMING", "PRESERVATIVE", "ANTIOXIDANT",
+    "UV FILTER", "UV ABSORBER", "HAIR CONDITIONING", "ANTISTATIC", "VISCOSITY CONTROLLING",
+    "FILM FORMING", "SOOTHING", "SMOOTHING", "ANTI-SEBORRHEIC", "KERATOLYTIC", "BLEACHING",
+    "ABRASIVE", "OPACIFYING", "PEARLESCENT", "COSMETIC COLORANT", "HAIR DYEING",
+    "ANTIPERSPIRANT", "DEODORANT", "ANTI-ACNE", "ANTIDANDRUFF", "EXFOLIATING",
+    "MASKING", "PERFUMING", "FRAGRANCE", "SOLVENT", "EMULSION STABILISING",
+}
+
+
+def cosmetic_ingredients() -> set[str]:
+    with lib.pg() as c, c.cursor() as cur:
+        cur.execute("""SELECT DISTINCT inci_name FROM raw_ingredient
+                       WHERE source_id='s06_cosing' AND functions && %s""",
+                    (sorted(COSMETIC_FUNCTIONS),))
+        return {r[0] for r in cur.fetchall()}
 
 
 def load_needles() -> dict[str, str]:
@@ -91,6 +130,53 @@ def site_index() -> dict[str, dict]:
         return idx
 
 
+# Tokenise on WHITESPACE only, then trim punctuation from the ends of each token.
+# Splitting on all punctuation turned "Sodium bis(2-methoxyethoxy)aluminium hydride" into
+# separate tokens and matched ALUMINIUM inside it — a different substance entirely.
+# Keeping internal punctuation attached means a chemical name only matches when it stands
+# alone, which is exactly the boundary rule this needs.
+_EDGE = ".,;:!?\"'()[]{}<>|/\\*"
+MAX_NGRAM = 5
+
+
+def tokens_of(text: str) -> list[str]:
+    return [t for t in (w.strip(_EDGE) for w in text.upper().split()) if t]
+
+
+def ngrams(toks: list[str], needles: set[str]) -> dict[str, int]:
+    """{matched INCI name -> token index}, LONGEST match first.
+
+    Longest-first matters: a page listing "Aluminium Fluoride" should record aluminium
+    fluoride, not aluminium. Once a span is consumed by a longer name, the shorter names
+    inside it are not matched again.
+    """
+    hits: dict[str, int] = {}
+    consumed: set[int] = set()
+    n = len(toks)
+    for k in range(MAX_NGRAM, 0, -1):
+        for i in range(n - k + 1):
+            if any(j in consumed for j in range(i, i + k)):
+                continue
+            cand = " ".join(toks[i:i + k])
+            if len(cand) > 60:
+                continue
+            if cand in needles:
+                hits.setdefault(cand, i)
+                consumed.update(range(i, i + k))
+    return hits
+
+
+def classify(text_upper: str) -> tuple[str, int, int]:
+    """(verdict, supply_hits, retail_hits) — is this a catalogue or a storefront?"""
+    sup = sum(1 for c in SUPPLY_CUES if c in text_upper)
+    ret = sum(1 for c in RETAIL_CUES if c in text_upper)
+    if sup >= 2 and sup > ret:
+        return "supplier", sup, ret
+    if ret >= 2 and ret >= sup:
+        return "retailer_or_brand", sup, ret
+    return "unclear", sup, ret
+
+
 def page_text(path: Path) -> str:
     soup = BeautifulSoup(path.read_text(encoding="utf-8", errors="ignore"), "lxml")
     for t in soup(["script", "style", "noscript"]):
@@ -104,38 +190,51 @@ def main() -> int:
     a = ap.parse_args()
 
     needles = load_needles()
+    cosmetic = cosmetic_ingredients()
     print(f"  {len(needles)} unambiguous INCI needles "
-          f"(from 35.9k; short/ambiguous names excluded)")
+          f"(from 35.9k; short/ambiguous names excluded); "
+          f"{len(cosmetic)} carry a cosmetic function")
     idx = site_index()
     print(f"  {len(idx)} scraped hosts mapped to companies")
 
     pages = sorted((lib.RAW / "s14_sites").glob("*.html"))
     print(f"  {len(pages)} landed pages")
 
+    needle_set = set(needles)
     per_host: dict[str, dict[str, str]] = defaultdict(dict)
     host_mode: dict[str, str] = {}
+    host_kind: dict[str, tuple[str, int, int]] = {}
     for p in pages:
         host = p.name.split("_")[0].replace("www.", "").lower()
         if host not in idx:
             continue
         text = page_text(p)
-        upper = " " + re.sub(r"[^A-Z0-9 ]", " ", text.upper()) + " "
-        for inci in needles:
-            if f" {inci} " in upper:
-                if inci not in per_host[host]:
-                    m = re.search(r"[^.!?\n]{0,160}" + re.escape(inci) + r"[^.!?\n]{0,160}",
-                                  text, re.I)
-                    per_host[host][inci] = re.sub(r"\s+", " ", m.group(0))[:300] if m else ""
+        upper = text.upper()
+        verdict, sup, ret = classify(upper)
+        prev = host_kind.get(host)
+        # a host is judged on its strongest page: one catalogue page is enough
+        if prev is None or (verdict == "supplier" and prev[0] != "supplier"):
+            host_kind[host] = (verdict, sup, ret)
+        toks = tokens_of(text)
+        for inci, at in ngrams(toks, needle_set).items():
+            if inci in per_host[host]:
+                continue
+            lo, hi = max(0, at - 22), min(len(toks), at + 26)
+            per_host[host][inci] = " ".join(toks[lo:hi])[:300]
         if host not in host_mode:
-            up = text.upper()
             for mode, hints in MODE_HINTS.items():
-                if any(h in up for h in hints):
+                if any(h in upper for h in hints):
                     host_mode[host] = mode
                     break
 
-    rows, kept_hosts = [], 0
+    rows, kept_hosts, dropped_kind = [], 0, 0
     for host, hits in per_host.items():
         if len(hits) < a.min_hits:
+            continue
+        verdict, sup, ret = host_kind.get(host, ("unclear", 0, 0))
+        if verdict != "supplier":
+            # a brand that formulates WITH an ingredient is not a supplier OF it
+            dropped_kind += 1
             continue
         kept_hosts += 1
         meta = idx[host]
@@ -144,11 +243,15 @@ def main() -> int:
                 "source_id": SOURCE, "source_key": host, "entity_id": meta["entity_id"],
                 "inci_name": inci, "matched_text": inci, "evidence": evidence,
                 "mode": host_mode.get(host), "tier": TIER, "retrieved_at": lib.now(),
+                "cosmetics_relevant": inci in cosmetic,
             })
     n = lib.upsert("raw_supplies", rows, "source_id, source_key, inci_name")
-    dropped = len(per_host) - kept_hosts
+    thin = sum(1 for h in per_host.values() if len(h) < a.min_hits)
+    rel = sum(1 for r in rows if r["cosmetics_relevant"])
     print(f"S14b done: {n} supply claims across {kept_hosts} suppliers "
-          f"({dropped} host(s) dropped for fewer than {a.min_hits} distinct ingredients)")
+          f"({rel} for ingredients with a cosmetic function)")
+    print(f"  dropped: {thin} host(s) with fewer than {a.min_hits} distinct ingredients, "
+          f"{dropped_kind} host(s) that read as a brand/storefront rather than a catalogue")
     if rows:
         top = defaultdict(int)
         for r in rows:
