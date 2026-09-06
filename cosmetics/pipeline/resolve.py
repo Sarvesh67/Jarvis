@@ -75,12 +75,26 @@ def distinctive(name: str | None) -> list[str]:
 
 
 def name_similarity(a: str | None, b: str | None) -> tuple[float, bool]:
-    """(similarity, generic_only) — similarity over distinctive tokens where possible."""
+    """(similarity, generic_only) — similarity over distinctive tokens where possible.
+
+    token_set_ratio alone is DANGEROUS here: when one side's distinctive-token set is a
+    subset of the other's, it scores ~100 regardless of how many extra tokens the larger
+    side carries. "MEGHMANI" vs "MEGHMANI DYES INTERMEDIATES" scores 100 on
+    token_set_ratio even though they are different legal entities (Meghmani Organics
+    Limited and Meghmani Dyes and Intermediates Limited, confirmed by distinct CINs) —
+    token_sort_ratio on the same pair scores 46. Taking the MINIMUM of the two closes
+    that hole: a genuine match scores high on both, a subset-containment false match
+    only scores high on one.
+    """
     da, db = distinctive(a), distinctive(b)
     if da and db:
-        return fuzz.token_set_ratio(" ".join(da), " ".join(db)) / 100.0, False
+        sa, sb = " ".join(da), " ".join(db)
+        sim = min(fuzz.token_set_ratio(sa, sb), fuzz.token_sort_ratio(sa, sb)) / 100.0
+        return sim, False
     # one side is nothing but generic vocabulary: fall back, and flag it
-    return fuzz.token_set_ratio(a or "", b or "") / 100.0, True
+    sim = min(fuzz.token_set_ratio(a or "", b or ""),
+              fuzz.token_sort_ratio(a or "", b or "")) / 100.0
+    return sim, True
 
 
 def address_similarity(a: str | None, b: str | None) -> float:
@@ -227,6 +241,17 @@ def resolve_companies(dry: bool) -> dict[tuple[str, str], str]:
                     if id(cand) in seen:
                         continue
                     seen.add(id(cand))
+                    # HARD VETO: CIN is deterministic identity (spec §8 key hierarchy,
+                    # rank 2). If both rows already carry their OWN distinct CIN, no
+                    # amount of name/address similarity may merge them — that would
+                    # contradict identity evidence stronger than anything fuzzy scoring
+                    # can produce. This is what stopped Nirma's five sister companies
+                    # (NIRMAN/NAMAN/NAVIN/NIRCHEM/NEO Soaps and Detergents Pvt Ltd, one
+                    # registered address, five distinct CINs) from being collapsed into
+                    # one entity — their names score 93 on BOTH token_set_ratio and
+                    # token_sort_ratio, so the metric fix alone cannot catch this case.
+                    if cand.get("cin") and row.get("cin") and cand["cin"] != row["cin"]:
+                        continue
                     s, feat = score_pair(row, cand)
                     if s > best:
                         best, best_row, best_feat = s, cand, feat

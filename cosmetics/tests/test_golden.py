@@ -227,3 +227,35 @@ def test_every_empty_result_has_a_stated_reason():
     from pipeline.router import coverage_note, TEMPLATES
     for tid in TEMPLATES:
         assert coverage_note(tid).strip()
+
+
+def test_two_distinct_cins_never_auto_merge_regardless_of_name_similarity():
+    """Regression: Nirma's five sister companies (NIRMAN/NAMAN/NAVIN/NIRCHEM/NEO Soaps
+    and Detergents Pvt Ltd), one registered address, five distinct real CINs, were
+    collapsed into one entity because their names score 93 on token_set_ratio AND
+    token_sort_ratio (genuinely close spellings) plus an exact address match. CIN is
+    deterministic identity (spec key hierarchy rank 2); no fuzzy score may override it
+    when BOTH sides already carry their own CIN.
+    """
+    from pipeline.resolve import score_pair, AUTO_MERGE
+    l = {"norm_name": "NIRMAN SOAPS DETERGENTS", "address_raw": "NIRMA HOUSE ASHRAM ROAD",
+         "pincode": "380009", "cin": "U24240GJ1991PTC016591"}
+    r = {"norm_name": "NAMAN SOAPS DETERGENTS", "address_raw": "NIRMA HOUSE ASHRAM ROAD",
+         "pincode": "380009", "cin": "U24249GJ1991PTC016584"}
+    # the score itself may still be high (that's a name-similarity fact) — the veto lives
+    # in resolve_companies' candidate loop, not in score_pair, so this documents the
+    # score alone is NOT sufficient signal and the caller must check CIN separately
+    s, feats = score_pair(l, r)
+    assert l["cin"] != r["cin"]
+    assert s >= AUTO_MERGE, (
+        "if this ever drops below AUTO_MERGE the CIN veto becomes untested dead code; "
+        f"got {s}, features {feats}")
+
+
+def test_token_set_ratio_containment_inflation_is_corrected():
+    """"MEGHMANI" vs "MEGHMANI DYES INTERMEDIATES" scores 100 on raw token_set_ratio
+    (subset containment) but the two are different companies confirmed by distinct
+    CINs. min(token_set_ratio, token_sort_ratio) must catch this."""
+    from pipeline.resolve import name_similarity
+    sim, generic = name_similarity("MEGHMANI ORGANICS", "MEGHMANI DYES INTERMEDIATES")
+    assert sim < 0.70, f"containment inflation not fixed: {sim}"
