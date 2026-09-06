@@ -1,0 +1,220 @@
+# Whitelisted query templates (spec §16, item 17).
+#
+# The router NEVER generates Cypher. A model may only choose a template id and fill its
+# declared parameters; anything else falls back to cited document search. This is what
+# keeps the hard rules enforceable: a template that answers a compliance question cannot
+# traverse a tier-4 edge, and a template scoped to India cannot return an EU rule,
+# because the Cypher is written once, here, and reviewed.
+#
+# tier_floor = the WORST tier this answer depends on. Compliance answers must be 1.
+
+- id: manufacturers_for_category_in_cluster
+  flow: buyer
+  intent: Find licensed manufacturers for a product category in a cluster or region
+  examples:
+    - "COS-8 licensed skin care manufacturers in Baddi"
+    - "who can make face creams in Gujarat"
+  params: {category: category_code, cluster: cluster_id}
+  tier_floor: 1
+  cypher: |
+    MATCH (c:Company)-[:OPERATES]->(f:Facility)-[:LICENSED_UNDER]->(l:Licence)
+          -[:PERMITS]->(pc:ProductCategory {code: $category})
+    MATCH (f)-[:LOCATED_IN]->(cl:Cluster)
+    WHERE ($cluster IS NULL OR cl.cluster_id = $cluster)
+      AND l.status <> 'cancelled'
+    RETURN c.legal_name AS company, l.form_type AS licence_form, l.number AS licence_no,
+           l.status AS licence_status, f.address_raw AS address, cl.name AS cluster,
+           c.trust_level AS trust
+    ORDER BY trust DESC LIMIT 50
+
+- id: cosmetics_firms_in_cluster
+  flow: buyer
+  intent: Cosmetics manufacturers in a cluster from the registry, where no licence is on file
+  examples:
+    - "cosmetics manufacturers in Surat"
+    - "who makes cosmetics in the Ahmedabad cluster"
+  params: {cluster: cluster_id}
+  tier_floor: 1
+  note: >
+    Registry activity, NOT a licence. Answers "who is in this business here", never
+    "who may legally make this". The licence question is the template above.
+  cypher: |
+    MATCH (c:Company)-[:LOCATED_IN]->(cl:Cluster)
+    WHERE ($cluster IS NULL OR cl.cluster_id = $cluster)
+      AND ('cosmetics_core' IN c.roles OR 'manufacturer_candidate' IN c.roles)
+    RETURN c.legal_name AS company, c.district AS district, cl.name AS cluster,
+           c.roles AS roles, c.trust_level AS trust,
+           2 IN c.trust_rungs AS has_licence_evidence
+    ORDER BY trust DESC, company LIMIT 50
+
+- id: third_party_manufacturers
+  flow: buyer
+  intent: Companies that say they do third-party or private-label manufacturing
+  examples:
+    - "third party manufacturers for cosmetics"
+    - "private label cream manufacturing"
+  params: {cluster: cluster_id}
+  tier_floor: 2
+  cypher: |
+    MATCH (c:Company)-[e:CLAIMS_CAPABILITY]->(p:ProcessCapability
+          {capability_id: 'third_party_manufacturing'})
+    OPTIONAL MATCH (c)-[:LOCATED_IN]->(cl:Cluster)
+    WHERE $cluster IS NULL OR cl.cluster_id = $cluster
+    RETURN c.legal_name AS company, c.website AS website, cl.name AS cluster,
+           e.evidence AS claimed_on_their_site, c.trust_level AS trust
+    ORDER BY trust DESC LIMIT 50
+
+- id: packaging_converters_in_cluster
+  flow: buyer
+  intent: Who can supply packaging (bottles, jars, tubes, cartons, closures) in a cluster
+  examples:
+    - "who makes cosmetic bottles in Palghar"
+    - "packaging suppliers near Ahmedabad"
+  params: {component: packaging_type, cluster: cluster_id}
+  tier_floor: 1
+  cypher: |
+    MATCH (c:Company)-[:SUPPLIES_PACKAGING]->(p:PackagingComponent)
+    MATCH (c)-[:LOCATED_IN]->(cl:Cluster)
+    WHERE ($cluster IS NULL OR cl.cluster_id = $cluster)
+      AND ($component IS NULL OR p.type = $component)
+    RETURN c.legal_name AS company, p.type AS component, c.district AS district,
+           cl.name AS cluster, c.trust_level AS trust
+    ORDER BY trust DESC, company LIMIT 50
+
+- id: suppliers_of_ingredient
+  flow: buyer
+  intent: Which Indian companies supply a named cosmetic ingredient
+  examples:
+    - "Indian suppliers of Niacinamide"
+    - "who sells hyaluronic acid"
+  params: {ingredient: inci_name}
+  tier_floor: 3
+  note: Observed on the supplier's own catalogue. Tier 3 — ranks and suggests, never proves.
+  cypher: |
+    MATCH (c:Company)-[e:SUPPLIES]->(i:Ingredient)
+    WHERE ($ingredient IS NULL OR i.inci_name = $ingredient) AND e.cosmetics_relevant
+    RETURN i.inci_name AS ingredient, c.legal_name AS supplier, c.website AS website,
+           e.mode AS mode, e.evidence AS evidence, c.trust_level AS trust
+    ORDER BY trust DESC LIMIT 50
+
+- id: ingredient_restriction_india
+  flow: compliance
+  intent: Is an ingredient restricted or prohibited in INDIA
+  examples:
+    - "is mercury allowed in cosmetics in India"
+    - "India restrictions on hydroquinone"
+  params: {ingredient: inci_name}
+  tier_floor: 1
+  cypher: |
+    MATCH (i:Ingredient)-[:RESTRICTED_BY]->(r:RegulatoryRule {jurisdiction: 'IN'})
+    WHERE $ingredient IS NULL OR i.inci_name = $ingredient
+    OPTIONAL MATCH (r)-[:SUPPORTED_BY]->(d:DocChunk)
+    RETURN i.inci_name AS ingredient, r.status AS status, r.clause AS clause,
+           r.source_doc AS source, r.conditions AS conditions,
+           collect(DISTINCT d.page)[..3] AS cited_pages
+    LIMIT 50
+
+- id: ingredient_restriction_eu
+  flow: compliance
+  intent: Is an ingredient restricted in the EU (explicitly EU-only, no force in India)
+  examples:
+    - "EU restrictions on salicylic acid"
+  params: {ingredient: inci_name}
+  tier_floor: 1
+  cypher: |
+    MATCH (i:Ingredient)-[:RESTRICTED_BY]->(r:RegulatoryRule {jurisdiction: 'EU'})
+    WHERE $ingredient IS NULL OR i.inci_name = $ingredient
+    RETURN i.inci_name AS ingredient, r.status AS status, r.clause AS clause,
+           r.max_concentration AS max_concentration, r.conditions AS conditions,
+           'EU only — EC 1223/2009 has no force in India' AS jurisdiction_warning
+    LIMIT 50
+
+- id: standard_for_category
+  flow: compliance
+  intent: Which BIS/IS standard applies to a product category in India
+  examples:
+    - "what standard applies to skin creams"
+    - "IS standard for shampoo"
+  params: {category: category_code}
+  tier_floor: 1
+  cypher: |
+    MATCH (pc:ProductCategory)-[:GOVERNED_BY]->(r:RegulatoryRule {jurisdiction: 'IN'})
+    WHERE $category IS NULL OR pc.code = $category
+    RETURN pc.code AS category, pc.name AS category_name,
+           r.standard_ref AS indian_standard, r.clause AS clause, r.source_doc AS source
+    ORDER BY category LIMIT 50
+
+- id: loan_licence_holders
+  flow: buyer
+  intent: Companies holding a loan licence (COS-9) — brands manufacturing on someone else's premises
+  examples:
+    - "who holds a COS-9 loan licence"
+  params: {}
+  tier_floor: 1
+  cypher: |
+    MATCH (f:Facility)-[:LICENSED_UNDER]->(l:Licence)
+    WHERE l.is_loan_licence = true
+    OPTIONAL MATCH (c:Company)-[:OPERATES]->(f)
+    RETURN l.form_type AS form, l.number AS licence_no, l.sla_state AS state,
+           c.legal_name AS company, f.address_raw AS premises
+    LIMIT 50
+
+- id: substitutes_for_ingredient
+  flow: formulation
+  intent: What other ingredients share a function with this one
+  examples:
+    - "alternatives to parabens"
+    - "what can replace phenoxyethanol"
+  params: {ingredient: inci_name}
+  tier_floor: 4
+  note: >
+    Tier 4 — derived from shared declared function. Ranks and suggests. It is NOT a
+    compliance answer and must never be presented as one.
+  cypher: |
+    MATCH (i:Ingredient {inci_name: $ingredient})-[s:SUBSTITUTE_FOR]->(alt:Ingredient)
+    RETURN alt.inci_name AS substitute, s.shared_functions AS shared_functions,
+           s.rule_id AS derived_by,
+           EXISTS { (alt)-[:RESTRICTED_BY]->(:RegulatoryRule {jurisdiction:'IN'}) }
+             AS restricted_in_india
+    LIMIT 50
+
+- id: company_profile
+  flow: both
+  intent: Everything known about one company, with provenance
+  examples:
+    - "tell me about Galaxy Surfactants"
+  params: {company: company_name}
+  tier_floor: 1
+  cypher: |
+    MATCH (c:Company)
+    WHERE toUpper(c.legal_name) CONTAINS toUpper($company)
+       OR toUpper(coalesce(c.norm_name,'')) CONTAINS toUpper($company)
+    OPTIONAL MATCH (c)-[:OPERATES]->(f:Facility)-[:LICENSED_UNDER]->(l:Licence)
+    OPTIONAL MATCH (c)-[:MEMBER_OF]->(a:Association)
+    OPTIONAL MATCH (c)-[:CLAIMS_CAPABILITY]->(p:ProcessCapability)
+    OPTIONAL MATCH (c)-[:CLAIMS_CERTIFICATION]->(ce:Certification)
+    RETURN c.legal_name AS company, c.cin AS cin, c.gstins AS gstins,
+           c.district AS district, c.cluster_id AS cluster, c.website AS website,
+           c.roles AS roles, c.trust_level AS trust_level,
+           c.trust_rungs AS trust_rungs, c.trust_reasons AS why,
+           collect(DISTINCT l.form_type + ' ' + l.number) AS licences,
+           collect(DISTINCT a.name) AS associations,
+           collect(DISTINCT p.capability_id) AS capabilities,
+           collect(DISTINCT ce.cert_id) AS certifications
+    LIMIT 10
+
+- id: eu_restricted_in_indian_products
+  flow: compliance
+  intent: Ingredients restricted in the EU that appear in products on Indian shelves
+  examples:
+    - "EU banned ingredients still sold in India"
+  params: {}
+  tier_floor: 1
+  cypher: |
+    MATCH (p:Product)-[:CONTAINS]->(i:Ingredient)-[:RESTRICTED_BY]->(r:RegulatoryRule)
+    WHERE r.jurisdiction = 'EU'
+      AND NOT EXISTS { (i)-[:RESTRICTED_BY]->(:RegulatoryRule {jurisdiction:'IN'}) }
+    RETURN i.inci_name AS ingredient, r.status AS eu_status, r.clause AS eu_clause,
+           count(DISTINCT p) AS indian_products,
+           'EU_ONLY — no equivalent India rule in this graph' AS jurisdiction_note
+    ORDER BY indian_products DESC LIMIT 25

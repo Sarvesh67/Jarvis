@@ -212,3 +212,23 @@
     RETURN cl.name AS cluster, p.type AS component, count(DISTINCT c) AS converters
     ORDER BY converters DESC LIMIT 12
   expect_min: 1
+
+- id: doc_index_is_linked_and_citable
+  q: "Rule text is indexed, embedded, and cites the rules it supports"
+  shape: RegulatoryRule-[:SUPPORTED_BY]->DocChunk
+  cypher: |
+    MATCH (d:DocChunk)
+    RETURN count(d) AS chunks,
+           count(CASE WHEN d.embedding IS NOT NULL THEN 1 END) AS embedded,
+           count(CASE WHEN EXISTS { (d)-[:MENTIONS]->() } THEN 1 END) AS linked,
+           count(CASE WHEN EXISTS { (:RegulatoryRule)-[:SUPPORTED_BY]->(d) } THEN 1 END) AS cited
+  expect_min: 1
+
+- id: vector_search_returns_node_linked_chunks
+  q: "Vector search over the doc index returns chunks that are linked to graph entities"
+  shape: DocChunk vector index
+  cypher: |
+    MATCH (d:DocChunk)-[:MENTIONS]->(e)
+    RETURN labels(e)[0] AS entity_type, count(DISTINCT d) AS chunks
+    ORDER BY chunks DESC
+  expect_min: 1

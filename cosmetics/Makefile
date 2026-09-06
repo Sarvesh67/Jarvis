@@ -69,3 +69,12 @@ test:                   ## pytest: golden queries + hard-rule invariants
 
 review:                 ## list the pending resolution decisions
 	$(PY) -m pipeline.review --list
+
+index:                  ## Stage 7: chunk, embed (local, free) and link the doc corpus
+	$(PY) -m pipeline.index_docs --sites 250 --wipe
+
+ask:                    ## natural-language question -> whitelisted template. make ask Q="..."
+	$(PY) -m pipeline.router "$(Q)"
+
+templates:              ## list the whitelisted query templates
+	$(PY) -m pipeline.router --list

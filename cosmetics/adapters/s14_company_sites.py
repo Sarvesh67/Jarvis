@@ -274,11 +274,22 @@ def main() -> int:
     ap.add_argument("--delay", type=float, default=1.0)
     ap.add_argument("--max-pages", type=int, default=6)
     ap.add_argument("--timeout", type=float, default=12.0)
+    ap.add_argument("--refetch", action="store_true",
+                    help="revisit sites already landed in raw/")
     ap.add_argument("--all-roles", action="store_true",
                     help="do not restrict to cosmetics-relevant companies")
     a = ap.parse_args()
 
     cands = targets(a.limit, not a.all_roles)
+    if not a.refetch:
+        # resume: a host whose home page is already landed was visited on a previous run.
+        # raw/ is append-only and content-addressed, so this costs nothing to check and
+        # makes an interrupted crawl cheap to restart.
+        landed = {p.name.rsplit("_home.", 1)[0] for p in (lib.RAW / SOURCE).glob("*_home.*")}
+        before = len(cands)
+        cands = [c for c in cands
+                 if (urlparse(normalize_site(c["website"]) or "").netloc or "") not in landed]
+        print(f"  {before - len(cands)} already visited on an earlier run, skipping")
     print(f"  {len(cands)} companies with a website to visit")
     # Retry policy for the open web, not for a rate-limited API: a dead or parked
     # company site must cost seconds, not the 8-attempt / 900s backoff the gateway

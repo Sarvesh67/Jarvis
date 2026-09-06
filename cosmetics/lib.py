@@ -72,7 +72,11 @@ NEO4J_AUTH = (ENV.get("NEO4J_USER", "neo4j"), ENV.get("NEO4J_PASSWORD", "cosmeti
 # data.gov.in: the documented shared key is heavily rate-limited (10 rows/request).
 # Set DATA_GOV_IN_KEY in cosmetics/.env to lift it.
 DATA_GOV_KEY = ENV.get("DATA_GOV_IN_KEY", "579b464db66ec23bdd000001cdd3946e44ce4aad7209ff7b23ac571b")
-DATA_GOV_KEY_IS_SHARED = DATA_GOV_KEY.startswith("579b464db66ec23bdd000001")
+# NOTE: every data.gov.in key begins 579b464db66ec23bdd000001 — the TAIL is what differs.
+# Detect the published sample key by its full value, not by that shared prefix, or a
+# genuine key gets misflagged as the demo one.
+SHARED_DEMO_KEY = "579b464db66ec23bdd000001cdd3946e44ce4aad7209ff7b23ac571b"
+DATA_GOV_KEY_IS_SHARED = DATA_GOV_KEY == SHARED_DEMO_KEY
 
 
 def now() -> datetime:
@@ -178,8 +182,19 @@ class Fetcher:
             r = self._client.request(method, url, **kw)
             if r.status_code in (429, 502, 503, 504):
                 ra = r.headers.get("Retry-After")
-                wait = float(ra) if (ra or "").replace(".", "").isdigit() else min(
-                    self.backoff_base * (2 ** attempt), self.backoff_max)
+                asked = float(ra) if (ra or "").replace(".", "").isdigit() else None
+                # Retry-After is CAPPED at backoff_max, which is the definition of "the
+                # longest this adapter is prepared to wait". A single hostile host
+                # answering 503 with Retry-After: 3600 must not stall a 2,000-site crawl;
+                # for a quota-limited API, backoff_max is set high enough to honour it.
+                wait = min(asked if asked is not None else
+                           self.backoff_base * (2 ** attempt), self.backoff_max)
+                if asked is not None and asked > self.backoff_max:
+                    print(f"    ~ {r.status_code} from {self.source_id}; server asked for "
+                          f"{asked:.0f}s, capped at {self.backoff_max:.0f}s and moving on",
+                          flush=True)
+                    raise httpx.HTTPStatusError("retry-after exceeds budget",
+                                                request=r.request, response=r)
                 print(f"    ~ {r.status_code} from {self.source_id}; backing off {wait:.0f}s "
                       f"(attempt {attempt+1}/{self.max_attempts})", flush=True)
                 time.sleep(wait)
@@ -250,3 +265,59 @@ def _adapt(v):
 
 def jsonb(v) -> str:
     return json.dumps(v, ensure_ascii=False, default=str)
+
+
+# --------------------------------------------------------------------------- text matching
+# Tokenise on WHITESPACE only, then trim punctuation from the ends of each token.
+# Splitting on all punctuation turns "Sodium bis(2-methoxyethoxy)aluminium hydride" into
+# separate tokens and matches ALUMINIUM inside it — a different substance. Keeping
+# internal punctuation attached means a chemical name only matches when it stands alone.
+_EDGE = ".,;:!?\"'()[]{}<>|/\\*"
+MAX_NGRAM = 5
+
+
+def tokens_of(text: str) -> list[str]:
+    return [t for t in (w.strip(_EDGE) for w in text.upper().split()) if t]
+
+
+def ngrams(toks: list[str], needles: set[str], max_n: int = MAX_NGRAM) -> dict[str, int]:
+    """{matched name -> token index}, LONGEST match first.
+
+    Longest-first matters: text listing "Aluminium Fluoride" should record aluminium
+    fluoride, not aluminium. Once a span is consumed by a longer name, the shorter names
+    inside it are not matched again.
+    """
+    hits: dict[str, int] = {}
+    consumed: set[int] = set()
+    n = len(toks)
+    for k in range(max_n, 0, -1):
+        for i in range(n - k + 1):
+            if any(j in consumed for j in range(i, i + k)):
+                continue
+            cand = " ".join(toks[i:i + k])
+            if len(cand) > 60:
+                continue
+            if cand in needles:
+                hits.setdefault(cand, i)
+                consumed.update(range(i, i + k))
+    return hits
+
+
+def embed(texts: list[str], *, model: str = "embed", batch: int = 32) -> list[list[float]]:
+    """768-dim embeddings via the platform's LiteLLM gateway -> local Ollama.
+
+    Local and free, so a full rebuild costs nothing and the spec's "avoid API cost on
+    rebuilds" constraint is met without a ~2 GB torch install.
+    """
+    key = ENV.get("LITELLM_MASTER_KEY", "")
+    out: list[list[float]] = []
+    with httpx.Client(timeout=180.0) as c:
+        for i in range(0, len(texts), batch):
+            chunk = texts[i:i + batch]
+            r = c.post("http://127.0.0.1:4000/v1/embeddings",
+                       headers={"Authorization": f"Bearer {key}"},
+                       json={"model": model, "input": chunk})
+            r.raise_for_status()
+            data = sorted(r.json()["data"], key=lambda d: d["index"])
+            out.extend(d["embedding"] for d in data)
+    return out

@@ -52,6 +52,9 @@ RETAIL_CUES = ["ADD TO CART", "BUY NOW", "SHOP NOW", "WISHLIST", "CHECKOUT", "MR
 MIN_LEN_SINGLE = 9      # single-token INCI must be at least this long
 MIN_LEN_MULTI = 7
 
+# tokens_of / ngrams live in lib so the Stage 7 doc linker uses the same matcher
+tokens_of, ngrams = lib.tokens_of, lib.ngrams
+
 # Single-token INCI names that are also ordinary English or generic chemistry, and would
 # match prose. Excluded outright rather than resolved by guessing (spec §7.4.4).
 AMBIGUOUS = {
@@ -130,40 +133,6 @@ def site_index() -> dict[str, dict]:
         return idx
 
 
-# Tokenise on WHITESPACE only, then trim punctuation from the ends of each token.
-# Splitting on all punctuation turned "Sodium bis(2-methoxyethoxy)aluminium hydride" into
-# separate tokens and matched ALUMINIUM inside it — a different substance entirely.
-# Keeping internal punctuation attached means a chemical name only matches when it stands
-# alone, which is exactly the boundary rule this needs.
-_EDGE = ".,;:!?\"'()[]{}<>|/\\*"
-MAX_NGRAM = 5
-
-
-def tokens_of(text: str) -> list[str]:
-    return [t for t in (w.strip(_EDGE) for w in text.upper().split()) if t]
-
-
-def ngrams(toks: list[str], needles: set[str]) -> dict[str, int]:
-    """{matched INCI name -> token index}, LONGEST match first.
-
-    Longest-first matters: a page listing "Aluminium Fluoride" should record aluminium
-    fluoride, not aluminium. Once a span is consumed by a longer name, the shorter names
-    inside it are not matched again.
-    """
-    hits: dict[str, int] = {}
-    consumed: set[int] = set()
-    n = len(toks)
-    for k in range(MAX_NGRAM, 0, -1):
-        for i in range(n - k + 1):
-            if any(j in consumed for j in range(i, i + k)):
-                continue
-            cand = " ".join(toks[i:i + k])
-            if len(cand) > 60:
-                continue
-            if cand in needles:
-                hits.setdefault(cand, i)
-                consumed.update(range(i, i + k))
-    return hits
 
 
 def classify(text_upper: str) -> tuple[str, int, int]:
