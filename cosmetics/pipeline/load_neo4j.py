@@ -141,7 +141,7 @@ def load_rules_and_ingredients(s) -> None:
     # ---- RegulatoryRule nodes, deduped on rule identity (many ingredients share one rule)
     raw_rules = q("SELECT * FROM raw_rule")
     nodes: dict[str, dict] = {}
-    ing_edges, cat_edges = [], []
+    ing_edges, cat_edges, grp_edges = [], [], []
     for r in raw_rules:
         assert r["jurisdiction"] in ("IN", "EU"), "hard rule 2: jurisdiction required"
         key = rid(r["jurisdiction"], r["source_doc"], r["clause"], r["status"],
@@ -156,7 +156,18 @@ def load_rules_and_ingredients(s) -> None:
             "source_id": r["source_id"], "tier": r["tier"]}})
         edge = {"rule_id": key, "subject": r["subject"],
                 "prov": pv(r["source_id"], r["tier"])}
-        (cat_edges if r["rule_scope"] == "category" else ing_edges).append(edge)
+        if r["rule_scope"] == "category":
+            cat_edges.append(edge)
+        elif r["applies_to_group"]:
+            # A blanket note ("ban substances that deplete the ozone layer") is attached
+            # to thousands of ingredients and asserts nothing about any one of them.
+            # Keeping it out of RESTRICTED_BY entirely is what makes the guarantee
+            # GENERIC: every consumer — the agent, ad-hoc Cypher, a future template —
+            # gets substance-specific restrictions from that edge, without having to
+            # know to filter. Reported AQUA and SODIUM CHLORIDE as EU-restricted before.
+            grp_edges.append(edge)
+        else:
+            ing_edges.append(edge)
 
     run(s, """
         UNWIND $rows AS row
@@ -170,7 +181,15 @@ def load_rules_and_ingredients(s) -> None:
         MATCH (i:Ingredient {inci_name: row.subject})
         MERGE (i)-[e:RESTRICTED_BY]->(r)
         SET e += row.prov
-    """, ing_edges, "RESTRICTED_BY")
+    """, ing_edges, "RESTRICTED_BY (substance-specific only)")
+
+    run(s, """
+        UNWIND $rows AS row
+        MATCH (r:RegulatoryRule {rule_id: row.rule_id})
+        MATCH (i:Ingredient {inci_name: row.subject})
+        MERGE (i)-[e:SUBJECT_TO_GENERAL_RULE]->(r)
+        SET e += row.prov
+    """, grp_edges, "SUBJECT_TO_GENERAL_RULE (blanket notes)")
 
     run(s, """
         UNWIND $rows AS row
@@ -515,21 +534,20 @@ def load_packaging(s) -> None:
     Co-location is answered by traversing the shared Cluster rather than materialised:
     1,136 manufacturers x 969 converters in one cluster is a clique, not information.
     """
-    rows = q("""SELECT DISTINCT x.entity_id, r.payload FROM raw_company r
+    rows = q("""SELECT DISTINCT x.entity_id, r.source_id, r.payload FROM raw_company r
                 JOIN crosswalk x ON x.source_id=r.source_id AND x.source_key=r.source_key
                  AND x.entity_type='company' AND x.superseded_by IS NULL
-                WHERE r.source_id='s17_udyam'
+                WHERE r.source_id IN ('s17_udyam','s17b_udyam_api')
                   AND jsonb_array_length(coalesce(r.payload->'packaging_types','[]'::jsonb)) > 0""")
     comps, edges = {}, []
-    labels = q("""SELECT DISTINCT payload->'nic_labels' AS labels FROM raw_company
-                  WHERE source_id='s17_udyam' LIMIT 1""")
     for r in rows:
         p = r["payload"] or {}
         for t in p.get("packaging_types") or []:
             comps[t] = {"component_id": t, "props": {
                 "type": t, "material": t.split("_")[0], "volume_ml": None}}
             edges.append({"company_id": r["entity_id"], "component_id": t,
-                          "prov": pv("s17_udyam", 1, 1.0, basis="udyam_nic_activity")})
+                          "prov": pv(r["source_id"], 1, 1.0,
+                                     basis="udyam_nic_activity")})
     run(s, """
         UNWIND $rows AS row
         MERGE (p:PackagingComponent {component_id: row.component_id}) SET p += row.props
@@ -541,6 +559,50 @@ def load_packaging(s) -> None:
         MERGE (c)-[e:SUPPLIES_PACKAGING]->(p)
         SET e += row.prov
     """, edges, "SUPPLIES_PACKAGING")
+
+
+def load_labs(s) -> None:
+    """NABL accredited testing laboratories (S11), tier 1.
+
+    A lab is a Company with a `testing_lab` role — not a manufacturer, and nothing
+    downstream should treat it as one. The accreditation is an ACCREDITED_AS edge rather
+    than CLAIMS_CERTIFICATION because it comes from the accreditation body's own register,
+    not from the lab's marketing. The scope groups ride on the edge so a query can ask for
+    a lab accredited for cosmetics specifically, rather than any accredited lab.
+    """
+    rows = q("""SELECT DISTINCT x.entity_id, r.payload FROM raw_company r
+                JOIN crosswalk x ON x.source_id=r.source_id AND x.source_key=r.source_key
+                 AND x.entity_type='company' AND x.superseded_by IS NULL
+                WHERE r.source_id='s11_nabl'""")
+    certs, edges = {}, []
+    for r in rows:
+        p = r["payload"] or {}
+        std = (p.get("standard") or "").strip()
+        cert_id = f"NABL ISO/IEC 17025:{std}" if std else "NABL ISO/IEC 17025"
+        certs[cert_id] = {"cert_id": cert_id,
+                          "props": {"name": cert_id, "body": "NABL"}}
+        edges.append({
+            "company_id": r["entity_id"], "cert_id": cert_id,
+            "certificate_number": p.get("certificate_number"),
+            "valid_till": p.get("certificate_valid_till"),
+            "groups": (p.get("groups") or [])[:12],
+            "disciplines": p.get("disciplines") or [],
+            "tests_cosmetics": bool(p.get("tests_cosmetics")),
+            "prov": pv("s11_nabl", 1, 1.0, basis="nabl_accreditation_register"),
+        })
+    run(s, """
+        UNWIND $rows AS row
+        MERGE (c:Certification {cert_id: row.cert_id}) SET c += row.props
+    """, list(certs.values()), "Certification (NABL)")
+    run(s, """
+        UNWIND $rows AS row
+        MATCH (co:Company {company_id: row.company_id})
+        MATCH (ce:Certification {cert_id: row.cert_id})
+        MERGE (co)-[e:ACCREDITED_AS]->(ce)
+        SET e += row.prov, e.certificate_number = row.certificate_number,
+            e.valid_till = row.valid_till, e.groups = row.groups,
+            e.disciplines = row.disciplines, e.tests_cosmetics = row.tests_cosmetics
+    """, edges, "ACCREDITED_AS")
 
 
 def load_all(s) -> None:
@@ -556,6 +618,7 @@ def load_all(s) -> None:
     load_supplies(s)
     load_products(s)
     load_packaging(s)
+    load_labs(s)
 
 
 def main() -> int:
@@ -568,7 +631,13 @@ def main() -> int:
     drv = lib.neo4j_driver()
     with drv.session() as s:
         if a.wipe:
-            s.run("MATCH (n) CALL (n) { DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS")
+            # Relationships first, then nodes, both in small batches. A single
+            # DETACH DELETE pass over ~90k nodes carrying ~180k relationships (80k of
+            # them SUBSTITUTE_FOR) exhausted the 2 GB heap and took the server down
+            # mid-rebuild. Deleting edges first keeps each transaction small and makes
+            # `make rebuild` survivable, which the spec requires.
+            s.run("MATCH ()-[r]->() CALL (r) { DELETE r } IN TRANSACTIONS OF 5000 ROWS")
+            s.run("MATCH (n) CALL (n) { DETACH DELETE n } IN TRANSACTIONS OF 5000 ROWS")
             print("  wiped")
         load_all(s)
         first = counts(s)

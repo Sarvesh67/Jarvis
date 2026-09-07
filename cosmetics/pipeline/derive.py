@@ -60,7 +60,7 @@ def serves_category_from_nic(s) -> None:
     for r in q("""SELECT x.entity_id, r.payload FROM raw_company r
                   JOIN crosswalk x ON x.source_id=r.source_id AND x.source_key=r.source_key
                    AND x.entity_type='company' AND x.superseded_by IS NULL
-                  WHERE r.source_id IN ('s17_udyam','s03_mca')"""):
+                  WHERE r.source_id IN ('s17_udyam','s17b_udyam_api','s03_mca')"""):
         p = r["payload"] or {}
         codes = p.get("nic_codes_cosmetics") or []
         nic_cin = p.get("nic_from_cin")
@@ -90,6 +90,7 @@ def company_located_in(s) -> None:
     resolved facility is still findable by cluster.
     """
     basis = {"s03_mca": "registered_office", "s17_udyam": "udyam_premises",
+             "s17b_udyam_api": "udyam_premises",
              "s01_cdsco": "licence_premises", "s08_exhibitors": "listing"}
     rows = []
     for r in q("""SELECT DISTINCT x.entity_id, r.cluster_id, r.source_id FROM raw_company r

@@ -58,24 +58,41 @@ def extract_pincode(address: str | None) -> str | None:
     return m[-1] if m else None
 
 
-def build_cluster_index() -> tuple[dict[str, str], list[tuple[str, str]]]:
+def build_cluster_index() -> tuple[dict[str, str], list[tuple[str, str]], dict[str, set]]:
     by_district: dict[str, str] = {}
     by_prefix: list[tuple[str, str]] = []
+    states: dict[str, set] = {}
     for cid, c in lib.clusters().items():
         for d in c.get("districts") or []:
             by_district[d.strip().lower()] = cid
         for p in c.get("pincode_prefixes") or []:
             by_prefix.append((str(p), cid))
+        # a cluster may span states ("Delhi/Haryana/Uttar Pradesh")
+        states[cid] = {x.strip().lower() for x in str(c.get("state") or "").split("/") if x.strip()}
     by_prefix.sort(key=lambda x: -len(x[0]))    # most specific prefix wins
-    return by_district, by_prefix
+    return by_district, by_prefix, states
 
 
-def resolve_cluster(district: str | None, pincode: str | None,
-                    by_district: dict, by_prefix: list) -> str | None:
+def resolve_cluster(district: str | None, pincode: str | None, state: str | None,
+                    by_district: dict, by_prefix: list,
+                    cluster_states: dict[str, set] | None = None) -> str | None:
+    """District name alone is NOT unique across India, so a match must agree on state.
+
+    Raigarh (Chhattisgarh) and Raigad (Maharashtra) are different districts, and the
+    cluster map lists "raigarh" as a spelling variant of the latter — which put nine
+    Chhattisgarh firms inside the Palghar-Tarapur wedge cluster. The same trap is waiting
+    in Aurangabad (Maharashtra and Bihar), Bilaspur (Himachal and Chhattisgarh) and
+    Hamirpur (Himachal and Uttar Pradesh). When the row's state is known it must be
+    consistent with the cluster's; when it is unknown the district match still stands,
+    because a missing state is not evidence of a mismatch.
+    """
     if district:
         cid = by_district.get(district.strip().lower())
         if cid:
-            return cid
+            allowed = (cluster_states or {}).get(cid)
+            st = (state or "").strip().lower()
+            if not st or not allowed or st in allowed:
+                return cid
     if pincode:
         for prefix, cid in by_prefix:
             if pincode.startswith(prefix):
@@ -127,7 +144,7 @@ def normalize_table(table: str, name_col: str, pins: dict, by_district: dict,
             geo = "high" if ref else ("medium" if pin else ("low" if st else "none"))
             if ref:
                 stats["geo"] += 1
-            cid = resolve_cluster(d, pin, by_district, by_prefix)
+            cid = resolve_cluster(d, pin, st, by_district, by_prefix, cluster_states)
             if cid:
                 stats["clustered"] += 1
             updates.append((nn, pin, d, st, cid, geo, rid))
@@ -146,7 +163,7 @@ def main() -> int:
     with lib.pg() as c, c.cursor() as cur:
         cur.execute("SELECT pincode, district, state FROM ref_pincode")
         pins = {r[0]: {"district": r[1], "state": r[2]} for r in cur.fetchall()}
-    by_district, by_prefix = build_cluster_index()
+    by_district, by_prefix, cluster_states = build_cluster_index()
     print(f"  {len(pins)} pincodes, {len(by_district)} district aliases, "
           f"{len(by_prefix)} pincode prefixes")
 

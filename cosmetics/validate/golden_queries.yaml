@@ -160,6 +160,7 @@
     MATCH (p:Product)-[:CONTAINS]->(i:Ingredient)-[:RESTRICTED_BY]->(r:RegulatoryRule)
     WHERE r.jurisdiction = 'EU'
       AND NOT EXISTS { (i)-[:RESTRICTED_BY]->(:RegulatoryRule {jurisdiction:'IN'}) }
+      AND NOT coalesce(r.applies_to_group, false)
     RETURN i.inci_name AS ingredient, r.clause AS eu_clause, r.status AS eu_status,
            'EU_ONLY — no equivalent India rule in the graph' AS jurisdiction_note,
            count(DISTINCT p) AS indian_products
@@ -232,3 +233,65 @@
     RETURN labels(e)[0] AS entity_type, count(DISTINCT d) AS chunks
     ORDER BY chunks DESC
   expect_min: 1
+
+- id: packaging_converters_across_wedge_clusters
+  q: "Packaging converters now present in more than one wedge cluster (national Udyam)"
+  shape: Company-[:SUPPLIES_PACKAGING]->PackagingComponent + Company->Cluster
+  cypher: |
+    MATCH (c:Company)-[:SUPPLIES_PACKAGING]->(p:PackagingComponent)
+    MATCH (c)-[:LOCATED_IN]->(cl:Cluster {wedge: true})
+    RETURN cl.name AS cluster, count(DISTINCT c) AS converters,
+           count(DISTINCT p.type) AS component_types
+    ORDER BY converters DESC
+  expect_min: 1
+  coverage_gap: >
+    Was Gujarat-only while Udyam came from a local parquet extract; the national
+    data.gov.in registry (S17b) sweeps every wedge-cluster pincode.
+
+- id: cosmetics_firms_outside_gujarat
+  q: "Cosmetics manufacturers in the Himachal and Uttarakhand wedge clusters"
+  shape: Company->Cluster
+  cypher: |
+    MATCH (c:Company)-[:LOCATED_IN]->(cl:Cluster)
+    WHERE cl.cluster_id IN ['HP_BBN','UK_HARIDWAR_SELAQUI']
+      AND ('cosmetics_core' IN c.roles OR 'manufacturer_candidate' IN c.roles)
+    RETURN cl.name AS cluster, count(DISTINCT c) AS firms
+    ORDER BY firms DESC
+  expect_min: 1
+  coverage_gap: "Zero before S17b — the parquet extract covered Gujarat only."
+
+- id: accredited_cosmetics_testing_labs
+  q: "Labs accredited by NABL specifically for cosmetics testing"
+  shape: Company-[:ACCREDITED_AS]->Certification
+  cypher: |
+    MATCH (c:Company)-[a:ACCREDITED_AS]->(ce:Certification)
+    WHERE a.tests_cosmetics
+    RETURN count(DISTINCT c) AS cosmetics_labs
+  expect_min: 1
+
+- id: every_lab_carries_the_testing_lab_role
+  q: "Every accredited lab is labelled as one, and the role array stays additive"
+  shape: invariant
+  cypher: |
+    MATCH (c:Company)-[:ACCREDITED_AS]->(:Certification)
+    WHERE NOT 'testing_lab' IN c.roles
+    RETURN count(c) AS violations
+  expect_zero: violations
+  note: >
+    Deliberately NOT asserting that a lab is never a manufacturer. Many pharma and
+    chemical firms hold an in-house NABL accreditation for their own QC, and roles[] is
+    additive by design (hard rule 11) — a company can be both. NABL does record an
+    In-House / Open to Others distinction, but it is NOT exposed in the public results
+    grid, so this graph cannot yet tell a buyer whether a lab accepts outside work.
+
+- id: restricted_by_never_carries_a_blanket_note
+  q: "RESTRICTED_BY must only ever reach substance-specific rules"
+  shape: invariant
+  cypher: |
+    MATCH (:Ingredient)-[:RESTRICTED_BY]->(r:RegulatoryRule)
+    WHERE coalesce(r.applies_to_group, false)
+    RETURN count(r) AS violations
+  expect_zero: violations
+  note: >
+    Enforced in the LOADER, not in each query, so any consumer — the agent, ad-hoc
+    Cypher, a future template — is safe without knowing to filter.

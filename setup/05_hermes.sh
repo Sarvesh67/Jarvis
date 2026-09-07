@@ -67,6 +67,25 @@ make_profile() {  # $1 = profile name, $2 = api key
 make_profile jarvis    "$(env_get JARVIS_LLM_KEY)"
 make_profile hedgefund "$(env_get HEDGEFUND_LLM_KEY)"
 make_profile msme      "$(env_get MSME_LLM_KEY)"
+make_profile cosmetics "$(env_get COSMETICS_LLM_KEY)"
+
+# --- project-specific skills (installed from Jarvis/hermes-config/skills) ---
+# jarvis-signals -> hedgefund; jarvis-vendor-search -> msme. Base copy + the owning profile.
+install_skill() {  # $1 = skill name, $2 = owning profile
+  local src="$JARVIS_ROOT/hermes-config/skills/$1"
+  [ -d "$src" ] || { warn "skill $1 missing in hermes-config/skills"; return; }
+  cp -R "$src" "$HOME/.hermes/skills/$1"
+  mkdir -p "$HOME/.hermes/profiles/$2/skills"
+  cp -R "$src" "$HOME/.hermes/profiles/$2/skills/$1"
+  ok "Installed skill $1 -> $2 profile."
+}
+install_skill jarvis-signals       hedgefund
+# Domain skills are installed into their OWN profile only. jarvis-vendor-search is the
+# Surat TEXTILE graph and jarvis-cosmetics-search is the India COSMETICS graph; a profile
+# holding both invites the agent to answer a cosmetics question with the textile tool,
+# which is exactly what happened before the cosmetics skill existed.
+install_skill jarvis-vendor-search    msme
+install_skill jarvis-cosmetics-search cosmetics
 
 log "Smoke test (jarvis brain)..."
 jarvis chat -q "Reply with exactly: HERMES_OK" --yolo 2>&1 | grep -q "HERMES_OK" && ok "Hermes responding via gateway." || warn "No HERMES_OK — check gateway + keys."

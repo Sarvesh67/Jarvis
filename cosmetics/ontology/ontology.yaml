@@ -110,6 +110,9 @@ edges:
   # These carry the quoted sentence; the Facility-level edges above are derived (tier 4)
   # in Stage 6, and only where the company operates exactly one facility.
   - {type: SUPPLIES_PACKAGING,        from: Company,         to: PackagingComponent}
+  # NABL accreditation is recorded by the accreditation body, so it is tier 1 and a
+  # distinct edge from CLAIMS_CERTIFICATION, which is what a company says about itself.
+  - {type: ACCREDITED_AS,             from: Company,         to: Certification, props: [certificate_number, valid_till, groups]}
   - {type: CLAIMS_CAPABILITY,         from: Company,         to: ProcessCapability, props: [evidence]}
   - {type: CLAIMS_CERTIFICATION,      from: Company,         to: Certification,     props: [evidence]}
   - {type: MAPS_TO_INCI,              from: TradeName,       to: Ingredient}
@@ -120,7 +123,10 @@ edges:
   - {type: IN_CATEGORY,               from: Product,         to: ProductCategory}
   - {type: HOLDS_LOAN_LICENCE_AT,     from: Company,         to: Facility}
   - {type: THIRD_PARTY_MANUFACTURED_BY, from: Company,       to: Company}
-  - {type: RESTRICTED_BY,             from: Ingredient,      to: RegulatoryRule}
+  - {type: RESTRICTED_BY,             from: Ingredient,      to: RegulatoryRule, note: "substance-specific restrictions ONLY"}
+  # Blanket regulatory notes that name no single substance. Deliberately a DIFFERENT edge
+  # so that traversing RESTRICTED_BY can never imply a specific ingredient is restricted.
+  - {type: SUBJECT_TO_GENERAL_RULE,   from: Ingredient,      to: RegulatoryRule}
   - {type: GOVERNED_BY,               from: ProductCategory, to: RegulatoryRule}
   - {type: MEMBER_OF,                 from: Company,         to: Association}
   - {type: EXHIBITED_AT,              from: Company,         to: Event}

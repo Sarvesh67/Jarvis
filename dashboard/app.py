@@ -85,6 +85,7 @@ DASHBOARD_TOKEN = ENV.get("DASHBOARD_TOKEN", "")
 _DEFAULT_PROJECTS = [
     {"alias": "hedgefund", "label": "AI Hedge Fund", "graph": "hedgefund_graph", "key_env": "HEDGEFUND_LLM_KEY"},
     {"alias": "msme", "label": "MSME Second Brain", "graph": "msme_graph", "key_env": "MSME_LLM_KEY"},
+    {"alias": "cosmetics", "label": "Cosmetics Supply Chain", "graph": "cosmetics_graph", "key_env": "COSMETICS_LLM_KEY"},
     {"alias": "jarvis", "label": "Jarvis (general)", "graph": "jarvis_graph", "key_env": "JARVIS_LLM_KEY"},
 ]
 
@@ -262,14 +263,77 @@ async def overview():
     }
 
 
+def _focus_subgraph(g, focus: str, limit: int):
+    """One firm's supply neighbourhood: the firm -> its NIC class -> the materials it makes/needs,
+    plus the counterparties reachable through those materials. A random edge sample says nothing;
+    this reads as an actual supply chain, which is the point of the product."""
+    # Keep counterparties few: in a dense single-cluster dataset a material can be shared by
+    # thousands of firms, and a hairball is worse than no picture. 5/side reads cleanly on screen.
+    per_side = max(3, min(6, limit // 12))
+    rows = g.query(
+        "MATCH (e:Enterprise) WHERE e.udyam = $f OR toLower(e.name) CONTAINS toLower($f) "
+        "WITH e LIMIT 1 "
+        "MATCH (e)-[:CLASSIFIED_AS]->(c:NICClass) "
+        "OPTIONAL MATCH (c)-[:PRODUCES]->(out:Material) "
+        "OPTIONAL MATCH (c)-[:CONSUMES]->(inp:Material) "
+        "RETURN id(e), e.name, id(c), c.code, c.label, "
+        "       collect(DISTINCT [id(out), out.slug]), collect(DISTINCT [id(inp), inp.slug])",
+        params={"f": focus},
+    ).result_set
+    if not rows:
+        return {"nodes": [], "edges": []}
+    e_id, e_name, c_id, c_code, c_label, outs, inps = rows[0]
+
+    nodes = [{"data": {"id": str(e_id), "label": (e_name or "firm")[:28], "group": "Enterprise"}},
+             {"data": {"id": str(c_id), "label": f"NIC {c_code}", "group": "NICClass"}}]
+    edges = [{"data": {"source": str(e_id), "target": str(c_id), "label": "CLASSIFIED_AS"}}]
+    seen = {str(e_id), str(c_id)}
+
+    def _add_mat(mid, slug, rel):
+        if mid is None or str(mid) in seen:
+            return
+        seen.add(str(mid))
+        nodes.append({"data": {"id": str(mid), "label": (slug or "")[:24], "group": "Material"}})
+        edges.append({"data": {"source": str(c_id), "target": str(mid), "label": rel}})
+
+    for mid, slug in (outs or [])[:6]:
+        _add_mat(mid, slug, "PRODUCES")
+    for mid, slug in (inps or [])[:6]:
+        _add_mat(mid, slug, "CONSUMES")
+
+    # counterparties through shared materials: buyers consume what we produce, suppliers produce
+    # what we consume. Capped per side so the picture stays legible on screen.
+    for direction, rel, label in (("out", "CONSUMES", "SELLS_TO"), ("in", "PRODUCES", "BUYS_FROM")):
+        mats = [s for _, s in ((outs if direction == "out" else inps) or []) if s]
+        if not mats:
+            continue
+        cps = g.query(
+            f"MATCH (m:Material)<-[:{rel}]-(:NICClass)<-[:CLASSIFIED_AS]-(o:Enterprise) "
+            "WHERE m.slug IN $mats AND id(o) <> $me "
+            "RETURN DISTINCT id(o), o.name, m.slug LIMIT $lim",
+            params={"mats": mats, "me": e_id, "lim": per_side},
+        ).result_set
+        for o_id, o_name, slug in cps:
+            if str(o_id) in seen:      # one edge per counterparty — repeats just add clutter
+                continue
+            seen.add(str(o_id))
+            nodes.append({"data": {"id": str(o_id), "label": (o_name or "firm")[:24],
+                                   "group": "Counterparty"}})
+            src, dst = (str(e_id), str(o_id)) if direction == "out" else (str(o_id), str(e_id))
+            edges.append({"data": {"source": src, "target": dst, "label": f"{label} ({slug})"}})
+    return {"nodes": nodes, "edges": edges}
+
+
 @app.get("/api/graph/{alias}")
-def graph_preview(alias: str, limit: int = 40):
+def graph_preview(alias: str, limit: int = 40, focus: str = ""):
     proj = next((p for p in PROJECTS if p["alias"] == alias), None)
     if not proj:
         raise HTTPException(404, "unknown project")
     try:
         db = _falkor()
         g = db.select_graph(proj["graph"])
+        if focus.strip():
+            return _focus_subgraph(g, focus.strip(), int(limit))
         q = (
             "MATCH (a)-[r]->(b) RETURN id(a), labels(a), a.name, id(b), labels(b), b.name, type(r) "
             f"LIMIT {int(limit)}"

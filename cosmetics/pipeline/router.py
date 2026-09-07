@@ -40,10 +40,29 @@ TIER_LABEL = {1: "regulator", 2: "company-declared", 3: "observed", 4: "inferred
 # --------------------------------------------------------------------- vocabularies
 def _vocab(session) -> dict[str, dict[str, str]]:
     v: dict[str, dict[str, str]] = {"category_code": {}, "cluster_id": {},
-                                    "inci_name": {}, "packaging_type": {}}
+                                    "inci_name": {}, "packaging_type": {}, "state": {}}
+    # People say "Gujarat" far more often than "Ahmedabad-Vapi-Ankleshwar". A state is not
+    # a cluster (Maharashtra holds two), so it is its own parameter rather than a cluster
+    # alias — otherwise a state question silently resolves to one arbitrary cluster.
+    for r in session.run("MATCH (c:Company) WHERE c.state IS NOT NULL "
+                         "RETURN DISTINCT c.state AS s"):
+        if r["s"]:
+            v["state"][r["s"].strip().upper()] = r["s"]
     for r in session.run("MATCH (c:ProductCategory) RETURN c.code AS code, c.name AS name"):
         v["category_code"][(r["name"] or r["code"]).upper()] = r["code"]
         v["category_code"][r["code"].replace("_", " ")] = r["code"]
+    # Buyers do not speak the regulator's vocabulary. The Fourth Schedule calls it
+    # "Skin care"; a customer asks for a "face serum". category_map.yaml already holds
+    # that mapping (spec §7.5 — retail strings are TAGS, never spine codes), and the
+    # router was resolving against the spine names alone, so every real-world phrasing
+    # came back unresolved and the query silently answered for all categories.
+    try:
+        for term, m in (lib.load_yaml("category_map.yaml").get("mappings") or {}).items():
+            code = (m or {}).get("code")
+            if code:
+                v["category_code"].setdefault(term.strip().upper(), code)
+    except Exception:
+        pass
     for r in session.run("MATCH (c:Cluster) RETURN c.cluster_id AS id, c.name AS name, "
                          "c.districts AS districts"):
         v["cluster_id"][(r["name"] or "").upper()] = r["id"]
@@ -88,6 +107,12 @@ def resolve(kind: str, raw: str | None, vocab: dict, session) -> tuple[str | Non
         return (m[0], f"fuzzy {m[1]:.0f}") if m and m[1] >= 88 else (None, "unresolved")
     if kind == "company_name":
         return raw.strip(), "literal"
+    if kind == "state":
+        table = vocab.get("state", {})
+        if q in table:
+            return table[q], "exact"
+        m = process.extractOne(q, list(table), scorer=fuzz.ratio) if table else None
+        return (table[m[0]], f"fuzzy {m[1]:.0f}") if m and m[1] >= 88 else (None, "unresolved")
     table = vocab.get(kind, {})
     if q in table:
         return table[q], "exact"
@@ -151,11 +176,29 @@ def extract_params(question: str, template: dict, given: dict) -> dict:
 
 
 # --------------------------------------------------------------------- execution
-def answer(question: str, *, explain: bool = False, use_model: bool = True) -> dict:
+def answer(question: str, *, explain: bool = False, use_model: bool = True,
+           template: str | None = None, params: dict | None = None,
+           limit: int = 50) -> dict:
+    """`template` short-circuits routing.
+
+    An agent calling this is already an LLM and already knows what it is asking, so
+    making it pay for the router's own model call is a wasted hop and a second place for
+    the intent to drift. It names the template and the parameters; the whitelist still
+    applies, and parameter values are still resolved against the graph's vocabularies
+    rather than trusted verbatim.
+    """
     drv = lib.neo4j_driver()
     with drv.session() as s:
-        decision = (route_with_model(question) if use_model else None) or \
-            route_by_keyword(question)
+        if template:
+            if template not in TEMPLATES:
+                drv.close()
+                return {"question": question, "template": None,
+                        "error": f"unknown template {template!r}",
+                        "available": sorted(TEMPLATES)}
+            decision = {"template": template, "params": params or {}, "confidence": 1.0}
+        else:
+            decision = (route_with_model(question) if use_model else None) or \
+                route_by_keyword(question)
         tid = decision.get("template")
         if not tid or tid not in TEMPLATES:
             out = doc_fallback(s, question)
@@ -169,13 +212,15 @@ def answer(question: str, *, explain: bool = False, use_model: bool = True) -> d
             val, note = resolve(kind, raw_params.get(name), vocab, s)
             params[name] = val
             how[name] = f"{raw_params.get(name)!r} -> {val!r} ({note})"
-        rows = [dict(r) for r in s.run(t["cypher"], **params)]
+        # every template is bounded; the CALLER chooses the bound rather than
+        # discovering a hidden one after the fact
+        rows = [dict(r) for r in s.run(t["cypher"], limit=limit, **params)]
         result = {
             "question": question, "template": tid, "intent": t["intent"],
             "flow": t.get("flow"), "tier_floor": t["tier_floor"],
             "tier_meaning": TIER_LABEL[t["tier_floor"]],
             "params": params, "param_resolution": how,
-            "rows": rows, "note": t.get("note"),
+            "rows": rows, "note": t.get("note"), "limit": limit,
             "confidence": decision.get("confidence"),
         }
         if t["tier_floor"] >= 4:
@@ -227,8 +272,10 @@ def coverage_note(tid: str) -> str:
             "Maharashtra until a Udyam extract for those states is loaded — this is a "
             "missing-data gap, not an absence of converters.",
         "third_party_manufacturers":
-            "Capability claims come from company websites scraped so far; a company with "
-            "no website cannot make a claim we can read.",
+            "Contract-manufacturing claims are read from company websites, and most "
+            "cluster MSMEs have no website — so absence here is missing evidence, not "
+            "absence of contract manufacturers. Ask `cosmetics_firms_in_cluster` for the "
+            "firms the registry shows in that cluster.",
     }.get(tid, "No rows. This is a coverage gap, not an assertion that none exist.")
 
 
@@ -239,9 +286,15 @@ def main() -> int:
     ap.add_argument("--no-model", action="store_true", help="keyword routing only")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--limit", type=int, default=50, help="max rows the query returns")
+    ap.add_argument("--rows", type=int, default=10,
+                    help="rows to print (0 = all). --json always returns every row.")
+    ap.add_argument("--template", help="invoke a named template directly, skipping routing")
+    ap.add_argument("--param", action="append", default=[], metavar="K=V",
+                    help="parameter for --template; repeatable")
     a = ap.parse_args()
 
-    if a.list or not a.question:
+    if a.list or (not a.question and not a.template):
         print(f"  {len(TEMPLATES)} whitelisted templates:\n")
         for t in TEMPLATES.values():
             print(f"  {t['id']:42s} [{t.get('flow','-'):11s}] tier<={t['tier_floor']}")
@@ -250,7 +303,13 @@ def main() -> int:
                 print(f"    e.g. \"{t['examples'][0]}\"")
         return 0
 
-    res = answer(" ".join(a.question), explain=a.explain, use_model=not a.no_model)
+    given = {}
+    for kv in a.param:
+        k, _, v = kv.partition("=")
+        if k:
+            given[k.strip()] = v.strip() or None
+    res = answer(" ".join(a.question), explain=a.explain, use_model=not a.no_model,
+                 template=a.template, params=given or None, limit=a.limit)
     if a.json:
         print(json.dumps(res, indent=2, default=str))
         return 0
@@ -267,9 +326,15 @@ def main() -> int:
     if res.get("note"):
         print(f"  note: {res['note'].strip()}")
     rows = res.get("rows") or []
-    print(f"\n  {len(rows)} row(s)")
-    for r in rows[:10]:
+    shown = len(rows) if a.rows <= 0 else min(a.rows, len(rows))
+    print(f"\n  {len(rows)} row(s)" + (f", showing {shown}" if shown < len(rows) else ""))
+    for r in rows[:shown]:
         print("   ", {k: (str(v)[:60] if v is not None else None) for k, v in r.items()})
+    if shown < len(rows):
+        # Say so explicitly. Silently printing 10 of 50 made a previous reader conclude
+        # the router was lossy and write raw Cypher to work around it — which discards
+        # the tier, jurisdiction and whitelist guarantees the router exists to enforce.
+        print(f"  ... {len(rows) - shown} more — pass --rows 0 for all, or --json")
     if not rows and res.get("empty_reason"):
         print(f"  {res['empty_reason']}")
     if res.get("cypher"):

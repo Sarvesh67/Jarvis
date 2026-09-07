@@ -32,7 +32,7 @@ clusters:
     name: Palghar-Tarapur-Navi Mumbai
     state: Maharashtra
     wedge: true
-    districts: [palghar, thane, mumbai, mumbai suburban, mumbai city, raigad, raigarh]
+    districts: [palghar, thane, mumbai, mumbai suburban, mumbai city, raigad]
     pincode_prefixes: ["401", "400", "410", "421"]
     note: Tarapur/Boisar 401506, Vasai 401208, Navi Mumbai 400701/410210, Ambernath 421501
 

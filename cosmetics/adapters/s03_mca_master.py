@@ -76,15 +76,24 @@ def nic_from_cin(cin: str) -> str | None:
 
 
 def roles_for(nic: str | None) -> list[str]:
+    """Roles from the NIC embedded in the CIN — which is the activity declared AT
+    INCORPORATION and is never updated afterwards.
+
+    HIMACHAL FURNITURES PVT LTD carries NIC 20239 ("other perfumes and toilet
+    preparations") because that is what it registered as; it makes furniture. The code is
+    read correctly, so the fix is not to drop it but to stop it wearing the same label as
+    Udyam's CURRENT activity declaration. `_at_incorporation` keeps the signal (it is a
+    genuine lead) while making sure no query can mistake it for present-day activity.
+    """
     if not nic:
         return []
     p4 = nic[:4]
     if p4 in NIC_MANUFACTURE:
-        return ["manufacturer_candidate"]
+        return ["manufacturer_candidate_at_incorporation"]
     if p4 in NIC_WHOLESALE:
-        return ["distributor"]
+        return ["distributor_at_incorporation"]
     if p4 in NIC_RETAIL:
-        return ["retailer"]
+        return ["retailer_at_incorporation"]
     return []
 
 

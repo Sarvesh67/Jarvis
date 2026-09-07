@@ -36,4 +36,5 @@ ensure_key() {
 ensure_key hedgefund 40 HEDGEFUND_LLM_KEY
 ensure_key msme      40 MSME_LLM_KEY
 ensure_key jarvis    20 JARVIS_LLM_KEY
+ensure_key cosmetics 40 COSMETICS_LLM_KEY
 ok "Keys ready (view spend at $GATEWAY/ui)."

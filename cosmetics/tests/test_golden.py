@@ -5,6 +5,7 @@ can live in CI alongside tests that do not need it.
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -201,8 +202,15 @@ def test_rule_touching_templates_pin_a_jurisdiction(t):
 
 @pytest.mark.parametrize("t", _templates(), ids=[t["id"] for t in _templates()])
 def test_template_cypher_runs(session, t):
+    # $limit is injected by the router for every template, not declared per-template
     params = {name: None for name in (t.get("params") or {})}
-    list(session.run(t["cypher"], **params))     # raises on a syntax or schema error
+    list(session.run(t["cypher"], limit=5, **params))   # raises on syntax/schema error
+
+
+@pytest.mark.parametrize("t", _templates(), ids=[t["id"] for t in _templates()])
+def test_every_template_is_bounded(t):
+    """A template must never return an unbounded result set to an agent."""
+    assert "LIMIT $limit" in t["cypher"] or "count(" in t["cypher"], t["id"]
 
 
 def test_router_resolves_vocabulary_deterministically(session):
@@ -259,3 +267,70 @@ def test_token_set_ratio_containment_inflation_is_corrected():
     from pipeline.resolve import name_similarity
     sim, generic = name_similarity("MEGHMANI ORGANICS", "MEGHMANI DYES INTERMEDIATES")
     assert sim < 0.70, f"containment inflation not fixed: {sim}"
+
+
+def test_cluster_assignment_requires_the_state_to_agree():
+    """District names are NOT unique across India. Raigarh (Chhattisgarh) is a different
+    district from Raigad (Maharashtra), and the cluster map listed the former as a
+    spelling variant of the latter — which placed Chhattisgarh firms inside the
+    Palghar-Tarapur wedge cluster. Aurangabad (Maharashtra/Bihar), Bilaspur
+    (Himachal/Chhattisgarh) and Hamirpur (Himachal/Uttar Pradesh) are the same trap.
+    """
+    from pipeline.normalize import build_cluster_index, resolve_cluster
+    bd, bp, cs = build_cluster_index()
+    assert resolve_cluster("Raigarh", "496001", "Chhattisgarh", bd, bp, cs) is None
+    assert resolve_cluster("Raigad", "402109", "Maharashtra", bd, bp, cs) == "MH_PALGHAR_TARAPUR"
+    assert resolve_cluster("Aurangabad", "824101", "Bihar", bd, bp, cs) is None
+    assert resolve_cluster("Aurangabad", "431001", "Maharashtra", bd, bp, cs) == "MH_PUNE"
+    # an unknown state is not evidence of a mismatch, so the district match still stands
+    assert resolve_cluster("Solan", None, None, bd, bp, cs) == "HP_BBN"
+
+
+def test_nabl_cosmetics_scope_is_the_register_not_a_keyword_guess():
+    """A CENTRAL FORENSIC SCIENCE LABORATORY was flagged as a cosmetics testing lab
+    because the keyword list included the bare word CHEMICAL. Scope must come from NABL's
+    actual Group/Activity vocabulary."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "adapters"))
+    from s11_nabl import COSMETIC_GROUPS, ADJACENT_GROUPS
+    assert "CHEMICAL" not in COSMETIC_GROUPS
+    assert any("COSMETICS" in g for g in COSMETIC_GROUPS)
+    # pharma is adjacent capability, never counted as cosmetics accreditation
+    assert all("PHARMACEUTICAL" not in g for g in COSMETIC_GROUPS)
+    assert any("PHARMACEUTICAL" in g for g in ADJACENT_GROUPS)
+
+
+@pytest.mark.parametrize("t", _templates(), ids=[t["id"] for t in _templates()])
+def test_no_where_directly_after_optional_match(t):
+    """A WHERE placed immediately after OPTIONAL MATCH joins that optional pattern and
+    filters nothing. `third_party_manufacturers` silently ignored its cluster constraint
+    that way and answered a Baddi question with nationwide rows. Use WITH ... WHERE."""
+    assert not re.search(r"OPTIONAL MATCH[^\n]*\n\s*WHERE", t["cypher"]), t["id"]
+
+
+@pytest.mark.parametrize("t", [t for t in _templates() if "RESTRICTED_BY" in t["cypher"]],
+                         ids=[t["id"] for t in _templates() if "RESTRICTED_BY" in t["cypher"]])
+def test_restriction_claims_exclude_blanket_group_notes(t):
+    """CosIng attaches a handful of blanket notes ("ban substances that deplete the ozone
+    layer") to thousands of ingredients. Traversing RESTRICTED_BY without excluding them
+    reported AQUA and SODIUM CHLORIDE as EU-restricted. Only substance-specific annex
+    entries may support "this ingredient is restricted"."""
+    assert "applies_to_group" in t["cypher"], (
+        f"{t['id']} asserts a restriction without excluding blanket group notes")
+
+
+def test_blanket_group_notes_are_few_and_flagged():
+    """Guard the assumption the filter rests on: group notes are a tiny, flagged set."""
+    try:
+        drv = lib.neo4j_driver()
+        with drv.session() as s:
+            grouped = s.run("MATCH (r:RegulatoryRule) WHERE coalesce(r.applies_to_group,false) "
+                            "RETURN count(*) AS n").single()["n"]
+            specific = s.run("MATCH (r:RegulatoryRule) WHERE NOT coalesce(r.applies_to_group,false) "
+                             "RETURN count(*) AS n").single()["n"]
+        drv.close()
+    except Exception as e:                                    # pragma: no cover
+        pytest.skip(f"Neo4j not reachable: {e}")
+    if specific == 0:
+        pytest.skip("rules not loaded")
+    assert grouped < specific * 0.05, (
+        f"{grouped} group notes vs {specific} specific — the blanket-note assumption broke")

@@ -78,7 +78,9 @@ python -m pipeline.review --auto-distinct-below 0.80
 | S9 | CHEMEXCIL member directory | 2 | 4,005 members, 2,379 websites, export activity | **live** |
 | S14 | Company websites | 2 | contact, checksum-valid GSTIN, certifications, capabilities | **live** |
 | S14b | Ingredient supply claims from those pages | 3 | `Company -[:SUPPLIES]-> Ingredient` | **live** |
-| S10/S11/S12/S13 | IndiaMART, NABL, retail, trade data | 3-4 | enrichment | not built |
+| S17b | **Udyam MSME registry, NATIONAL** (data.gov.in) | 1 | the long tail + packaging converters, every cluster | **live** |
+| S11 | **NABL accredited testing laboratories** | 1 | who can legally TEST the product | **live** |
+| S10/S12/S13 | IndiaMART, retail, trade data | 3-4 | enrichment | not built |
 
 ### Corrections to the build spec, found by building it
 
@@ -162,6 +164,26 @@ python -m pipeline.review --auto-distinct-below 0.80
   verified against the raw HTML as their data, not a parse error). A GSTIN lifted from
   the wrong company's site would merge two unrelated entities, so unconfirmed ones stay
   in the payload. Every candidate is checksum-validated first.
+- **Udyam is partitioned by PINCODE, not district.** The data.gov.in API caps every
+  distinct query at 10,000 rows and the registry holds 43.9M records; Surat district alone
+  is 560,180 and Thane 684,886, so district buckets can never be read completely. Pincode
+  is the only field that splits it into buckets that mostly fit (Baddi is 6,280), and
+  pincodes are globally unique so no district filter is needed alongside. There is no
+  server-side activity filter — `filters[Activities]` matches the whole JSON blob and
+  `q=` is ignored — so the NIC slice is cut locally and the ~5% yield is the price of the
+  registry having no activity index.
+- **A district name match must agree on state.** Raigarh (Chhattisgarh) is a different
+  district from Raigad (Maharashtra), and listing the former as a spelling variant of the
+  latter put nine Chhattisgarh firms inside the Palghar-Tarapur wedge cluster. Aurangabad
+  (Maharashtra/Bihar), Bilaspur (Himachal/Chhattisgarh) and Hamirpur (Himachal/Uttar
+  Pradesh) are the same trap. An unknown state still matches, because a missing state is
+  not evidence of a mismatch.
+- **NABL accreditation scope comes from the register, not from keywords.** "Accredited for
+  cosmetics" means the Cosmetics & Essential Oils / AYUSH / Soap-Detergent-Toiletries
+  scope specifically. An earlier keyword list containing the bare word CHEMICAL flagged a
+  CENTRAL FORENSIC SCIENCE LABORATORY as a cosmetics testing lab and inflated the count
+  from 184 to 442. Pharma accreditation is recorded as adjacent capability, never as
+  cosmetics.
 - **Ingredient mentions are matched only on unambiguous INCI names.** "MILK", "SAND",
   "HONEY" and "TALC" are real INCI names and also ordinary English; they are excluded
   rather than guessed at, and a page must yield ≥ 3 distinct ingredients before any of
