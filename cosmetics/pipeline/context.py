@@ -150,6 +150,17 @@ def link_entities(session, question: str) -> list[dict]:
         for name, code in lib.ngrams(toks, set(table)).items():
             add(label, prop, table[name], f"'{name}' -> {kind}")
 
+    # A district is a PROPERTY, not a node, so it cannot be a seed on its own. Seeding the
+    # cluster instead would answer "Navsari" with the whole Ahmedabad-Vapi belt, so seed
+    # the best-connected companies actually IN that district — local context, not regional.
+    dtable = vocab.get("district") or {}
+    for name in lib.ngrams(toks, set(dtable)):
+        for r in session.run(
+                """MATCH (c:Company) WHERE toUpper(c.district) = $d
+                   RETURN c.company_id AS id, COUNT { (c)--() } AS deg
+                   ORDER BY deg DESC LIMIT 3""", d=dtable[name]):
+            add("Company", "company_id", r["id"], f"in district {name}")
+
     # ingredients: the vocabulary is 35k names, so match against the graph directly
     for r in session.run(
             "MATCH (i:Ingredient) WHERE i.inci_name IN $c RETURN i.inci_name AS n",

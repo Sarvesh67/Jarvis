@@ -40,7 +40,8 @@ TIER_LABEL = {1: "regulator", 2: "company-declared", 3: "observed", 4: "inferred
 # --------------------------------------------------------------------- vocabularies
 def _vocab(session) -> dict[str, dict[str, str]]:
     v: dict[str, dict[str, str]] = {"category_code": {}, "cluster_id": {},
-                                    "inci_name": {}, "packaging_type": {}, "state": {}}
+                                    "inci_name": {}, "packaging_type": {}, "state": {},
+                                    "district": {}}
     # People say "Gujarat" far more often than "Ahmedabad-Vapi-Ankleshwar". A state is not
     # a cluster (Maharashtra holds two), so it is its own parameter rather than a cluster
     # alias — otherwise a state question silently resolves to one arbitrary cluster.
@@ -63,6 +64,22 @@ def _vocab(session) -> dict[str, dict[str, str]]:
                 v["category_code"].setdefault(term.strip().upper(), code)
     except Exception:
         pass
+    # District names come from the LIVE GRAPH, not from cluster_map.yaml's hand-written
+    # list. normalize.py also assigns a cluster by PINCODE PREFIX, so a district can be
+    # correctly clustered in the data while never appearing in that list — 22 districts
+    # and 3,777 companies were in exactly that state, and asking about Navsari or Daman
+    # by name resolved to nothing at all. Deriving the vocabulary from what was actually
+    # loaded fixes every such district at once, including spelling variants the map
+    # missed ("gandhi nagar" vs "gandhinagar", "mahesana" vs "mehsana").
+    for r in session.run("""
+            MATCH (c:Company)
+            WHERE c.district IS NOT NULL AND c.cluster_id IS NOT NULL
+            WITH toUpper(c.district) AS d, c.cluster_id AS cid, count(*) AS n
+            ORDER BY d, n DESC
+            WITH d, collect(cid)[0] AS cid
+            RETURN d, cid"""):
+        v["district"][r["d"]] = r["d"]
+        v["cluster_id"].setdefault(r["d"], r["cid"])
     for r in session.run("MATCH (c:Cluster) RETURN c.cluster_id AS id, c.name AS name, "
                          "c.districts AS districts"):
         v["cluster_id"][(r["name"] or "").upper()] = r["id"]
@@ -107,6 +124,12 @@ def resolve(kind: str, raw: str | None, vocab: dict, session) -> tuple[str | Non
         return (m[0], f"fuzzy {m[1]:.0f}") if m and m[1] >= 88 else (None, "unresolved")
     if kind == "company_name":
         return raw.strip(), "literal"
+    if kind == "district":
+        table = vocab.get("district", {})
+        if q in table:
+            return table[q], "exact"
+        m = process.extractOne(q, list(table), scorer=fuzz.ratio) if table else None
+        return (table[m[0]], f"fuzzy {m[1]:.0f}") if m and m[1] >= 88 else (None, "unresolved")
     if kind == "state":
         table = vocab.get("state", {})
         if q in table:

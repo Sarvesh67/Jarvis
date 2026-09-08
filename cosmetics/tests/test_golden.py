@@ -450,3 +450,32 @@ def test_weak_template_match_falls_through_instead_of_being_forced():
     for q in ["who holds a COS-9 loan licence", "cosmetics manufacturers in Baddi"]:
         d = route_by_keyword(q)
         assert d["template"] is not None and d["confidence"] >= ROUTE_FLOOR, q
+
+
+def test_every_district_in_the_graph_is_resolvable_by_name(session):
+    """Regression: normalize.py clusters a company by PINCODE PREFIX as well as by the
+    district list in cluster_map.yaml, so a district can be correctly clustered in the data
+    while never appearing in that hand-written list. 22 districts and 3,777 companies were
+    in exactly that state — asking about Navsari, Daman or Nainital by name resolved to
+    nothing. The vocabulary must therefore come from the data, not the map."""
+    from pipeline.router import _vocab, resolve
+    v = _vocab(session)
+    districts = [r["d"] for r in session.run(
+        """MATCH (c:Company) WHERE c.district IS NOT NULL AND c.cluster_id IS NOT NULL
+           WITH c.district AS d, count(*) AS n WHERE n >= 10
+           RETURN d ORDER BY n DESC LIMIT 40""")]
+    unresolvable = [d for d in districts if resolve("district", d, v, session)[0] is None]
+    assert not unresolvable, f"clustered but unresolvable by name: {unresolvable}"
+
+
+def test_a_named_district_narrows_rather_than_returning_its_whole_cluster(session):
+    """Answering "Navsari" with the entire Ahmedabad-Vapi belt is a wrong answer dressed as
+    a generous one."""
+    from pipeline.router import answer
+    d = answer("", template="cosmetics_firms_in_cluster",
+               params={"district": "Navsari"}, limit=500)
+    c = answer("", template="cosmetics_firms_in_cluster",
+               params={"cluster": "Ahmedabad"}, limit=500)
+    assert d["rows"], "district filter returned nothing"
+    assert len(d["rows"]) < len(c["rows"]), "district did not narrow the cluster"
+    assert all((r["district"] or "").upper() == "NAVSARI" for r in d["rows"])

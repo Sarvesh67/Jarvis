@@ -45,13 +45,13 @@ $COS/.venv/bin/python -m pipeline.router --list           # every template + its
 
 | Asking | template | params |
 |---|---|---|
-| who is in this business here | `cosmetics_firms_in_cluster` | `cluster` |
-| who can make it for me (third party / private label) | `third_party_manufacturers` | `cluster` |
-| who is **licensed** for a category | `manufacturers_for_category_in_cluster` | `category`, `cluster` |
+| who is in this business here | `cosmetics_firms_in_cluster` | `cluster`, `district` |
+| who can make it for me (third party / private label) | `third_party_manufacturers` | `cluster`, `district` |
+| who is **licensed** for a category | `manufacturers_for_category_in_cluster` | `category`, `cluster`, `district` |
 | loan licence holders | `loan_licence_holders` | — |
 | who supplies an ingredient | `suppliers_of_ingredient` | `ingredient` |
-| packaging (bottles, jars, tubes, cartons) | `packaging_converters_in_cluster` | `component`, `cluster` |
-| where can I get it tested | `testing_labs_for_cosmetics` | `state`, `cluster` |
+| packaging (bottles, jars, tubes, cartons) | `packaging_converters_in_cluster` | `component`, `cluster`, `district` |
+| where can I get it tested | `testing_labs_for_cosmetics` | `state`, `cluster`, `district` |
 | is X allowed / restricted in India | `ingredient_restriction_india` | `ingredient` |
 | is X restricted in the EU | `ingredient_restriction_eu` | `ingredient` |
 | standard for a category | `standard_for_category` | `category` |
@@ -59,7 +59,11 @@ $COS/.venv/bin/python -m pipeline.router --list           # every template + its
 | everything about one company | `company_profile` | `company` |
 | EU-restricted ingredients on Indian shelves | `eu_restricted_in_indian_products` | — |
 
-Pass values **as the user said them** — "Baddi", "face serum", "Gujarat", "niacinamide".
+**If the user names a DISTRICT, pass `district`, not `cluster`.** A cluster spans several
+districts — answering "Navsari" with the whole Ahmedabad-Vapi belt is a wrong answer dressed
+up as a generous one. Use `cluster` only when they name a cluster or a broad region.
+
+Pass values **as the user said them** — "Navsari", "Baddi", "face serum", "niacinamide".
 The tool grounds them against the graph's vocabulary and reports how in `param_resolution`.
 If one comes back `unresolved`, say so; never substitute a guess.
 

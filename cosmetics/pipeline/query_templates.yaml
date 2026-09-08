@@ -16,13 +16,14 @@
   examples:
     - "COS-8 licensed skin care manufacturers in Baddi"
     - "which factories are licensed for face cream in Gujarat"
-  params: {category: category_code, cluster: cluster_id}
+  params: {category: category_code, cluster: cluster_id, district: district}
   tier_floor: 1
   cypher: |
     MATCH (c:Company)-[:OPERATES]->(f:Facility)-[:LICENSED_UNDER]->(l:Licence)
           -[:PERMITS]->(pc:ProductCategory {code: $category})
     MATCH (f)-[:LOCATED_IN]->(cl:Cluster)
     WHERE ($cluster IS NULL OR cl.cluster_id = $cluster)
+      AND ($district IS NULL OR toUpper(f.district) = $district)
       AND l.status <> 'cancelled'
     RETURN c.legal_name AS company, l.form_type AS licence_form, l.number AS licence_no,
            l.status AS licence_status, f.address_raw AS address, cl.name AS cluster,
@@ -35,7 +36,7 @@
   examples:
     - "cosmetics manufacturers in Surat"
     - "who makes cosmetics in the Ahmedabad cluster"
-  params: {cluster: cluster_id}
+  params: {cluster: cluster_id, district: district}
   tier_floor: 1
   note: >
     Registry activity, NOT a licence. Answers "who is in this business here", never
@@ -48,6 +49,7 @@
   cypher: |
     MATCH (c:Company)-[:LOCATED_IN]->(cl:Cluster)
     WHERE ($cluster IS NULL OR cl.cluster_id = $cluster)
+      AND ($district IS NULL OR toUpper(c.district) = $district)
       AND ('cosmetics_core' IN c.roles OR 'manufacturer_candidate' IN c.roles
            OR 'manufacturer_candidate_at_incorporation' IN c.roles)
     WITH c, cl,
@@ -76,7 +78,7 @@
     - "third party manufacturer for a face serum in Baddi"
     - "private label cream manufacturing"
     - "who can manufacture my skincare brand"
-  params: {cluster: cluster_id}
+  params: {cluster: cluster_id, district: district}
   tier_floor: 2
   cypher: |
     MATCH (c:Company)-[e:CLAIMS_CAPABILITY]->(p:ProcessCapability
@@ -86,7 +88,8 @@
     // OPTIONAL MATCH becomes part of that optional pattern and filters NOTHING, so the
     // cluster constraint was silently ignored and Baddi returned nationwide results.
     WITH c, e, cl
-    WHERE $cluster IS NULL OR cl.cluster_id = $cluster
+    WHERE ($cluster IS NULL OR cl.cluster_id = $cluster)
+      AND ($district IS NULL OR toUpper(c.district) = $district)
     RETURN c.legal_name AS company, c.website AS website, cl.name AS cluster,
            e.evidence AS claimed_on_their_site, c.trust_level AS trust
     ORDER BY trust DESC LIMIT $limit
@@ -97,12 +100,13 @@
   examples:
     - "who makes cosmetic bottles in Palghar"
     - "packaging suppliers near Ahmedabad"
-  params: {component: packaging_type, cluster: cluster_id}
+  params: {component: packaging_type, cluster: cluster_id, district: district}
   tier_floor: 1
   cypher: |
     MATCH (c:Company)-[:SUPPLIES_PACKAGING]->(p:PackagingComponent)
     MATCH (c)-[:LOCATED_IN]->(cl:Cluster)
     WHERE ($cluster IS NULL OR cl.cluster_id = $cluster)
+      AND ($district IS NULL OR toUpper(c.district) = $district)
       AND ($component IS NULL OR p.type = $component)
     RETURN c.legal_name AS company, p.type AS component, c.district AS district,
            cl.name AS cluster, c.trust_level AS trust
@@ -266,7 +270,7 @@
     - "where can I test my face cream"
     - "NABL labs for cosmetics testing in Maharashtra"
     - "accredited cosmetics testing laboratory near Ahmedabad"
-  params: {state: state, cluster: cluster_id}
+  params: {state: state, cluster: cluster_id, district: district}
   tier_floor: 1
   note: >
     Accreditation scope comes from NABL's own register, so "accredited for cosmetics"
@@ -279,6 +283,7 @@
     WITH c, a, ce, cl
     WHERE ($cluster IS NULL OR cl.cluster_id = $cluster)
       AND ($state IS NULL OR c.state = $state)
+      AND ($district IS NULL OR toUpper(c.district) = $district)
     RETURN c.legal_name AS laboratory, c.state AS state, c.district AS district,
            a.certificate_number AS certificate, a.valid_till AS valid_till,
            a.disciplines AS disciplines, a.groups AS accredited_scope
