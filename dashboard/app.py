@@ -174,7 +174,38 @@ def _falkor():
     return FalkorDB(host=FALKOR_HOST, port=FALKOR_PORT)
 
 
+def _neo4j_stats() -> dict:
+    """Stats for a graph that lives in Neo4j rather than FalkorDB.
+
+    The cosmetics graph is deterministic and provenance-carrying, built in Neo4j so it can
+    enforce constraints FalkorDB does not express. Rather than mirror a second, LLM-extracted
+    copy into FalkorDB just to fill this card, read the real thing — one source of truth.
+    """
+    try:
+        from neo4j import GraphDatabase
+    except ImportError:
+        return {"exists": False, "error": "neo4j driver not installed in the dashboard venv",
+                "nodes": 0, "edges": 0, "labels": []}
+    uri = ENV.get("NEO4J_URI", "bolt://127.0.0.1:7687")
+    auth = (ENV.get("NEO4J_USER", "neo4j"), ENV.get("NEO4J_PASSWORD", "cosmetics"))
+    try:
+        drv = GraphDatabase.driver(uri, auth=auth)
+        with drv.session() as s:
+            nodes = s.run("MATCH (n) RETURN count(n) AS n").single()["n"]
+            edges = s.run("MATCH ()-[r]->() RETURN count(r) AS n").single()["n"]
+            labels = [r["l"] for r in s.run(
+                "MATCH (n) UNWIND labels(n) AS l RETURN DISTINCT l ORDER BY l")]
+        drv.close()
+        return {"exists": True, "nodes": nodes, "edges": edges, "labels": labels,
+                "store": "neo4j"}
+    except Exception as e:  # noqa: BLE001
+        return {"exists": False, "error": str(e), "nodes": 0, "edges": 0, "labels": []}
+
+
 def _graph_stats(graph_name: str) -> dict:
+    # Projects whose graph is not in FalkorDB declare it by name; cosmetics is Neo4j-backed.
+    if graph_name == "cosmetics_graph":
+        return _neo4j_stats()
     try:
         db = _falkor()
         existing = [g.name if hasattr(g, "name") else g for g in db.list_graphs()]

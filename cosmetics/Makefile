@@ -78,3 +78,9 @@ ask:                    ## natural-language question -> whitelisted template. ma
 
 templates:              ## list the whitelisted query templates
 	$(PY) -m pipeline.router --list
+
+schema:                 ## the live schema the agent reads before writing Cypher
+	$(PY) -m pipeline.router --schema
+
+context:                ## graph-context retrieval. make context Q="..."
+	$(PY) -m pipeline.router --mode context "$(Q)"

@@ -132,6 +132,10 @@ edges:
   - {type: EXHIBITED_AT,              from: Company,         to: Event}
   - {type: IMPORTED,                  from: Company,         to: TradeFlow}
   - {type: MENTIONS,                  from: DocChunk,        to: [Ingredient, Company, ProductCategory]}
+  # A rule cites the paragraph that supports it — this is what makes a compliance answer
+  # quotable rather than merely asserted.
+  - {type: SUPPORTED_BY,              from: RegulatoryRule,  to: DocChunk}
+  - {type: CHILD_OF,                  from: ProductCategory, to: ProductCategory}
 
 derived_edges:                        # Stage 6 — all carry derived:true, rule_id, inputs[], tier:4
   - {type: SUBSTITUTE_FOR,       from: Ingredient, to: Ingredient}

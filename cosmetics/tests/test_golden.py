@@ -334,3 +334,119 @@ def test_blanket_group_notes_are_few_and_flagged():
         pytest.skip("rules not loaded")
     assert grouped < specific * 0.05, (
         f"{grouped} group notes vs {specific} specific — the blanket-note assumption broke")
+
+
+# ------------------------------------------------------- reasoning paths (GraphRAG + Cypher)
+def test_vector_index_name_matches_the_one_actually_created():
+    """Regression: the router queried 'chunk_embedding' while constraints.cypher created
+    'docchunk_embedding', so every no-template question raised ProcedureCallFailed. The
+    only escape from template dispatch was dead code and nothing caught it."""
+    root = Path(__file__).resolve().parents[1]
+    created = re.findall(r"CREATE VECTOR INDEX (\w+)",
+                         (root / "ontology" / "constraints.cypher").read_text())
+    used = re.findall(r"db\.index\.vector\.queryNodes\('(\w+)'",
+                      (root / "pipeline" / "router.py").read_text()
+                      + (root / "pipeline" / "context.py").read_text())
+    assert used, "no vector index call found"
+    assert set(used) <= set(created), f"queries {set(used)} but only {set(created)} exist"
+
+
+def test_guard_rejects_every_kind_of_write():
+    from pipeline.cypher_guard import validate
+    for q in ["MATCH (c:Company) DELETE c",
+              "MATCH (c:Company) SET c.x = 1 RETURN c",
+              "CREATE (:Evil)",
+              "MERGE (:Evil)",
+              "MATCH (c:Company) REMOVE c.name RETURN c",
+              "DROP INDEX foo",
+              "LOAD CSV FROM 'file:///x' AS r RETURN r",
+              "MATCH (c:Company) DETACH DELETE c"]:
+        v = validate(q)
+        assert not v.ok, q
+        assert v.reason and v.fix, f"rejection must be actionable: {q}"
+
+
+def test_guard_blocks_write_hidden_in_a_string_literal_is_not_a_false_positive():
+    """A company literally named 'CREATE LABS' must not look like a write."""
+    from pipeline.cypher_guard import validate
+    v = validate("MATCH (c:Company) WHERE c.legal_name = 'CREATE LABS' RETURN c LIMIT 5")
+    assert v.ok, v.reason
+
+
+def test_guard_requires_jurisdiction_on_regulatory_rules():
+    """Hard rule 2 — an EU annex must never answer an India question."""
+    from pipeline.cypher_guard import validate
+    bad = validate("MATCH (i:Ingredient)-[:RESTRICTED_BY]->(r:RegulatoryRule) RETURN r LIMIT 5")
+    assert not bad.ok and "jurisdiction" in bad.reason
+    ok = validate("MATCH (i:Ingredient)-[:RESTRICTED_BY]->(r:RegulatoryRule) "
+                  "WHERE r.jurisdiction = 'IN' RETURN r LIMIT 5")
+    assert ok.ok, ok.reason
+
+
+def test_guard_blocks_tier4_edges_on_compliance_questions():
+    """Hard rule 3 — inference ranks and suggests; it never decides permission."""
+    from pipeline.cypher_guard import validate
+    q = "MATCH (a)-[:SUBSTITUTE_FOR]->(b) RETURN a, b LIMIT 5"
+    assert not validate(q, question="is salicylic acid allowed in India").ok
+    assert validate(q, question="what could I use instead of salicylic acid").ok
+
+
+def test_guard_always_bounds_the_result():
+    from pipeline.cypher_guard import validate, DEFAULT_LIMIT, MAX_LIMIT
+    assert f"LIMIT {DEFAULT_LIMIT}" in validate("MATCH (c:Company) RETURN c").cypher
+    assert f"LIMIT {MAX_LIMIT}" in validate("MATCH (c:Company) RETURN c LIMIT 99999").cypher
+    # an aggregate is inherently bounded and must not be padded
+    assert "LIMIT" not in validate("MATCH (c:Company) RETURN count(c)").cypher
+
+
+def test_read_only_session_is_enforced_by_the_server(session):
+    """Belt and braces: even if the text guard were bypassed, the server refuses."""
+    from neo4j import READ_ACCESS
+    drv = lib.neo4j_driver()
+    try:
+        with drv.session(default_access_mode=READ_ACCESS) as s:
+            with pytest.raises(Exception):
+                s.run("CREATE (:GuardProbe)").consume()
+    finally:
+        drv.close()
+
+
+def test_schema_card_covers_everything_in_the_live_graph(session):
+    """A stale schema is worse than none — the agent writes confident queries against
+    labels that no longer exist."""
+    from pipeline.schema_card import build
+    card = build(session)
+    live_labels = {r["l"] for r in session.run(
+        "MATCH (n) UNWIND labels(n) AS l RETURN DISTINCT l")}
+    live_rels = {r["t"] for r in session.run(
+        "MATCH ()-[r]->() RETURN DISTINCT type(r) AS t")}
+    assert live_labels <= {x["label"] for x in card["labels"]}
+    assert live_rels <= {x["type"] for x in card["relationships"]}
+    assert card["gotchas"] and card["not_in_graph"]
+
+
+def test_graph_context_stays_inside_budget_even_from_a_hub(session):
+    """Cluster(Ahmedabad-Vapi) has ~17k neighbours; one careless hop returns the graph."""
+    from pipeline.context import from_question, MAX_NODES, MAX_EDGES
+    r = from_question(session, "packaging converters in Ahmedabad")
+    assert r["counts"]["nodes"] <= MAX_NODES
+    assert r["counts"]["edges"] <= MAX_EDGES
+    assert "SAMPLE" in r["trust"], "context must declare it is not a census"
+
+
+def test_graph_context_excludes_derived_edges_by_default(session):
+    from pipeline.context import from_question, DERIVED_EDGES
+    r = from_question(session, "cosmetics manufacturers in Baddi")
+    used = {e["type"] for e in r["edges"]}
+    assert not (used & set(DERIVED_EDGES) - {"LOCATED_IN"}), used
+
+
+def test_weak_template_match_falls_through_instead_of_being_forced():
+    """The keyword router used to return its least-bad guess for ANY input, so
+    "what is the general vibe of the industry" was routed to the EU-restricted-ingredients
+    template and answered as though a regulatory question had been asked."""
+    from pipeline.router import route_by_keyword, ROUTE_FLOOR
+    assert route_by_keyword("what is the general vibe of the industry")["template"] is None
+    for q in ["who holds a COS-9 loan licence", "cosmetics manufacturers in Baddi"]:
+        d = route_by_keyword(q)
+        assert d["template"] is not None and d["confidence"] >= ROUTE_FLOOR, q

@@ -196,3 +196,46 @@ python -m pipeline.review --auto-distinct-below 0.80
   basis recorded, deletable — not industrial-spine handling.
 - **Never publish filing history.** Verify against it, rank with it, warn a buyer
   privately. "Hasn't filed in 8 months" on a public profile is a defamation problem.
+
+---
+
+## Three answer paths (and which one may make a regulatory claim)
+
+The router no longer only dispatches templates. Which path runs depends on **what kind of
+claim the answer makes**, not on which mechanism is technically available:
+
+| Question | Path | May assert regulatory fact? |
+|---|---|---|
+| licence, restriction, standard, "is X allowed" | **template** — 13 reviewed queries | **Yes — only this one** |
+| open, multi-entity, "tell me about" | **context** — graph neighbourhood + cited rule text | No, exploratory |
+| counting, ranking, arbitrary joins | **cypher** — the agent writes it, we validate it | No, exploratory |
+
+```bash
+make ask Q="cosmetics manufacturers in Baddi"          # auto: template, else context
+$PY -m pipeline.router --mode context "tell me about Baddi"
+$PY -m pipeline.router --expand Company:c_ab12 --edge-types OPERATES
+$PY -m pipeline.router --schema                        # read before writing Cypher
+$PY -m pipeline.router --cypher "MATCH ... RETURN ..." # validated, read-only
+```
+
+**Why the guarantee changed shape.** Templates alone capped the product: a question no
+template anticipated could not be answered at all, and the one fallback was dead code (it
+queried `chunk_embedding`; the index is `docchunk_embedding`). The guarantee is now
+conditional on the claim rather than structural — regulatory assertions still come only
+from reviewed queries, while exploration gets real reach.
+
+**What keeps generated Cypher safe:** read-only twice over (a READ-access session *and* a
+textual guard), always bounded, rejected if it touches `RegulatoryRule` without pinning
+`jurisdiction` (hard rule 2) or leans on tier-4 derived edges for a compliance question
+(hard rule 3). Every rejection names the offending fragment so the agent repairs rather
+than dead-ends, and the executed query is always returned for audit.
+
+**What keeps graph context honest:** it is a *neighbourhood, not a census*. It never
+expands out of a hub node beyond the first hop (`Cluster(Ahmedabad-Vapi)` has ~17k
+neighbours), excludes tier-4 edges by default, is budgeted to ~60 nodes / ~120 edges, and
+says in its own `trust` field that you must not count or rank from it.
+
+The agent reads `--schema` — generated from the live graph, never hand-written — before
+writing any query, so it cannot guess at labels. The schema card also carries the mistakes
+that have already produced wrong answers here (`WHERE` after `OPTIONAL MATCH` filters
+nothing; `trust_level` is a maximum, filter `2 IN trust_rungs`).

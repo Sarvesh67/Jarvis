@@ -151,16 +151,25 @@ def route_with_model(question: str) -> dict | None:
     return json.loads(m.group(0)) if m else None
 
 
+# Below this, the best template match is not a match at all. Without a floor the keyword
+# router returns its least-bad guess for ANY input, so "what is the general vibe of the
+# industry" was routed to the EU-restricted-ingredients template and answered as though a
+# regulatory question had been asked. A weak match must fall through to graph context.
+ROUTE_FLOOR = 0.58
+
+
 def route_by_keyword(question: str) -> dict:
     """Deterministic fallback so the router still works with no model available."""
     q = question.lower()
     best, score = None, 0
     for t in TEMPLATES.values():
         hay = " ".join([t["intent"]] + t.get("examples", [])).lower()
-        s = fuzz.token_set_ratio(q, hay)
-        if s > score:
-            best, score = t["id"], s
-    return {"template": best, "params": {}, "confidence": round(score / 100, 2)}
+        sc = fuzz.token_set_ratio(q, hay)
+        if sc > score:
+            best, score = t["id"], sc
+    conf = round(score / 100, 2)
+    return {"template": best if conf >= ROUTE_FLOOR else None, "params": {},
+            "confidence": conf}
 
 
 def extract_params(question: str, template: dict, given: dict) -> dict:
@@ -178,7 +187,8 @@ def extract_params(question: str, template: dict, given: dict) -> dict:
 # --------------------------------------------------------------------- execution
 def answer(question: str, *, explain: bool = False, use_model: bool = True,
            template: str | None = None, params: dict | None = None,
-           limit: int = 50) -> dict:
+           limit: int = 50, mode: str = "auto", hops: int = 2,
+           include_derived: bool = False) -> dict:
     """`template` short-circuits routing.
 
     An agent calling this is already an LLM and already knows what it is asking, so
@@ -189,6 +199,11 @@ def answer(question: str, *, explain: bool = False, use_model: bool = True,
     """
     drv = lib.neo4j_driver()
     with drv.session() as s:
+        if mode == "context":
+            from pipeline.context import from_question
+            out = from_question(s, question, hops=hops, include_derived=include_derived)
+            drv.close()
+            return out
         if template:
             if template not in TEMPLATES:
                 drv.close()
@@ -199,9 +214,21 @@ def answer(question: str, *, explain: bool = False, use_model: bool = True,
         else:
             decision = (route_with_model(question) if use_model else None) or \
                 route_by_keyword(question)
+            # respect a model that says it is unsure, rather than running a template it
+            # only half-believes in
+            if (decision.get("confidence") or 0) < ROUTE_FLOOR and decision.get("template"):
+                decision = {**decision, "template": None,
+                            "low_confidence": decision.get("template")}
         tid = decision.get("template")
         if not tid or tid not in TEMPLATES:
-            out = doc_fallback(s, question)
+            # No reviewed query fits. Fall through to GRAPH context rather than the
+            # document-only search: the graph is where companies, licences, labs and
+            # their edges live, and a question we did not anticipate is exactly the one
+            # that needs them.
+            from pipeline.context import from_question
+            out = from_question(s, question, hops=hops, include_derived=include_derived)
+            out["note"] = ("No whitelisted template matched, so this is retrieved context "
+                           "rather than a reviewed answer. Reason over it and say so.")
             drv.close()
             return out
         t = TEMPLATES[tid]
@@ -216,6 +243,7 @@ def answer(question: str, *, explain: bool = False, use_model: bool = True,
         # discovering a hidden one after the fact
         rows = [dict(r) for r in s.run(t["cypher"], limit=limit, **params)]
         result = {
+            "answered_by": "template",
             "question": question, "template": tid, "intent": t["intent"],
             "flow": t.get("flow"), "tier_floor": t["tier_floor"],
             "tier_meaning": TIER_LABEL[t["tier_floor"]],
@@ -242,7 +270,7 @@ def doc_fallback(s, question: str) -> dict:
         return {"question": question, "template": None,
                 "error": f"no template matched and embeddings unavailable ({e})"}
     rows = [dict(r) for r in s.run("""
-        CALL db.index.vector.queryNodes('chunk_embedding', 5, $v)
+        CALL db.index.vector.queryNodes('docchunk_embedding', 5, $v)
         YIELD node, score
         RETURN score, node.doc_title AS document, node.page AS page,
                node.section AS section, left(node.text, 400) AS passage
@@ -287,12 +315,51 @@ def main() -> int:
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--limit", type=int, default=50, help="max rows the query returns")
+    ap.add_argument("--mode", choices=["auto", "template", "context", "cypher"],
+                    default="auto",
+                    help="auto: template, else graph context. context: graph retrieval. "
+                         "cypher: run --cypher through the guard.")
+    ap.add_argument("--cypher", help="Cypher YOU wrote; validated then run read-only")
+    ap.add_argument("--expand", nargs="*", metavar="REF",
+                    help="steer a further hop from refs returned by context, "
+                         "e.g. Cluster:HP_BBN Company:c_ab12")
+    ap.add_argument("--edge-types", nargs="*", help="restrict --expand to these edge types")
+    ap.add_argument("--hops", type=int, default=2)
+    ap.add_argument("--include-derived", action="store_true",
+                    help="include tier-4 derived edges in graph context")
+    ap.add_argument("--schema", action="store_true",
+                    help="print the live schema; read this before writing Cypher")
     ap.add_argument("--rows", type=int, default=10,
                     help="rows to print (0 = all). --json always returns every row.")
     ap.add_argument("--template", help="invoke a named template directly, skipping routing")
     ap.add_argument("--param", action="append", default=[], metavar="K=V",
                     help="parameter for --template; repeatable")
     a = ap.parse_args()
+
+    if a.schema:
+        from pipeline.schema_card import build, render
+        drv = lib.neo4j_driver()
+        with drv.session() as s:
+            print(render(build(s)))
+        drv.close()
+        return 0
+
+    if a.cypher:
+        from pipeline.cypher_guard import run as guarded_run
+        res = guarded_run(a.cypher, question=" ".join(a.question) or None)
+        print(json.dumps(res, indent=2, default=str))
+        return 0 if res.get("ok") else 1
+
+    if a.expand:
+        from pipeline.context import expand_from
+        drv = lib.neo4j_driver()
+        with drv.session() as s:
+            print(json.dumps(expand_from(s, a.expand, edge_types=a.edge_types,
+                                         hops=a.hops,
+                                         include_derived=a.include_derived),
+                             indent=2, default=str))
+        drv.close()
+        return 0
 
     if a.list or (not a.question and not a.template):
         print(f"  {len(TEMPLATES)} whitelisted templates:\n")
@@ -309,8 +376,9 @@ def main() -> int:
         if k:
             given[k.strip()] = v.strip() or None
     res = answer(" ".join(a.question), explain=a.explain, use_model=not a.no_model,
-                 template=a.template, params=given or None, limit=a.limit)
-    if a.json:
+                 template=a.template, params=given or None, limit=a.limit,
+                 mode=a.mode, hops=a.hops, include_derived=a.include_derived)
+    if a.json or res.get("answered_by") in ("graph_context", "generated_cypher"):
         print(json.dumps(res, indent=2, default=str))
         return 0
     print(f"\n  Q: {res['question']}")
