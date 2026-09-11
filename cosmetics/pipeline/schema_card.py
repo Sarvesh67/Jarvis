@@ -59,6 +59,19 @@ GOTCHAS = [
     "evidence of anything. `*_at_incorporation` roles come from the NIC inside a CIN, which "
     "is never updated after registration and is often stale.",
     "Every query must be bounded. Traversals from a hub node can touch the whole graph.",
+    "Licence.regime separates 'cosmetics' from 'drugs'. The CDSCO register is 907 DRUG "
+    "licences (Form 25/28 family) and only 3 cosmetics ones (COS-8/COS-9), so ANY question "
+    "about who may manufacture COSMETICS must filter `l.regime = 'cosmetics'`. Without it a "
+    "pharma licence answers a cosmetics question.",
+    "Company roles are regime-stamped: `cosmetics_manufacturer` vs `drugs_manufacturer`. "
+    "The bare `manufacturer` role is present on BOTH, so never use it alone to answer a "
+    "cosmetics question — exactly 1 company in the graph holds a cosmetics manufacturing "
+    "licence, against 453 with a drug one.",
+    "LOAN_LICENCE_WITH asserts a PAIRING, never a direction. The CDSCO register names two "
+    "firms per loan licence but state FDAs fill the two name columns in opposite "
+    "conventions (the same firm appears on both sides in different rows), so the edge is "
+    "written both ways with direction_known:false. It can answer 'which firms are tied to "
+    "X by a loan licence'; it can NEVER answer 'who manufactures for whom'.",
 ]
 
 NOT_IN_GRAPH = [

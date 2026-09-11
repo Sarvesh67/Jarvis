@@ -84,23 +84,35 @@ python -m pipeline.review --auto-distinct-below 0.80
 
 ### Corrections to the build spec, found by building it
 
-1. **S1 is not the cosmetics facility spine.** Of 911 CDSCO approved-site rows, 4 are
-   cosmetics-regime (Form 32 / 32-A → COS-8 / COS-9); the rest are drug licences. Useful
-   (many Baddi/Haridwar drug makers also hold a cosmetic licence — the graph shows exactly
-   that for Pritam International) but the licence layer must come from state FDAs.
-2. **CosIng is fully accessible.** The SPA publishes its own endpoint and API key in
+1. **S1 is not the cosmetics facility spine.** Of the 911 CDSCO approved-site rows
+   (`num_total_records=911` — the crawl is complete, not truncated) exactly **3** are
+   cosmetics-regime after a junk row is dropped; the remaining 907 are drug licences,
+   and a fourth cosmetics row was a portal test entry (`Testing123`, Haryana). The
+   overlap argument for keeping the drug rows is weaker than it looks: of the 491 firms
+   on the register, **7** appear in any cosmetics source. So the cosmetics licence layer
+   must come from state FDAs, and the pharma rows are kept in Postgres but held out of
+   the answerable graph unless they stand in a loan relationship (`COSMETICS_KEEP_PHARMA=1`
+   loads them all).
+2. **A loan licence names two firms but not which one owns the plant.** The register has
+   `Premise Name` and `Loan Premises Name`, and state authorities fill them in opposite
+   conventions: `Pure&Cure → Dr. Reddy's` puts the factory first, `GSK → Encube` puts it
+   second, and P&G Health appears on *both* sides in different rows. The pairing is
+   therefore tier 1 and the direction is unknown — `LOAN_LICENCE_WITH` is written both
+   ways with `direction_known:false`, and anything wanting to say who manufactures for
+   whom must use `THIRD_PARTY_MANUFACTURED_BY` instead.
+3. **CosIng is fully accessible.** The SPA publishes its own endpoint and API key in
    `assets/env-json-config.json`; the query DSL accepts only `term`/`terms`/`text`, and a
    hard 10,000-result paging window is worked around with recursive prefix buckets on
    `inciName`, deduped on `substanceId`. Coverage: 33,638 / 33,654 (99.95%).
-3. **CDSCO's listing is not an opaque form-POST.** `Approved_Manuf_Site.jsp?page_no=N`
+4. **CDSCO's listing is not an opaque form-POST.** `Approved_Manuf_Site.jsp?page_no=N`
    works with a plain GET once a JSESSIONID exists. No DevTools capture needed.
-4. **The Fourth Schedule is a better category spine than the Ninth.** It is CDSCO's own
+5. **The Fourth Schedule is a better category spine than the Ninth.** It is CDSCO's own
    80-entry category vocabulary; the Ninth Schedule's 37 rows are standards that attach
    to it. Both are loaded, and both PDF OCR defects found in them are documented in
    `adapters/s05_ninth_schedule.py`.
-5. **Udyam is the answer to the spec's own stated blind spot.** MCA cannot see
+6. **Udyam is the answer to the spec's own stated blind spot.** MCA cannot see
    proprietorships and partnerships; Udyam registers by enterprise, not legal form.
-6. **CHEMEXCIL is the website source, not just the export source.** Its directory
+7. **CHEMEXCIL is the website source, not just the export source.** Its directory
    enumerates at `/members-alpha/{A-Z,0-9}` and publishes a website per member — 2,379
    of them — which is what makes S14 possible at all. Member *profiles* need a council
    login, so membership type (manufacturer-exporter vs merchant-exporter) is not

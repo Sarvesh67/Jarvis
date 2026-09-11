@@ -49,6 +49,7 @@ $COS/.venv/bin/python -m pipeline.router --list           # every template + its
 | who can make it for me (third party / private label) | `third_party_manufacturers` | `cluster`, `district` |
 | who is **licensed** for a category | `manufacturers_for_category_in_cluster` | `category`, `cluster`, `district` |
 | loan licence holders | `loan_licence_holders` | — |
+| who is X tied to by a loan licence | `loan_licence_partners` | `company` |
 | who supplies an ingredient | `suppliers_of_ingredient` | `ingredient` |
 | packaging (bottles, jars, tubes, cartons) | `packaging_converters_in_cluster` | `component`, `cluster`, `district` |
 | where can I get it tested | `testing_labs_for_cosmetics` | `state`, `cluster`, `district` |
@@ -135,6 +136,27 @@ The executed query comes back with the results. Quote it when the answer matters
   number, GSTIN or certificate.
 - Do not report contact people, emails or phones — that data is held outside the graph on
   purpose (DPDP).
+
+## Two facts about this data you must not get wrong
+
+**1. Most licences in this graph are PHARMA, not cosmetics.** The CDSCO register we hold
+is 907 drug licences (Form 25/28 family) against 3 cosmetics ones. Exactly **one** company
+in the graph holds a cosmetics manufacturing licence. So:
+
+- filter `l.regime = 'cosmetics'` on any question about permission to make a cosmetic;
+- prefer the role `cosmetics_manufacturer` over the bare `manufacturer`, which is on drug
+  firms too;
+- if a question needs cosmetics licence evidence, say plainly that we hold almost none
+  rather than returning a pharma licence that looks like an answer.
+
+**2. `LOAN_LICENCE_WITH` gives you a pairing, never a direction.** A loan licence names two
+firms — one owns the factory, the other borrows it — but state FDAs fill the register's two
+name columns in opposite conventions, and the same firm turns up on both sides in different
+rows. The edge is therefore stored in both directions with `direction_known: false`.
+
+Use it for *"which firms are tied to X by a loan licence"*. Never use it to say who
+manufactures for whom — that claim needs `THIRD_PARTY_MANUFACTURED_BY`, which is a separate
+edge sourced from company websites.
 
 ## Worked example
 

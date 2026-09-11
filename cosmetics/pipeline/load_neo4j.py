@@ -8,6 +8,8 @@ Every edge carries `_prov` (hard rule 9). Every RegulatoryRule carries `jurisdic
 """
 from __future__ import annotations
 
+import os
+
 import argparse
 import hashlib
 import json
@@ -217,8 +219,49 @@ def load_rules_and_ingredients(s) -> None:
     """, ing_edges, "RESTRICTED_BY (retry after minting)")
 
 
+KEEP_PHARMA = os.environ.get("COSMETICS_KEEP_PHARMA") == "1"
+
+
+def pharma_only_entities() -> set[str]:
+    """Firms present ONLY as a DRUG licence on the CDSCO register.
+
+    The register is 907 drug licences against 3 cosmetics ones, and of its 491 firms
+    only 7 appear in any cosmetics source. The other 484 are pharmaceutical companies
+    with no cosmetics footprint: they cannot answer a cosmetics sourcing question, but
+    they can very easily be mistaken for an answer to one. They stay in Postgres with
+    full provenance -- this only keeps them out of the ANSWERABLE graph, so the decision
+    is reversible by re-running the load without this filter.
+    """
+    return {r["entity_id"] for r in q("""
+        WITH linked AS (
+          SELECT x.entity_id, bool_or(r.source_id <> 's01_cdsco') AS other_source,
+                 bool_or(r.payload->>'regime' = 'cosmetics') AS cosmetics_regime
+          FROM raw_company r
+          JOIN crosswalk x ON x.source_id = r.source_id AND x.source_key = r.source_key
+           AND x.entity_type = 'company' AND x.superseded_by IS NULL
+          GROUP BY x.entity_id)
+        SELECT entity_id FROM linked
+        WHERE other_source IS FALSE AND cosmetics_regime IS FALSE
+        -- ...except a firm standing in a loan relationship. 117 of the 484 do: those
+        -- pairs are the only observed contract-manufacturing structure we hold, they
+        -- carry regime on the edge, and dropping them would delete the relationship
+        -- rather than the noise. The 367 that remain are lone Form-25/28 holders with
+        -- no edge to anything.
+          AND entity_id NOT IN (
+            SELECT x.entity_id FROM raw_facility f
+            JOIN crosswalk x ON x.source_id = f.source_id AND x.entity_type = 'company'
+             AND x.superseded_by IS NULL
+             AND x.source_key IN (f.company_source_key, f.loan_premises_name)
+            WHERE f.is_loan_licence AND f.loan_premises_name IS NOT NULL)""")}
+
+
 def load_companies(s) -> dict[str, dict]:
     winners = rec.reconcile("raw_company", rec.COMPANY_PROPS, "company", persist=False)
+    drop = pharma_only_entities() if not KEEP_PHARMA else set()
+    if drop:
+        winners = {k: v for k, v in winners.items() if k not in drop}
+        print(f"  excluded {len(drop)} pharma-only firms from the graph "
+              f"(still in Postgres; set COSMETICS_KEEP_PHARMA=1 to load them)")
     udyam_members = {r["entity_id"] for r in q(
         """SELECT DISTINCT x.entity_id FROM raw_company r
            JOIN crosswalk x ON x.source_id=r.source_id AND x.source_key=r.source_key
@@ -332,6 +375,44 @@ def load_operates(s) -> None:
     """, [{"company_id": r["company_id"], "facility_id": r["facility_id"],
            "prov": pv("stage3_resolve", 4, float(r["score"]),
                       basis=r["basis"], inferred=True)} for r in rows], "OPERATES")
+
+
+def load_loan_pairs(s) -> None:
+    """Tier-1 loan-licence pairings from the CDSCO register.
+
+    Each loan row names the licensee and the premises firm, but not which is which
+    (see ontology note on LOAN_LICENCE_WITH). We therefore write the pairing in BOTH
+    directions with direction_known:false, so a traversal can find "firms tied to this
+    one by a loan licence" without any query being able to conclude who owns the plant.
+    """
+    rows = q("""SELECT xa.entity_id AS a, xb.entity_id AS b,
+                       r.licence_no, r.licence_form, r.payload, r.source_id, r.tier
+                FROM raw_facility r
+                JOIN crosswalk xa ON xa.source_id = r.source_id
+                 AND xa.source_key = r.company_source_key
+                 AND xa.entity_type = 'company' AND xa.superseded_by IS NULL
+                JOIN crosswalk xb ON xb.source_id = r.source_id
+                 AND xb.source_key = r.loan_premises_name
+                 AND xb.entity_type = 'company' AND xb.superseded_by IS NULL
+                WHERE r.is_loan_licence AND r.loan_premises_name IS NOT NULL""")
+    edges = []
+    for r in rows:
+        if r["a"] == r["b"]:          # register names the same firm on both sides
+            continue
+        prov = pv(r["source_id"], r["tier"])
+        props = {**prov, "licence_no": r["licence_no"],
+                 "licence_form": r["licence_form"],
+                 "regime": (r["payload"] or {}).get("regime"),
+                 "direction_known": False}
+        edges.append({"a": r["a"], "b": r["b"], "prov": props})
+        edges.append({"a": r["b"], "b": r["a"], "prov": props})
+    run(s, """
+        UNWIND $rows AS row
+        MATCH (a:Company {company_id: row.a})
+        MATCH (b:Company {company_id: row.b})
+        MERGE (a)-[e:LOAN_LICENCE_WITH {licence_no: row.prov.licence_no}]->(b)
+        SET e += row.prov
+    """, edges, "LOAN_LICENCE_WITH")
 
 
 def load_events(s) -> None:
@@ -612,6 +693,7 @@ def load_all(s) -> None:
     load_companies(s)
     load_facilities(s)
     load_operates(s)
+    load_loan_pairs(s)
     load_events(s)
     load_associations(s)
     load_site_claims(s)

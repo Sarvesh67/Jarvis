@@ -43,6 +43,10 @@ FORBIDDEN_CALLS = re.compile(
     r"\bCALL\s+(apoc\.(?!coll\.|text\.|convert\.)|dbms\.|db\.create|db\.index\.\w+\.(create|drop)|"
     r"db\.awaitIndex|gds\.)", re.I)
 
+# Edges that assert a PAIRING but carry no direction. Traversing them reads like a
+# directed fact in Cypher (a)-[:X]->(b), so the guard says out loud that it is not one.
+DIRECTION_UNKNOWN_EDGES = {"LOAN_LICENCE_WITH"}
+
 DERIVED_EDGES = {"SUBSTITUTE_FOR", "SERVES_CATEGORY", "IN_CLUSTER_WITH",
                  "LIKELY_MANUFACTURES_FOR", "CAN_FILL"}
 
@@ -131,6 +135,23 @@ def validate(cypher: str, *, question: str | None = None,
                 "Ingredient-[:RESTRICTED_BY]->RegulatoryRule, or use the reviewed template.")
         notes.append("Compliance-shaped question answered by generated Cypher: present "
                      "this as exploratory and confirm regulatory claims via a template.")
+
+    # A pairing is not a direction, and a drug licence is not a cosmetics one. Both are
+    # properties of the DATA, so these notes are attached whenever the query touches them
+    # -- not conditioned on how the question was phrased.
+    for e in sorted(DIRECTION_UNKNOWN_EDGES):
+        if re.search(rf"\b{e}\b", up):
+            notes.append(
+                f"{e} records that two firms share a loan licence. It does NOT say which "
+                "one owns the premises -- the register's two name columns are filled in "
+                "opposite conventions by different state authorities. Do not report a "
+                "direction of manufacture from this edge.")
+    if re.search(r"\bLICENCE\b|:LICENSED_UNDER\b", up) and "REGIME" not in up:
+        notes.append(
+            "907 of the 911 licences in this graph are DRUG licences (Form 25/28 family); "
+            "only 3 are cosmetics (COS-8/COS-9). This query does not filter on "
+            "`l.regime`, so its rows are mostly pharma. Add `l.regime = 'cosmetics'` if "
+            "the question is about cosmetics manufacture.")
 
     # Bounded, always.
     lim = re.search(r"\bLIMIT\s+(\d+)\s*$", body, re.I)

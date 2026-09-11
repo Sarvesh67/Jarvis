@@ -479,3 +479,102 @@ def test_a_named_district_narrows_rather_than_returning_its_whole_cluster(sessio
     assert d["rows"], "district filter returned nothing"
     assert len(d["rows"]) < len(c["rows"]), "district did not narrow the cluster"
     assert all((r["district"] or "").upper() == "NAVSARI" for r in d["rows"])
+
+
+# ---------------------------------------------------------------- CDSCO loan licences
+#
+# The CDSCO register names two firms on every loan-licence row but does NOT say which
+# one owns the premises: state FDAs fill the two name columns in opposite conventions
+# (Pure&Cure->Dr.Reddy's puts the factory first, GSK->Encube puts it second, and P&G
+# Health appears on BOTH sides in different rows). These tests pin the consequences.
+
+def _s01():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "s01", Path(__file__).resolve().parents[1] / "adapters" / "s01_cdsco_sites.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("-", None),
+    ("M/s. Goa Antibiotics & Pharmaceuticals Ltd.", "Goa Antibiotics & Pharmaceuticals Ltd"),
+    ("M/s. Dr. Reddy's laboratories limited, C/o M/s. Pure & Cure Healthcare Pvt. Ltd,",
+     "Dr. Reddy's laboratories limited"),
+    ("Merck Specialities Pvt Ltd C/o ATRA Pharmaceutical Ltd, Plot No H-19, MIDC, Waluj",
+     "Merck Specialities Pvt Ltd"),
+    ("Cipla Limited, L-139 to L-146, Verna Industrial Estate, Verna, Goa - 403722",
+     "Cipla Limited"),
+    ("C/o M/s.Pure & Cure Healthcare (P) Ltd.,", "Pure & Cure Healthcare (P) Ltd"),
+    ("Testing123", None),
+])
+def test_loan_counterparty_is_a_firm_name_not_an_address(raw, expected):
+    assert _s01()._counterparty(raw) == expected
+
+
+def test_a_loan_row_never_claims_either_party_is_a_manufacturer():
+    """Neither side of a loan licence may claim `manufacturer`: the register does not
+    say which one owns the plant, so asserting it would be a coin flip stamped tier 1."""
+    m = _s01()
+    for regime in ("cosmetics", "drugs"):
+        roles = m._roles(regime, True)
+        assert "manufacturer" not in roles
+        assert f"{regime}_manufacturer" not in roles
+        assert "loan_licence_party" in roles
+    assert "manufacturer" in m._roles("cosmetics", False)
+
+
+def test_roles_are_regime_stamped_so_a_drug_licence_cannot_answer_cosmetics():
+    m = _s01()
+    assert "cosmetics_manufacturer" in m._roles("cosmetics", False)
+    assert "cosmetics_manufacturer" not in m._roles("drugs", False)
+
+
+@pytest.mark.parametrize("name", ["Testing123", "test", "abc", "xyz", "", "  "])
+def test_portal_test_rows_are_rejected(name):
+    assert _s01().is_junk_name(name)
+
+
+@pytest.mark.parametrize("name", ["Cipla Limited", "Encube Ethicals Pvt. Ltd.",
+                                  "Pure & Cure Healthcare"])
+def test_real_firm_names_survive_the_junk_filter(name):
+    assert not _s01().is_junk_name(name)
+
+
+def test_loan_pairs_are_symmetric_and_never_claim_a_direction(session):
+    rows = session.run("""
+        MATCH (a:Company)-[e:LOAN_LICENCE_WITH]->(b:Company)
+        RETURN count(e) AS n,
+               count(CASE WHEN e.direction_known = false THEN 1 END) AS undirected
+    """).single()
+    if rows["n"] == 0:
+        pytest.skip("no loan pairs loaded")
+    assert rows["undirected"] == rows["n"], "every loan pair must carry direction_known=false"
+    missing = session.run("""
+        MATCH (a:Company)-[e:LOAN_LICENCE_WITH]->(b:Company)
+        WHERE NOT (b)-[:LOAN_LICENCE_WITH {licence_no: e.licence_no}]->(a)
+        RETURN count(*) AS n
+    """).single()["n"]
+    assert missing == 0, "pairing is symmetric: both directions must exist"
+
+
+def test_no_company_is_its_own_loan_partner(session):
+    n = session.run("MATCH (a:Company)-[:LOAN_LICENCE_WITH]->(a) RETURN count(*) AS n"
+                    ).single()["n"]
+    assert n == 0
+
+
+def test_cosmetics_licence_template_filters_out_the_drug_register():
+    """907 of 911 CDSCO rows are drug licences. A template that says 'licensed to
+    manufacture cosmetics' must constrain regime or it answers with a pharma licence."""
+    t = [x for x in _templates() if x["id"] == "manufacturers_for_category_in_cluster"][0]
+    assert "regime" in t["cypher"], t["cypher"]
+
+
+def test_normalize_threads_cluster_states_through():
+    """resolve_cluster takes cluster_states; normalize_table must actually pass it,
+    otherwise every run dies with NameError before a single row is written."""
+    import inspect
+    from pipeline import normalize
+    assert "cluster_states" in inspect.signature(normalize.normalize_table).parameters

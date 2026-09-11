@@ -123,6 +123,14 @@ edges:
   - {type: IN_CATEGORY,               from: Product,         to: ProductCategory}
   - {type: HOLDS_LOAN_LICENCE_AT,     from: Company,         to: Facility}
   - {type: THIRD_PARTY_MANUFACTURED_BY, from: Company,       to: Company}
+  # A loan licence names TWO firms, but the CDSCO register does not reliably say which
+  # one owns the site: state FDAs fill 'Premise Name' / 'Loan Premises Name' in opposite
+  # conventions, and the same firm appears on both sides in different rows. So the
+  # PAIRING is tier 1 and the DIRECTION is unknown -- this edge asserts only the pairing
+  # and is written in both directions with direction_known:false. Anything that needs to
+  # know who owns the factory must use THIRD_PARTY_MANUFACTURED_BY, never this.
+  - {type: LOAN_LICENCE_WITH,         from: Company,         to: Company,
+     props: [licence_no, licence_form, regime, direction_known]}
   - {type: RESTRICTED_BY,             from: Ingredient,      to: RegulatoryRule, note: "substance-specific restrictions ONLY"}
   # Blanket regulatory notes that name no single substance. Deliberately a DIFFERENT edge
   # so that traversing RESTRICTED_BY can never imply a specific ingredient is restricted.

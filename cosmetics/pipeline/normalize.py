@@ -124,7 +124,7 @@ def clean_id(value: str | None, pattern: re.Pattern) -> str | None:
 
 # --- driver ----------------------------------------------------------------------
 def normalize_table(table: str, name_col: str, pins: dict, by_district: dict,
-                    by_prefix: list, dry: bool) -> dict:
+                    by_prefix: list, cluster_states: dict, dry: bool) -> dict:
     stats = {"rows": 0, "named": 0, "pinned": 0, "geo": 0, "clustered": 0, "pan": 0}
     with lib.pg() as c, c.cursor() as cur:
         cur.execute(f"SELECT id, {name_col}, address_raw, pincode, state, district FROM {table}")
@@ -168,7 +168,8 @@ def main() -> int:
           f"{len(by_prefix)} pincode prefixes")
 
     for table, col in (("raw_company", "legal_name"), ("raw_facility", "firm_name")):
-        s = normalize_table(table, col, pins, by_district, by_prefix, a.dry_run)
+        s = normalize_table(table, col, pins, by_district, by_prefix,
+                            cluster_states, a.dry_run)
         pct = lambda n: f"{100*n/max(s['rows'],1):.1f}%"
         print(f"  {table}: {s['rows']} rows | norm_name {pct(s['named'])} | "
               f"pincode {pct(s['pinned'])} | geo-resolved {pct(s['geo'])} | "

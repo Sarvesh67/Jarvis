@@ -295,3 +295,20 @@
   note: >
     Enforced in the LOADER, not in each query, so any consumer — the agent, ad-hoc
     Cypher, a future template — is safe without knowing to filter.
+- id: loan_licence_pairs_are_undirected
+  q: "Firms tied to each other by a loan licence, with no direction claimed"
+  shape: Company-[:LOAN_LICENCE_WITH]->Company
+  cypher: |
+    MATCH (a:Company)-[e:LOAN_LICENCE_WITH]->(b:Company)
+    WHERE e.direction_known = false
+    RETURN a.legal_name AS company, b.legal_name AS partner,
+           e.licence_form AS form, e.regime AS regime
+  expect_min: 10
+
+- id: cosmetics_licences_are_separable_from_drug_licences
+  q: "Cosmetics-regime licences only — the register is overwhelmingly pharma"
+  shape: Licence{regime:'cosmetics'}
+  cypher: |
+    MATCH (l:Licence) WHERE l.regime = 'cosmetics'
+    RETURN l.form_type AS form, l.number AS number, l.sla_state AS state
+  expect_min: 1

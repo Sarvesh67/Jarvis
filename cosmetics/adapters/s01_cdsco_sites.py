@@ -50,6 +50,63 @@ def _form_meta(form_no: str, site_type: str) -> tuple[str, str, bool]:
     return (form_no or "OTHER").strip().upper(), "other", loan
 
 
+# The register carries obvious test rows ("Testing123", "abc") left by portal users.
+# They arrive tier 1 and would otherwise be indistinguishable from a real licence.
+JUNK_NAME_RE = re.compile(r"^(test|testing|abc|xyz|asd|qwe|demo|sample)[\W\d]*$", re.I)
+
+
+def is_junk_name(name: str) -> bool:
+    n = (name or "").strip()
+    return not n or len(n) < 3 or bool(JUNK_NAME_RE.match(n))
+
+
+def _roles(regime: str, loan: bool) -> list[str]:
+    """Roles a CDSCO row may legitimately claim.
+
+    On a LOAN row the register names two firms but does NOT reliably say which one
+    owns the site: state FDAs fill 'Premise Name' / 'Loan Premises Name' in opposite
+    conventions (Pure&Cure->Dr.Reddy's puts the factory first; GSK->Encube puts it
+    second, and P&G Health appears on BOTH sides in different rows). So neither party
+    may claim `manufacturer` off a loan row -- we record the pairing and stay silent
+    on direction. Regime is stamped onto the role so a DRUG licence can never satisfy
+    a cosmetics-manufacturer question (907 of the 911 rows are drugs).
+    """
+    if loan:
+        return ["loan_licence_party", f"{regime}_loan_licence_party"]
+    return ["manufacturer", f"{regime}_manufacturer"]
+
+
+# "Loan Premises Name" is free text. Observed shapes:
+#   "-"                                              -> absent
+#   "M/s. Goa Antibiotics & Pharmaceuticals Ltd."    -> plain, needs M/s. stripped
+#   "Merck Specialities Pvt Ltd C/o ATRA Pharma..."  -> firm, then its host after C/o
+#   "C/o M/s.Pure & Cure Healthcare (P) Ltd.,"       -> leading C/o
+#   "Cipla Limited, L-139 to L-146, Verna Ind Est"   -> firm, then a postal address
+ADDR_SEG_RE = re.compile(r"^(plot|survey|sy|khasra|gat|shed|unit|block|sector|phase|no\b|"
+                         r"[a-z]?-?\d)", re.I)
+MS_RE = re.compile(r"^m/s[.\s]+", re.I)
+COF_RE = re.compile(r"\s+c/o\s+", re.I)
+
+
+def _counterparty(raw: str | None) -> str | None:
+    """Firm name only: drop the host-of clause and any postal address tail."""
+    n = (raw or "").strip().strip(",.")
+    if not n or n in {"-", "--"}:
+        return None
+    n = re.sub(r"^c/o\s+", "", n, flags=re.I)     # leading "C/o M/s.Foo"
+    n = COF_RE.split(n)[0]                         # "Foo C/o Bar" -> "Foo"
+    keep = []
+    for seg in n.split(","):
+        seg = seg.strip()
+        if not seg:
+            continue
+        if keep and ADDR_SEG_RE.match(seg):        # address tail begins
+            break
+        keep.append(seg)
+    n = MS_RE.sub("", ", ".join(keep)).strip().strip(",.")
+    return None if is_junk_name(n) else n
+
+
 def _date(s: str):
     s = (s or "").strip()
     for fmt in ("%d-%b-%Y", "%d/%m/%Y", "%Y-%m-%d"):
@@ -79,7 +136,7 @@ def parse_page(html: str) -> tuple[list[dict], int, int]:
 
 
 def to_rows(records: list[dict]) -> tuple[list[dict], list[dict]]:
-    facilities, companies = [], []
+    facilities, companies, skipped = [], [], []
     for r in records:
         # address tail is ",<district>,<state>,India,<phone>,<phone>"
         parts = [p.strip() for p in (r["address"] or "").split(",")]
@@ -95,6 +152,9 @@ def to_rows(records: list[dict]) -> tuple[list[dict], list[dict]]:
 
         form_type, regime, loan = _form_meta(r["form_no"], r["site_type"])
         firm = (r["premise"] or "").strip()
+        if is_junk_name(firm):
+            skipped.append(firm)
+            continue
         key = f"{r['licence_no']}|{firm}"[:200]
         facilities.append({
             "source_id": SOURCE, "source_key": key, "raw_path": "",
@@ -106,7 +166,7 @@ def to_rows(records: list[dict]) -> tuple[list[dict], list[dict]]:
             "licence_status": "unknown",           # source shows no status field (spec §6 S1/S2)
             "granted_on": _date(r["issued"]), "expires_on": _date(r["expires"]),
             "is_loan_licence": loan,
-            "loan_premises_name": (r["loan_premise"] or "").strip() or None,
+            "loan_premises_name": _counterparty(r["loan_premise"]),
             "categories": [],
             "district": district,
             "payload": lib.jsonb({"regime": regime, "site_type": r["site_type"],
@@ -117,34 +177,64 @@ def to_rows(records: list[dict]) -> tuple[list[dict], list[dict]]:
             "retrieved_at": lib.now(), "tier": TIER,
             "legal_name": firm, "address_raw": r["address"], "pincode": pincode,
             "state": state, "phone": phone,
-            "roles_claimed": ["manufacturer"] if not loan else ["loan_licensee"],
+            "roles_claimed": _roles(regime, loan),
             "payload": lib.jsonb({"regime": regime, "licence_no": r["licence_no"]}),
             "district": district,
         })
-        if loan and (r["loan_premise"] or "").strip():
+        counterparty = _counterparty(r["loan_premise"])
+        if loan and counterparty:
+            # Deliberately NO address/pincode/district here. The row's address is the
+            # licensed premises; the counterparty may sit somewhere else entirely
+            # (Meditab@Kundaim paired with Cipla@Verna), and copying it would invent a
+            # second firm at an address it has never been observed at -- which then
+            # corroborates a false merge in resolve.py. State is kept: a loan licence
+            # is issued by one State Licensing Authority and binds both parties.
             companies.append({
-                "source_id": SOURCE, "source_key": r["loan_premise"].strip(), "raw_path": "",
+                "source_id": SOURCE, "source_key": counterparty, "raw_path": "",
                 "retrieved_at": lib.now(), "tier": TIER,
-                "legal_name": r["loan_premise"].strip(), "address_raw": r["address"],
-                "pincode": pincode, "state": state, "phone": None,
-                "roles_claimed": ["loan_licensee"],
-                "payload": lib.jsonb({"regime": regime, "host_premise": firm}),
-                "district": district,
+                "legal_name": counterparty, "address_raw": None,
+                "pincode": None, "state": state, "phone": None,
+                "roles_claimed": _roles(regime, True),
+                "payload": lib.jsonb({"regime": regime, "loan_counterparty_of": firm,
+                                      "licence_no": r["licence_no"],
+                                      "direction_known": False}),
+                "district": None,
             })
-    # dedupe companies on source_key, keeping the first
-    seen, dedup = set(), []
+    # Dedupe on source_key, but UNION the roles rather than keeping the first row's.
+    # A firm can appear as the named premise on an OWN row and as the counterparty on
+    # a LOAN row; roles[] is additive (hard rule 1), so dropping the later row whole
+    # would silently discard a tier-1 claim.
+    by_key: dict[str, dict] = {}
     for c in companies:
-        if c["source_key"] and c["source_key"] not in seen:
-            seen.add(c["source_key"])
-            dedup.append(c)
-    return facilities, dedup
+        if not c["source_key"]:
+            continue
+        prev = by_key.get(c["source_key"])
+        if prev is None:
+            by_key[c["source_key"]] = c
+            continue
+        prev["roles_claimed"] = sorted(set(prev["roles_claimed"]) | set(c["roles_claimed"]))
+        for fld in ("address_raw", "pincode", "district", "phone"):
+            prev[fld] = prev.get(fld) or c.get(fld)
+    if skipped:
+        print(f"  skipped {len(skipped)} junk firm name(s): {sorted(set(skipped))[:5]}")
+    return facilities, list(by_key.values())
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--delay", type=float, default=3.0, help="spec S1: 1 req / 3s")
     ap.add_argument("--max-pages", type=int, default=100)
+    ap.add_argument("--replay", action="store_true",
+                    help="re-parse already-landed pages instead of refetching CDSCO")
     a = ap.parse_args()
+
+    if a.replay:
+        records = []
+        for path in sorted((lib.RAW / SOURCE).glob("approved_manuf_site_p*.html")):
+            rows, _, _ = parse_page(path.read_text(encoding="utf-8", errors="replace"))
+            records.extend(rows)
+        print(f"  replayed {len(records)} rows from landed pages")
+        return _emit(records)
 
     f = lib.Fetcher(SOURCE, delay=a.delay)
     try:
@@ -165,11 +255,17 @@ def main() -> int:
     finally:
         f.close()
 
+    return _emit(records)
+
+
+def _emit(records: list[dict]) -> int:
     facilities, companies = to_rows(records)
     n1 = lib.upsert("raw_facility", facilities, "source_id, source_key")
     n2 = lib.upsert("raw_company", companies, "source_id, source_key")
     cos = sum(1 for x in facilities if x["licence_form"].startswith("COS"))
-    print(f"S1 done: {n1} facilities ({cos} cosmetics-regime), {n2} companies")
+    pairs = sum(1 for x in facilities if x["is_loan_licence"] and x["loan_premises_name"])
+    print(f"S1 done: {n1} facilities ({cos} cosmetics-regime, {pairs} loan pairs), "
+          f"{n2} companies")
     return 0
 
 

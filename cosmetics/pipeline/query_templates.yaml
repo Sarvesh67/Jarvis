@@ -25,6 +25,9 @@
     WHERE ($cluster IS NULL OR cl.cluster_id = $cluster)
       AND ($district IS NULL OR toUpper(f.district) = $district)
       AND l.status <> 'cancelled'
+      // 907 of the 911 CDSCO rows are DRUG licences (Form 25/28 family). Without this
+      // the template answers "licensed to manufacture cosmetics" with a pharma licence.
+      AND l.regime = 'cosmetics'
     RETURN c.legal_name AS company, l.form_type AS licence_form, l.number AS licence_no,
            l.status AS licence_status, f.address_raw AS address, cl.name AS cluster,
            c.trust_level AS trust
@@ -67,6 +70,29 @@
            evidence_basis, c.roles AS roles, c.trust_level AS trust,
            2 IN c.trust_rungs AS has_licence_evidence
     ORDER BY rank, trust DESC, company LIMIT $limit
+
+- id: loan_licence_partners
+  flow: buyer
+  intent: >
+    Firms tied to a given company by a LOAN LICENCE on the CDSCO register — i.e. one of
+    the pair manufactures for the other. Use for "who does X manufacture for", "who makes
+    X's product", "loan licence", "is X a contract manufacturer for anyone".
+  examples:
+    - "who is Encube Ethicals linked to by a loan licence"
+    - "loan licence partners of Cipla"
+  params: {company: company_name}
+  tier_floor: 1
+  cypher: |
+    MATCH (a:Company)-[e:LOAN_LICENCE_WITH]->(b:Company)
+    WHERE toUpper(a.legal_name) CONTAINS toUpper($company)
+    RETURN a.legal_name AS company, b.legal_name AS partner,
+           e.licence_form AS licence_form, e.licence_no AS licence_no,
+           e.regime AS regime,
+           // The register names both firms but not which owns the site. Say so in the
+           // row itself so an answer cannot quietly assert a direction it cannot know.
+           'register names both firms; it does NOT say which one owns the factory'
+             AS direction_caveat
+    ORDER BY partner LIMIT $limit
 
 - id: third_party_manufacturers
   flow: buyer
@@ -184,7 +210,10 @@
 
 - id: loan_licence_holders
   flow: buyer
-  intent: Companies holding a loan licence (COS-9) — brands manufacturing on someone else's premises
+  intent: >
+    Licences on the register flagged as LOAN licences. NOTE: the register does not say
+    which party owns the premises, so this lists the licence and both named firms — it
+    does NOT establish that the named company is a brand rather than the factory.
   examples:
     - "who holds a COS-9 loan licence"
   params: {}
@@ -193,9 +222,13 @@
     MATCH (f:Facility)-[:LICENSED_UNDER]->(l:Licence)
     WHERE l.is_loan_licence = true
     OPTIONAL MATCH (c:Company)-[:OPERATES]->(f)
+    // 146 of the 150 loan licences on this register are DRUG licences. Returning the
+    // regime keeps a pharma loan licence from being read as a cosmetics one.
+    WITH l, c, f
     RETURN l.form_type AS form, l.number AS licence_no, l.sla_state AS state,
-           c.legal_name AS company, f.address_raw AS premises
-    LIMIT $limit
+           l.regime AS regime, c.legal_name AS named_company, f.address_raw AS premises,
+           'register does NOT say which party owns these premises' AS direction_caveat
+    ORDER BY regime, form LIMIT $limit
 
 - id: substitutes_for_ingredient
   flow: formulation
