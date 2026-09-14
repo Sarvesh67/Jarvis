@@ -34,17 +34,25 @@ PLIST=com.lattix.demo.plist
 # Read the id out of JSON rather than off a column position — `tunnel list`'s table is
 # for humans and its widths shift with the longest name in it.
 #
-# With no tunnels yet, that command prints the literal `null`, not `[]`. So the parser
-# has to treat null and empty-output as "no tunnels" rather than as something to iterate,
-# which is the state EVERY first run is in.
+# Two shapes to survive, both learned the hard way:
+#
+#   * With no tunnels, the command prints the literal `null`, not `[]` — and that is the
+#     state every first run is in.
+#   * A LIVE tunnel carries `"deleted_at": "0001-01-01T00:00:00Z"`, Go's zero time, not
+#     null and not absent. Testing the field for truthiness marks every live tunnel as
+#     deleted, which is worse than not filtering at all: the tunnel gets created and then
+#     cannot be found, on every run, forever.
 tunnel_id() {
   cloudflared tunnel list --output json 2>/dev/null \
     | "$COS_DIR/.venv/bin/python" -c '
 import json, sys
+def live(t):
+    d = (t.get("deleted_at") or "").strip()
+    return not d or d.startswith("0001-01-01")
 raw = sys.stdin.read().strip()
 rows = json.loads(raw) if raw else None
 print(next((t["id"] for t in (rows or [])
-            if t.get("name") == sys.argv[1] and not t.get("deleted_at")), ""))
+            if t.get("name") == sys.argv[1] and live(t)), ""))
 ' "$TUNNEL"
 }
 
