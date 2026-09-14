@@ -25,6 +25,7 @@ to discover during a demo.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
@@ -33,7 +34,7 @@ from pathlib import Path
 
 import yaml
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -48,6 +49,10 @@ DAILY_QUESTION_CAP = int(os.environ.get("DEMO_DAILY_CAP", "2000"))
 BURST_PER_IP = int(os.environ.get("DEMO_BURST_PER_IP", "20"))
 BURST_WINDOW_S = 60
 MAX_QUESTION_CHARS = 300
+
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload, default=str)}\n\n"
+
 
 app = FastAPI(title="Lattix — cosmetics supply-chain graph", docs_url=None, redoc_url=None)
 
@@ -123,40 +128,56 @@ def suggestions():
     return [{"id": d["id"], "ask": d["asks"][0]} for d in DEMO]
 
 
-@app.post("/api/ask")
-async def ask(request: Request):
-    body = await request.json()
-    question = (body.get("question") or "").strip()
-    if not question:
-        raise HTTPException(400, "Ask something.")
-    if len(question) > MAX_QUESTION_CHARS:
-        raise HTTPException(400, f"Keep it under {MAX_QUESTION_CHARS} characters.")
-    _meter(_client_ip(request))
-
-    from pipeline import router
-    try:
-        res = router.answer(question, limit=25)
-    except Exception as e:                                    # pragma: no cover
-        raise HTTPException(503, f"The graph did not answer: {e}")
-
-    tier = res.get("tier_floor")
+def _evidence_view(res: dict) -> dict:
+    """One tool result, shaped for the page beside the answer."""
     return {
-        "question": question,
         "template": res.get("template"),
-        "answered_by": res.get("answered_by", "graph context"),
         "intent": " ".join((res.get("intent") or "").split()),
-        "asked_at": time.strftime("%H:%M:%S"),
-        "tier": tier,
+        "tier": res.get("tier_floor"),
         "tier_meaning": res.get("tier_meaning"),
         "note": " ".join((res.get("note") or "").split()) or None,
         "warning": res.get("warning"),
         "empty_reason": res.get("empty_reason"),
         "param_resolution": res.get("param_resolution") or {},
         "rows": res.get("rows") or [],
-        # A context answer is a neighbourhood, not a census, and says so in its own
-        # trust field. Pass it through rather than flattening it into rows.
-        "trust": res.get("trust"),
     }
+
+
+@app.post("/api/ask")
+async def ask(request: Request):
+    """One conversational turn, streamed.
+
+    Server-sent events rather than a single response: a turn runs the model, a reviewed
+    query, sometimes a second query, then the model again — ten seconds or more. The
+    stages are worth showing on their own, because they are the product: a whitelisted
+    query is chosen and returns rows BEFORE any prose exists.
+    """
+    body = await request.json()
+    question = (body.get("question") or "").strip()
+    history = body.get("history") or []
+    if not question:
+        raise HTTPException(400, "Ask something.")
+    if len(question) > MAX_QUESTION_CHARS:
+        raise HTTPException(400, f"Keep it under {MAX_QUESTION_CHARS} characters.")
+    _meter(_client_ip(request))
+
+    def events():
+        from serve import agent
+        try:
+            for ev in agent.stream(question, history):
+                if ev["type"] == "done":
+                    yield _sse({"type": "done",
+                                "reply": ev["reply"],
+                                "asked_at": time.strftime("%H:%M:%S"),
+                                "evidence": [_evidence_view(e) for e in ev["evidence"]]})
+                else:
+                    yield _sse(ev)
+        except Exception as e:                                # pragma: no cover
+            yield _sse({"type": "error", "message": f"The graph did not answer: {e}"})
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"X-Accel-Buffering": "no",
+                                      "Cache-Control": "no-store"})
 
 
 @app.get("/", response_class=HTMLResponse)

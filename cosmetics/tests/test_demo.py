@@ -85,3 +85,45 @@ def test_keyword_routing_survives_a_dead_model(gateway):
         if got is not None and got != spec["template"]:
             wrong.append(f"{qid}: {question!r} -> {got!r} (wanted {spec['template']!r})")
     assert not wrong, "keyword fallback routed to the wrong template:\n  " + "\n  ".join(wrong)
+
+
+@pytest.mark.demo
+@pytest.mark.parametrize("qid,question,spec",
+                         [(d["id"], d["asks"][0], d) for d in DEMO],
+                         ids=[d["id"] for d in DEMO])
+def test_agent_reaches_the_same_evidence(gateway, qid, question, spec):
+    """The demo answers through the console's agent, not through the router directly.
+
+    The router tests above prove the TOOL still works. This proves the thing a customer
+    actually sees: that the agent picks the reviewed query the question needs, and that
+    its prose rests on evidence rather than on the model's own knowledge of cosmetics
+    regulation — which is exactly the failure this product exists to prevent.
+    """
+    from serve import agent
+    res = agent.answer(question)
+
+    assert res["reply"].strip(), f"{qid}: the agent returned no answer"
+    assert res["evidence"], (
+        f"{qid}: the agent answered {question!r} WITHOUT running a query. Prose with no "
+        f"evidence behind it is the one output this product must never produce.")
+
+    used = [e.get("template") for e in res["evidence"]]
+    assert spec["template"] in used, (
+        f"{qid}: expected the agent to run {spec['template']!r}, it ran {used!r}")
+
+
+@pytest.mark.demo
+def test_agent_carries_the_console_skill(gateway):
+    """The demo's instructions ARE the console skill's, read from the skill file.
+
+    A paraphrase kept in the repo drifts from the product within a week, and then the
+    demo stops being the product. If the skill moves, this fails loudly rather than the
+    demo quietly answering under different rules.
+    """
+    from serve import agent
+    assert agent.SKILL_DIR.exists(), f"cosmetics skill missing at {agent.SKILL_DIR}"
+    for marker in ("never write database queries",
+                   "Never present registry presence as a licence",
+                   "Never mix jurisdictions"):
+        assert marker.lower() in agent.SYSTEM.lower(), (
+            f"the skill no longer carries {marker!r} — the demo's guarantees changed")

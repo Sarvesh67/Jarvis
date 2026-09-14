@@ -142,6 +142,17 @@
 
   .err{color:var(--bad);font-size:14px}
 
+  .reply{font-size:14.5px;line-height:1.65;white-space:pre-wrap}
+  .reply p{margin:0 0 10px}
+  .reply p:last-child{margin-bottom:0}
+  .evid{
+    border-top:1px solid var(--line);padding-top:12px;
+    display:flex;flex-direction:column;gap:9px;
+  }
+  .evid-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .evid-name{font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .stage{color:var(--mut);font-size:13.5px}
+
   /* ---------- empty state ---------- */
   .empty{margin:auto;text-align:center;max-width:540px;padding:20px 0 40px}
   .empty h1{
@@ -268,6 +279,8 @@ function scrollDown(){
   m.scrollTop = m.scrollHeight;
 }
 
+const HISTORY = [];
+
 async function ask(question){
   const inner = $("#inner"), go = $("#go");
   const empty = $("#empty");
@@ -281,7 +294,8 @@ async function ask(question){
   const aturn = el("div", "turn");
   const bub = el("div", "abub");
   const think = el("div", "think");
-  think.appendChild(el("span", null, "Querying the graph"));
+  const stage = el("span", "stage", "Thinking");
+  think.appendChild(stage);
   for (let i = 0; i < 3; i++) think.appendChild(el("span", "dot"));
   bub.appendChild(think);
   aturn.appendChild(bub);
@@ -293,12 +307,40 @@ async function ask(question){
       method: "POST",
       headers: {"content-type": "application/json"},
       cache: "no-store",
-      body: JSON.stringify({question})
+      body: JSON.stringify({question, history: HISTORY.slice(-8)})
     });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || "Something went wrong.");
+    if (!r.ok) {
+      let m = "Something went wrong.";
+      try { m = (await r.json()).detail || m; } catch (e) {}
+      throw new Error(m);
+    }
+
+    // Server-sent events, read off the body stream. Each `data:` line is one stage or
+    // the finished turn.
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "", done = null;
+    while (true) {
+      const {value, done: fin} = await reader.read();
+      if (fin) break;
+      buf += dec.decode(value, {stream: true});
+      const parts = buf.split("\n\n");
+      buf = parts.pop();
+      for (const p of parts) {
+        const line = p.split("\n").find(l => l.startsWith("data: "));
+        if (!line) continue;
+        const ev = JSON.parse(line.slice(6));
+        if (ev.type === "stage") { stage.textContent = ev.stage; scrollDown(); }
+        else if (ev.type === "error") throw new Error(ev.message);
+        else if (ev.type === "done") done = ev;
+      }
+    }
+    if (!done) throw new Error("The answer did not arrive. Try again.");
+
     bub.replaceChildren();
-    render(bub, d);
+    render(bub, done);
+    HISTORY.push({role: "user", content: question});
+    HISTORY.push({role: "assistant", content: done.reply});
   } catch (err) {
     bub.replaceChildren(el("div", "err", String(err.message || err)));
   } finally {
@@ -309,67 +351,78 @@ async function ask(question){
 }
 
 function render(bub, d){
-  const [cls, label] = TIER[d.tier] || ["p-warn", "Exploratory — not a reviewed answer"];
-  bub.appendChild(el("span", "pill " + cls, label));
-
-  if (d.rows.length) {
-    // Columns that are empty across every returned row say nothing and cost width.
-    const all = Object.keys(d.rows[0]);
-    const cols = all.filter(c => d.rows.some(r =>
-      r[c] !== null && r[c] !== undefined && String(r[c]).length
-      && !(Array.isArray(r[c]) && !r[c].length)));
-    const wrap = el("div", "scroll"), t = el("table");
-    const hr = el("tr");
-    (cols.length ? cols : all).forEach(c =>
-      hr.appendChild(el("th", null, c.replace(/_/g, " "))));
-    t.appendChild(el("thead")).appendChild(hr);
-    const tb = el("tbody");
-    // A transcript is read, not browsed. Ten rows is enough to make the point and short
-    // enough that the next question stays on screen; the count says what was held back.
-    d.rows.slice(0, 10).forEach(row => {
-      const tr = el("tr");
-      (cols.length ? cols : all).forEach(c => {
-        let v = row[c];
-        if (Array.isArray(v)) v = v.join(", ");
-        const text = (v === null || v === undefined || v === "") ? "—" : String(v);
-        const td = el("td", null, text);
-        if (text.length > 28) td.title = text;   // the cell clips; the hover does not
-        tr.appendChild(td);
-      });
-      tb.appendChild(tr);
+  if (d.reply) {
+    const box = el("div", "reply");
+    // The model writes paragraphs, not markdown. Split on blank lines so they breathe.
+    d.reply.split(/\n\s*\n/).forEach(para => {
+      if (para.trim()) box.appendChild(el("p", null, para.trim()));
     });
-    t.appendChild(tb); wrap.appendChild(t); bub.appendChild(wrap);
-    if (d.rows.length > 10)
-      bub.appendChild(el("div", "more",
-        `Showing 10 of ${d.rows.length} results.`));
-  } else {
-    const n = el("div", "nothing");
-    n.appendChild(el("b", null, "No results — and why"));
-    n.appendChild(el("div", null, d.empty_reason || d.trust
-      || "Nothing matched. That is a gap in what has been collected, not a statement "
-       + "that none exist."));
-    bub.appendChild(n);
+    bub.appendChild(box);
   }
 
-  if (d.warning) bub.appendChild(el("p", "note", d.warning));
-  if (d.note) bub.appendChild(el("p", "note", d.note));
+  (d.evidence || []).forEach(e => bub.appendChild(evidenceBlock(e)));
 
-  // The mechanism, folded away. It is the strongest thing about the product and the
-  // worst thing to lead with: open it when someone asks how the answer was reached,
-  // and it shows free text resolving to a value that exists in the graph.
-  const res = Object.entries(d.param_resolution || {})
-    .filter(([, v]) => v && !/-> None/.test(v));
-  if (d.template || res.length) {
+  if (d.asked_at) {
     const det = el("details", "prov");
     det.appendChild(el("summary", null, "How this was answered"));
     const body = el("div", "prov-body");
     const lines = [];
-    if (d.template) lines.push("reviewed query   " + d.template);
-    res.forEach(([k, v]) => lines.push(String(k).padEnd(17) + v));
-    if (d.asked_at) lines.push("computed at      " + d.asked_at + " — live, not cached");
+    (d.evidence || []).forEach(e => {
+      lines.push("reviewed query   " + (e.template || "—"));
+      Object.entries(e.param_resolution || {})
+        .filter(([, v]) => v && !/-> None/.test(v))
+        .forEach(([k, v]) => lines.push("  " + String(k).padEnd(15) + v));
+    });
+    lines.push("computed at      " + d.asked_at + " — live, not cached");
     body.textContent = lines.join("\n");
     det.appendChild(body);
     bub.appendChild(det);
   }
+}
+
+function evidenceBlock(e){
+  const box = el("div", "evid");
+  const head = el("div", "evid-head");
+  const [cls, label] = TIER[e.tier] || ["p-warn", "Exploratory"];
+  head.appendChild(el("span", "pill " + cls, label));
+  if (e.template) head.appendChild(el("span", "evid-name", e.template));
+  box.appendChild(head);
+
+  const rows = e.rows || [];
+  if (rows.length) {
+    const all = Object.keys(rows[0]);
+    const cols = all.filter(c => rows.some(r =>
+      r[c] !== null && r[c] !== undefined && String(r[c]).length
+      && !(Array.isArray(r[c]) && !r[c].length)));
+    const use = cols.length ? cols : all;
+    const wrap = el("div", "scroll"), t = el("table");
+    const hr = el("tr");
+    use.forEach(c => hr.appendChild(el("th", null, c.replace(/_/g, " "))));
+    t.appendChild(el("thead")).appendChild(hr);
+    const tb = el("tbody");
+    rows.slice(0, 10).forEach(row => {
+      const tr = el("tr");
+      use.forEach(c => {
+        let v = row[c];
+        if (Array.isArray(v)) v = v.join(", ");
+        const text = (v === null || v === undefined || v === "") ? "—" : String(v);
+        const td = el("td", null, text);
+        if (text.length > 28) td.title = text;
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb); wrap.appendChild(t); box.appendChild(wrap);
+    if (rows.length > 10)
+      box.appendChild(el("div", "more", `Showing 10 of ${rows.length} results.`));
+  } else {
+    const n = el("div", "nothing");
+    n.appendChild(el("b", null, "No results — and why"));
+    n.appendChild(el("div", null, e.empty_reason
+      || "Nothing matched. That is a gap in what has been collected, not a statement "
+       + "that none exist."));
+    box.appendChild(n);
+  }
+  return box;
 }
 </script>

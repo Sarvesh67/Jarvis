@@ -24,9 +24,11 @@
     <string>127.0.0.1</string>
     <key>DEMO_PORT</key>
     <string>8099</string>
-    <!-- ~$3.60/day of routing at the measured $0.0018 a question. -->
+    <!-- The answering agent is the console's own: Sonnet reasoning over a reviewed
+         query, measured at ~$0.010 a question. 400 is ~$4/day, and a 20-question
+         demo costs about 21 cents. -->
     <key>DEMO_DAILY_CAP</key>
-    <string>2000</string>
+    <string>400</string>
     <key>DEMO_BURST_PER_IP</key>
     <string>20</string>
     <key>PATH</key>
