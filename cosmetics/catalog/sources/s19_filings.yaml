@@ -1,0 +1,87 @@
+id: s19
+slug: filings
+name: SEBI public-issue filings (DRHP / RHP / prospectus)
+tier: 2
+status: not_built
+jurisdiction: IN
+
+what_it_is: >
+  Draft and final offer documents filed with SEBI by companies going public. Free,
+  full-text, legally attested, and fetchable without a key. Assessed as the route to
+  THIRD_PARTY_MANUFACTURED_BY, which the ontology declares and which holds 0 edges.
+  Assessed and declined — see decisions/0015.
+
+what_it_answers:
+  - "Which firm manufactures for which brand, with a name on both ends?"
+
+publisher:
+  org: Securities and Exchange Board of India
+  url: https://www.sebi.gov.in/filings/public-issues.html
+  access: open
+
+acquisition:
+  adapter: null
+  method: none
+  landed_at: null
+  payloads: 0
+  bytes: 0
+  first_seen: null
+  last_seen: null
+  refresh:
+    cadence: never
+    why: Not built.
+  # Recorded so a later attempt does not repeat the reconnaissance.
+  reconnaissance:
+    listing: GET /sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10 — paginated, no key
+    landing: /filings/public-issues/<mon-yyyy>/<slug>_<id>.html
+    document: /sebi_data/attachdocs/<mon-yyyy>/<id>.pdf — full DRHP, ~8 MB, plain fetch
+    extraction: pdfminer.six, ~26s for 1.78M characters. No OCR needed.
+
+volume:
+  raw_rows: 0
+  graph: {}
+
+coverage:
+  claimed: null
+  obtained: 0
+  pct: 0.0
+  note: >
+    Not a coverage problem — a disclosure-asymmetry problem. Read in full: Honasa
+    (Mamaearth) DRHP, 1.78M chars, and Akums Drugs RHP, 2.09M chars.
+
+defects:
+  - >
+    A BRAND's filing never names its manufacturers. Honasa discloses 37 contract
+    manufacturers and their concentration share and names none of them; the document
+    contains zero `M/s`. SEBI requires disclosure of customer concentration, not of
+    supplier identity. Any plan that starts from the brands returns nothing.
+  - >
+    A MANUFACTURER's filing does name its customers, because losing one is a material risk
+    it must disclose. Akums names Ipca, Alembic, Alkem, Blue Cross, Mylan, Cure Healthcare,
+    Maxcure Nutravedics and others. The mechanism works; only the direction was wrong.
+  - >
+    Even so, it does not pay here. Akums mentions cosmetics 86 times but every named
+    counterparty is pharmaceutical, and the only names near a cosmetics sentence are its
+    own subsidiaries. Indian cosmetics contract manufacturing is proprietorships and
+    partnerships, which do not file with SEBI at all.
+  - >
+    DRHPs carry NO licence numbers. "Government and Other Approvals" lists licence types in
+    prose, never a number, authority or validity. This corpus does not touch the COS-8 gap.
+
+feeds:
+  nodes: []
+  edges: []
+
+do_not:
+  - >
+    Do not read a brand's disclosure that it "works with 37 contract manufacturers" as
+    evidence about any particular firm. The count is real and the identities are absent;
+    pairing it with a plausible manufacturer already in the graph would manufacture a
+    relationship the document does not assert.
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+keys:
+  raw_company: null
+  fetch_manifest: null
+  raw_dir: null

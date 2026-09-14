@@ -120,6 +120,30 @@ mechanically rather than by convention.
 `IN_CLUSTER_WITH` is absent by choice — it is a clique, and `Cluster(Ahmedabad-Vapi)` alone
 has ~17,000 neighbours. A two-hop traversal answers it. See `catalog/decisions/0013`.
 
+## The other empty edge
+
+`THIRD_PARTY_MANUFACTURED_BY` holds **0 edges**. The ontology declares it and
+`catalog/decisions/0002` routes every "who manufactures for whom" question to it, because
+the CDSCO register gives a pairing whose direction is unknown. Nothing has ever fed it.
+
+SEBI filings were the obvious candidate — free, full-text, legally attested, and this
+project already has the chunking and entity-linking machinery. Two were read end to end,
+and they say something specific about why this is hard.
+
+Honasa (Mamaearth) outsources all manufacturing. Its DRHP discloses that it sourced from
+**37 contract manufacturers** and that the top three were up to 82% of purchases. It names
+**none of them** — the document contains zero `M/s`. Akums, a manufacturer, names its
+customers freely: Ipca, Alembic, Alkem, Blue Cross, Mylan.
+
+That asymmetry is regulatory, not editorial. A filer must disclose **customer**
+concentration, because losing a customer is a material risk to it. Supplier identity is
+not required and is commercially sensitive. So the relationship is only ever visible from
+the factory's filing, pointing outward — and Indian cosmetics contract manufacturing is
+proprietorships and partnerships, which never file with SEBI at all.
+
+The edge stays empty, and the reason is now written down rather than open. Same commitment
+as `PERMITS`. See `catalog/decisions/0015`.
+
 ## Blocked on a key, not on a decision
 
 **S3 — MCA company master** needs a data.gov.in key with MCA access. Worth noting that

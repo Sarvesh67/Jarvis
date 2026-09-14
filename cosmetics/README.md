@@ -109,6 +109,7 @@ Everything binds to `127.0.0.1`. Nothing is exposed off-box.
 | S17b | **Udyam MSME registry, NATIONAL** (data.gov.in) | 1 | the long tail + packaging converters, every cluster | **live** |
 | S11 | **NABL accredited testing laboratories** | 1 | who can legally TEST the product | **live** |
 | S10/S12/S13 | IndiaMART, retail, trade data | 3-4 | enrichment | not built |
+| S19 | SEBI public-issue filings (DRHP/RHP) | 2 | assessed for `THIRD_PARTY_MANUFACTURED_BY` | **not built — brands never name their manufacturers, see decisions/0015** |
 
 ### Corrections to the build spec, found by building it
 
