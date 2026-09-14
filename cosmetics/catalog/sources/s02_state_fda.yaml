@@ -1,0 +1,134 @@
+id: s02
+slug: state_fda
+name: State FDA / ONDLS cosmetics licences (COS-8 / COS-9)
+tier: 1
+status: no_bulk_source
+jurisdiction: IN
+
+what_it_is: >
+  The actual Indian cosmetics manufacturing licence. Issued by state FDAs, not CDSCO.
+  This is the single most important missing source in the project: it is the only tier-1
+  answer to "is this firm licensed to make cosmetics", and S1 does not substitute for it.
+
+what_it_answers:
+  - "Does this firm hold a COS-8 (manufacture) or COS-9 (loan) licence?"
+  - "Which categories does that licence permit?"
+
+publisher:
+  org: State Food & Drug Administrations / ONDLS portals
+  url: null
+  access: none
+
+acquisition:
+  adapter: null
+  method: none
+  landed_at: raw/s02_state_fda/
+  payloads: 0
+  bytes: 0
+  first_seen: null
+  last_seen: null
+  refresh:
+    cadence: never
+    why: Nothing to refresh.
+
+volume:
+  raw_rows: 0
+  graph: {}
+
+coverage:
+  claimed: 544
+  obtained: 0
+  pct: 0.0
+  claimed_basis: >
+    ONDLS publishes a live count of active licences by type and state at
+    /SFDA/ondls-data-analytics.html ("Manufacturer of Cosmetics"). Probed 2026-09-14:
+    544 nationally, and the 14 state counts below sum to exactly 544.
+  note: >
+    544 is a FLOOR, not the population. ONDLS is a partial national system: only 14 of 37
+    jurisdictions report any cosmetics licence through it, and the states that dominate
+    this industry report zero because they never onboarded cosmetics licensing — they
+    issue on their own portals. Treat `claimed` as "the part of the denominator that is
+    currently visible", never as the number of COS-8/COS-9 licences in India.
+    ONDLS does not distinguish COS-8 from COS-9; it carries one "Cosmetics
+    (Manufacturing License)" type.
+
+# Checked state by state on 2026-09-14 rather than assumed. This replaces the blanket
+# claim "no state publishes a bulk list", which had never been enumerated.
+ondls_cosmetics_licences:
+  probed_on: 2026-09-14
+  method: >
+    POST /SFDA/getStateWiseLicenceCountForStats with status=<instId>, the state ids being
+    the options of #instituteId on the analytics page. Counts only — ONDLS exposes no
+    listing endpoint, so this gives a denominator and never a row.
+  reporting:
+    Kerala: 186
+    Haryana: 90
+    Rajasthan: 90
+    Uttar Pradesh: 63
+    Puducherry: 34
+    Dadra and Nagar Haveli: 29
+    Daman and Diu: 18
+    Assam: 11
+    Jammu and Kashmir: 9
+    Uttarakhand: 6
+    Jharkhand: 5
+    Bihar: 1
+    Chandigarh: 1
+    Nagaland: 1
+  reporting_zero:
+    count: 23
+    # The ones that matter: these are where the industry actually is.
+    notable: [Gujarat, Maharashtra, Delhi, Tamil Nadu, Karnataka, Himachal Pradesh,
+              West Bengal, Madhya Pradesh, Telangana, Punjab, Andhra Pradesh]
+  consequence: >
+    Gujarat is this project's Udyam spine and its largest cluster, and it reports ZERO
+    cosmetics licences on ONDLS. So even a complete ONDLS harvest would not cover the
+    firms the graph is mostly made of. Per-state acquisition is not a fallback here, it
+    is the only route for the states that matter.
+
+# Probed 2026-09-14 with the three cosmetics-regime licence numbers held from S1
+# (10/C/UA/2013, 2/C/UA/LL/2015, M-742/L) and, as a control, four recent S1 DRUG licence
+# numbers. All seven returned {"error":"No records found for the given license number."}
+# The response field is `str_ondls_licence_no`: ONDLS verifies against its OWN licence
+# identifier, not the state-issued number that CDSCO publishes and that a product label
+# carries. So "scrape the M.L. No. off a pack, verify it at tier 1" does not work — the
+# two numbering systems do not meet.
+third_party_verification:
+  endpoint: GET /SFDA/verifyLicense?licenseNo=...
+  returns: [licence_no, form_no, firm_name, firm_address, issue_date, status,
+            technical_member, product_details]
+  usable_as_a_pipeline: false
+  why: >
+    Keyed on the ONDLS licence number, which is not the number printed on a label or
+    published by CDSCO. Every S1 number tested missed, cosmetics and drugs alike. It also
+    answers one licence per request behind a reCAPTCHA'd page, so it could only ever
+    confirm a number already known, never enumerate.
+  worth_noting: >
+    The verification response carries a `product_details` table. If the ONDLS number for a
+    firm were ever obtained legitimately, that is the one observed place where a tier-1
+    licence-to-product link exists. It is the nearest thing to a PERMITS source found so
+    far. See decisions/0012 before acting on it.
+
+blocked_on: >
+  A per-state acquisition strategy for the 23 jurisdictions ONDLS does not cover, Gujarat
+  and Maharashtra first. RTI to the State Licensing Authority is the only route tested
+  here that is not blocked by a portal design decision. Each state is its own project.
+
+defects: []
+
+feeds:
+  nodes: [Licence]
+  edges: [LICENSED_UNDER, PERMITS]
+
+do_not:
+  - >
+    THIS IS WHY `PERMITS` IS EMPTY AND THE COVERAGE TABLE SAYS 0%. That is deliberate
+    honesty, not a bug. Never let the graph imply licensed permission it cannot evidence.
+    SERVES_CATEGORY (tier 4, from NIC activity) provides a ranking path only.
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+keys:
+  raw_company: null
+  fetch_manifest: null
+  raw_dir: null
