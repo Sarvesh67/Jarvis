@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lattix.tunnel</string>
+
+  <!-- Written here rather than left to `cloudflared service install`, which generated a
+       plist whose ProgramArguments were the bare binary with NO arguments: cloudflared
+       then printed "use `cloudflared tunnel run` to start tunnel ..." and exited 1, on a
+       five-second KeepAlive loop, while the tunnel never connected. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/cloudflared</string>
+    <string>--no-autoupdate</string>
+    <string>--config</string>
+    <string>/Users/sarvesh/.cloudflared/config.yml</string>
+    <string>tunnel</string>
+    <string>run</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/sarvesh/Library/Logs/com.lattix.tunnel.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/sarvesh/Library/Logs/com.lattix.tunnel.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/sarvesh</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>

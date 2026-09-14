@@ -27,6 +27,7 @@ TUNNEL=lattix-demo
 HOSTNAME_=demo.lattix.co.in
 COS_DIR="$JARVIS_ROOT/cosmetics"
 PLIST=com.lattix.demo.plist
+TUNNEL_PLIST=com.lattix.tunnel.plist
 
 [ -f "$HOME/.cloudflared/cert.pem" ] || fail \
   "Not logged in. Run: cloudflared tunnel login  (pick lattix.co.in in the browser)"
@@ -117,18 +118,32 @@ launchctl list com.lattix.demo >/dev/null 2>&1 \
 survive a reboot. Check: launchctl list com.lattix.demo"
 log "App healthy on 127.0.0.1:8099, managed by launchd"
 
-# NOT sudo. `cloudflared service install` installs a USER launch agent on macOS, so under
-# sudo it installs against root's home and then looks for /var/root/.cloudflared/config.yml,
-# which is not the file written above.
-log "Installing the tunnel as a login service..."
-if ! SVC_OUT=$(cloudflared service install 2>&1); then
-  case "$SVC_OUT" in
-    *"already exists"*|*"already installed"*)
-      log "  tunnel service already installed" ;;
-    *) printf '%s\n' "$SVC_OUT" >&2
-       fail "could not install the tunnel service (see above)" ;;
-  esac
+# `cloudflared service install` is NOT used, having generated a plist whose
+# ProgramArguments were the bare binary with no arguments — cloudflared printed "use
+# `cloudflared tunnel run` to start tunnel ..." and exited 1, forever, on a five-second
+# KeepAlive loop. Our own agent names the command explicitly. Remove theirs if a previous
+# run installed it, or two services fight over one tunnel.
+log "Installing the tunnel launch agent..."
+if [ -f "$HOME/Library/LaunchAgents/com.cloudflare.cloudflared.plist" ]; then
+  log "  removing the no-op service cloudflared installed"
+  launchctl unload "$HOME/Library/LaunchAgents/com.cloudflare.cloudflared.plist" 2>/dev/null || true
+  rm -f "$HOME/Library/LaunchAgents/com.cloudflare.cloudflared.plist"
 fi
+cp "$JARVIS_ROOT/launchagents/$TUNNEL_PLIST" "$HOME/Library/LaunchAgents/$TUNNEL_PLIST"
+launchctl unload "$HOME/Library/LaunchAgents/$TUNNEL_PLIST" 2>/dev/null || true
+pkill -f "cloudflared.*tunnel run" 2>/dev/null && sleep 1
+launchctl load "$HOME/Library/LaunchAgents/$TUNNEL_PLIST"
+
+# The tunnel takes a few seconds to register, and cloudflared's own CONNECTIVITY
+# PRE-CHECKS block reports UDP/TCP/API failures on networks where the tunnel then
+# connects perfectly well. Ignore it and wait for a registered connection instead.
+log "Waiting for the tunnel to register..."
+for i in $(seq 1 30); do
+  grep -q "Registered tunnel connection" "$HOME/Library/Logs/com.lattix.tunnel.log" 2>/dev/null && break
+  [ "$i" = 30 ] && fail "the tunnel did not register — see ~/Library/Logs/com.lattix.tunnel.log"
+  sleep 2
+done
+log "  tunnel registered"
 
 # Nothing above proves the tunnel actually CONNECTED, and a setup script that prints a URL
 # it never tried is how an afternoon disappears. Ask Cloudflare for the hostname and see
@@ -137,20 +152,37 @@ fi
 log "Checking $HOSTNAME_ end to end..."
 CODE=""
 for i in $(seq 1 20); do
-  CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "https://$HOSTNAME_/healthz" || echo 000)
+  # `curl -w '%{http_code}'` ALREADY prints 000 when it cannot connect, so appending
+  # `|| echo 000` produced "000000" — which matched no case below, broke the loop on the
+  # first pass, and reported a dead hostname as live.
+  CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "https://$HOSTNAME_/healthz" || true)
   case "$CODE" in
     530|000|502|504) sleep 3 ;;
     *) break ;;
   esac
 done
+# HTTP 000 means curl never got a response, and the two reasons need opposite fixes.
+# `dig` talks to a DNS server; curl goes through the system resolver — so on a Mac that
+# looked this name up BEFORE the record existed, dig resolves and curl does not, and the
+# tunnel gets blamed for a stale negative cache.
+if [ "$CODE" = "000" ] && ! curl -s -o /dev/null --max-time 8 "https://$HOSTNAME_/healthz" 2>&1 \
+     && ! ping -c1 -t1 "$HOSTNAME_" >/dev/null 2>&1 && dig +short "$HOSTNAME_" | grep -q .; then
+  fail "$HOSTNAME_ resolves in DNS but not through this Mac's resolver — a negative answer \
+cached before the record existed. Flush it and re-run:
+    sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder"
+fi
 case "$CODE" in
   530|000) fail "$HOSTNAME_ is not reaching a connected tunnel (HTTP $CODE). Check: \
 cloudflared tunnel info $TUNNEL" ;;
   502|504) fail "the tunnel is connected but the app is not answering through it (HTTP \
 $CODE). Check the ingress block in ~/.cloudflared/config.yml points at port 8099." ;;
   200)     log "  HTTP 200 — live, and not yet gated. Add Access before sharing the link." ;;
-  *)       log "  HTTP $CODE — live (a redirect or 403 here means Cloudflare Access is \
-already in front of it, which is what you want)." ;;
+  301|302|303|307|308|401|403)
+           log "  HTTP $CODE — live, and Cloudflare Access is already in front of it." ;;
+  # Anything else is unrecognised, and an unrecognised code is not evidence of success.
+  # Saying "live" here once already hid a hostname that did not resolve at all.
+  *)       fail "unexpected HTTP $CODE from https://$HOSTNAME_/healthz — not calling that \
+working. Check: cloudflared tunnel info $TUNNEL" ;;
 esac
 
 cat <<TXT
