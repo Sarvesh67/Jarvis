@@ -171,6 +171,67 @@ def _resolver(project: str):
     )
 
 
+async def _ingest_items(project: str, job: dict):
+    """Batch-ingest many small docs that each carry their own tags, then cognify ONCE.
+
+    `cognee.cognify()` is incremental (it processes whatever is un-cognified in the dataset), so the
+    cheap shape for N documents is: N× `add(..., node_set=<that doc's tags>)` then a single
+    `cognify()`. Per-item `add` is required because node_set is per-call — that's what keeps each
+    firm reachable by its own `district:`/`makes:`/`needs:` tags.
+    """
+    items = job.get("items") or []
+    model_role = (job.get("model") or "").strip() or "extractor"
+
+    _say(f"configuring Cognee for project '{project}'…")
+    jc.configure(project)
+    models_map = _models_cfg(project)
+    model_alias = _cognee_model(routing.gateway_model(model_role, models_map))
+
+    # Cognee's metadata store is SQLite. Firing hundreds of add()s back-to-back makes its writers
+    # contend and the run dies with "database is locked" (observed at ~19/491). Add sequentially
+    # with a brief yield + bounded retry/backoff so the batch completes on a laptop-grade DB.
+    _say(f"batch: adding {len(items)} item(s) with per-item node_sets…")
+    added, skipped = 0, 0
+    for i, it in enumerate(items, 1):
+        text = (it.get("text") or "").strip()
+        if not text:
+            continue
+        tags = [t for t in (it.get("tags") or []) if t] or None
+        for attempt in range(5):
+            try:
+                await cognee.add(text, dataset_name=project, node_set=tags)
+                added += 1
+                break
+            except Exception as e:  # noqa: BLE001
+                if "locked" not in str(e).lower() or attempt == 4:
+                    skipped += 1
+                    _say(f"  ! item {i} skipped: {str(e)[:110]}")
+                    break
+                await asyncio.sleep(0.4 * (attempt + 1))  # back off, let the writer drain
+        await asyncio.sleep(0.02)  # yield so SQLite can commit between inserts
+        if i % 50 == 0:
+            _say(f"  added {i}/{len(items)}…")
+    if skipped:
+        _say(f"  {skipped} item(s) could not be added")
+    if added == 0:
+        _say("nothing to cognify (no non-empty items)")
+        _say("INGEST_DONE")
+        return
+
+    resolver = _resolver(project)
+    cog_kwargs = {"datasets": [project]}
+    if resolver is not None:
+        cog_kwargs["config"] = {"ontology_config": {"ontology_resolver": resolver}}
+        _say(f"cognifying {added} item(s) with ontology via {model_alias} — this can take a while…")
+    else:
+        _say(f"cognifying {added} item(s) via {model_alias} — this can take a while…")
+
+    cognee.config.set_llm_model(model_alias)
+    await cognee.cognify(**cog_kwargs)
+    _say(f"~tokens: cognify inputs≈{sum(_est_tokens(i.get('text','')) for i in items)}")
+    _say("INGEST_DONE")
+
+
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--project", required=True)
@@ -179,6 +240,15 @@ async def main():
     project = args.project
 
     job = json.loads(pathlib.Path(args.job).read_text())
+
+    # --- Batch path: `items` = [{text, tags}, ...] — many small docs, each with its OWN node_set,
+    #     added individually then cognified in ONE incremental pass. Used by msme/promote.py to
+    #     promote hundreds of firm profiles without paying process-spawn + cognify startup per doc.
+    #     Mutually exclusive with the text/files path below (which stays untouched).
+    if job.get("items"):
+        await _ingest_items(project, job)
+        return
+
     text = (job.get("text") or "").strip()
     files = job.get("files") or []
     tags = [t for t in (job.get("tags") or []) if t]

@@ -56,6 +56,23 @@ def project_key(project: str) -> str:
     return key
 
 
+# Projects whose Cognee (semantic) layer lives in its OWN FalkorDB graph, separate from a large
+# deterministic backbone written by another subsystem.
+#
+# WHY: Cognee's cognify does graph-wide entity matching. When its layer shares a graph with msme's
+# 326k-node `:Enterprise` backbone (written by msme/graph.py), every extraction fuzzy-matches against
+# all of it — measured: 3 documents finish in 40s in a 52-node graph but spin at 99.5% CPU
+# indefinitely in the 326k-node one. (Same co-residency root cause as the adapter's bare
+# `MATCH (n)` needing `id` on every node — see msme/README.md.) Keeping them apart makes the
+# semantic layer usable; the two node sets were never linked anyway.
+SEMANTIC_GRAPH_SUFFIX = {"msme": "_semantic"}
+
+
+def graph_name(project: str) -> str:
+    """FalkorDB graph backing this project's Cognee dataset."""
+    return f"{project}{SEMANTIC_GRAPH_SUFFIX.get(project, '')}_graph"
+
+
 def configure(project: str) -> str:
     """Point Cognee at FalkorDB + the LiteLLM gateway for the given project."""
     if project not in PROJECT_KEYS:
@@ -99,7 +116,7 @@ def configure(project: str) -> str:
             "graph_database_provider": "falkor",
             "graph_database_url": "localhost",
             "graph_database_port": 6379,
-            "graph_database_name": f"{project}_graph",
+            "graph_database_name": graph_name(project),
             "graph_dataset_database_handler": "falkor_graph_local",
         }
     )
@@ -111,7 +128,7 @@ def configure(project: str) -> str:
             # Same graph as the graph store: FalkorDB is a hybrid (graph + vector) store, so
             # both live in one per-project graph. Without this, vector_db_name defaults to ""
             # and FalkorDB rejects the empty graph key.
-            "vector_db_name": f"{project}_graph",
+            "vector_db_name": graph_name(project),
             "vector_dataset_database_handler": "falkor_vector_local",
         }
     )

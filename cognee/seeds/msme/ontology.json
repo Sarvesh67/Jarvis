@@ -1,0 +1,20 @@
+{
+  "entityTypes": [
+    "Enterprise",
+    "NICClass",
+    "Material",
+    "District"
+  ],
+  "relationTypes": [
+    {"name": "CLASSIFIED_AS", "source": "Enterprise", "target": "NICClass"},
+    {"name": "LOCATED_IN", "source": "Enterprise", "target": "District"},
+    {"name": "PRODUCES", "source": "NICClass", "target": "Material"},
+    {"name": "CONSUMES", "source": "NICClass", "target": "Material"},
+    {"name": "SUBCLASS_OF", "source": "NICClass", "target": "NICClass"},
+    {"name": "SELLS_TO", "source": "Enterprise", "target": "Enterprise"},
+    {"name": "BUYS_FROM", "source": "Enterprise", "target": "Enterprise"},
+    {"name": "COMPETES_WITH", "source": "Enterprise", "target": "Enterprise"}
+  ],
+  "tags": ["msme_profile"],
+  "owlFile": null
+}
