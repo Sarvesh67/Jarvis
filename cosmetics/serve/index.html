@@ -353,9 +353,17 @@ async function ask(question){
 function render(bub, d){
   if (d.reply) {
     const box = el("div", "reply");
-    // The model writes paragraphs, not markdown. Split on blank lines so they breathe.
     d.reply.split(/\n\s*\n/).forEach(para => {
-      if (para.trim()) box.appendChild(el("p", null, para.trim()));
+      if (!para.trim()) return;
+      const p = el("p");
+      // The model emphasises a company or a figure with **bold** even when asked for
+      // plain prose. Render that one inline form rather than printing the asterisks;
+      // everything else is inserted as text, so no markup from the model reaches the DOM.
+      para.trim().split(/(\*\*[^*]+\*\*)/).forEach(seg => {
+        if (/^\*\*[^*]+\*\*$/.test(seg)) p.appendChild(el("strong", null, seg.slice(2, -2)));
+        else if (seg) p.appendChild(document.createTextNode(seg));
+      });
+      box.appendChild(p);
     });
     bub.appendChild(box);
   }

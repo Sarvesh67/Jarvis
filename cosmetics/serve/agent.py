@@ -32,18 +32,21 @@ from pipeline import router as _router  # noqa: E402
 # Matches `model.default` in ~/.hermes/profiles/cosmetics/config.yaml.
 MODEL = os.environ.get("DEMO_MODEL", "reasoner")
 GATEWAY = "http://127.0.0.1:4000/v1/chat/completions"
-MAX_TOOL_CALLS = 4          # the skill's worked example needs two; four leaves headroom
+MAX_TOOL_CALLS = 6          # schema + cypher + a template chain still fits
 MAX_HISTORY_TURNS = 8
 
-SKILL_DIR = (Path.home() / ".hermes" / "profiles" / "cosmetics"
-             / "skills" / "jarvis-cosmetics-search")
+# In the repo, and symlinked into ~/.hermes so the console agent loads this same file.
+# Read from the repo path rather than through the symlink: the demo should fail loudly
+# if the skill is missing from version control, not quietly fall back to whatever a
+# machine happens to have in its profile directory.
+SKILL_DIR = ROOT / "skills" / "jarvis-cosmetics-search"
 
 
 def _skill_text() -> str:
     """The skill as the console agent receives it, plus its operational reference."""
     parts = []
     for p in (SKILL_DIR / "SKILL.md",
-              SKILL_DIR / "jarvis-cosmetics-search" / "references" / "system.md"):
+              SKILL_DIR / "references" / "system.md"):
         try:
             parts.append(p.read_text())
         except OSError:
@@ -55,11 +58,7 @@ def _skill_text() -> str:
     return "\n\n---\n\n".join(parts)
 
 
-# NOTE: that skill lives ONLY under ~/.hermes and is not version-controlled, so the
-# contract the console agent and this demo both answer under is one `rm -rf` from gone
-# and has no history. `serve/SKILL.md.reference` is a dated copy for recovery — it is
-# NOT read at runtime, deliberately: a fallback that silently works would let the demo
-# keep answering under stale rules after the real skill changed.
+
 
 
 SYSTEM = _skill_text() + """
@@ -84,26 +83,46 @@ still governs what you may claim; this only changes how you say it.
 * Never invent a company, licence number, certificate or figure that is not in the rows.
 """
 
-TOOLS = [{
-    "type": "function",
-    "function": {
-        "name": "query_graph",
-        "description": ("Run ONE reviewed query against the cosmetics supply-chain graph "
-                        "and return bounded JSON. Choose the template yourself from the "
-                        "table in your instructions; pass parameter values exactly as the "
-                        "user said them."),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "template": {"type": "string",
-                             "description": "template id, e.g. testing_labs_for_cosmetics"},
-                "params": {"type": "object",
-                           "description": "declared params, e.g. {\"cluster\": \"Baddi\"}"},
-            },
-            "required": ["template"],
-        },
-    },
-}]
+# All three paths the skill describes. The skill decides which to use and when; this
+# only makes each reachable as a function call instead of a shell command.
+TOOLS = [
+    {"type": "function", "function": {
+        "name": "query_template",
+        "description": ("Path 1 — run ONE reviewed query. The ONLY path that may support "
+                        "a regulatory claim. Choose the template from the table in your "
+                        "instructions; pass parameter values exactly as the user said "
+                        "them."),
+        "parameters": {"type": "object", "properties": {
+            "template": {"type": "string",
+                         "description": "template id, e.g. testing_labs_for_cosmetics"},
+            "params": {"type": "object",
+                       "description": "declared params, e.g. {\"district\": \"Navsari\"}"},
+        }, "required": ["template"]}}},
+    {"type": "function", "function": {
+        "name": "graph_context",
+        "description": ("Path 2 — the neighbourhood around what the question mentions, "
+                        "for open questions. A SAMPLE, not a census: never count or rank "
+                        "from it. Exploratory, never a regulatory claim."),
+        "parameters": {"type": "object", "properties": {
+            "question": {"type": "string"},
+        }, "required": ["question"]}}},
+    {"type": "function", "function": {
+        "name": "graph_schema",
+        "description": ("Read the live schema. Do this BEFORE writing Cypher — it lists "
+                        "every label and relationship type with counts, and the mistakes "
+                        "that have already produced wrong answers here."),
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "run_cypher",
+        "description": ("Path 3 — Cypher YOU write, for counting, ranking and joins no "
+                        "template covers. Validated read-only and bounded before it runs; "
+                        "a rejection names the offending fragment so you can repair and "
+                        "retry. Exploratory, never a regulatory claim. Read the schema "
+                        "first."),
+        "parameters": {"type": "object", "properties": {
+            "cypher": {"type": "string"},
+        }, "required": ["cypher"]}}},
+]
 
 
 def _call_gateway(messages: list[dict]) -> dict:
@@ -134,11 +153,49 @@ def _for_model(res: dict) -> dict:
 
 
 def _run_template(template: str, params: dict | None) -> dict:
-    """The tool. Whitelisted templates only — an unknown id is answered, not executed."""
+    """Path 1. Whitelisted templates only — an unknown id is answered, not executed."""
     if template not in _router.TEMPLATES:
         return {"error": f"no such template {template!r}",
                 "available": sorted(_router.TEMPLATES)}
     return _router.answer("", template=template, params=params or {}, limit=25)
+
+
+def _dispatch(name: str, args: dict) -> dict:
+    """Route a tool call to the path the skill asked for."""
+    if name == "query_template":
+        return _run_template(args.get("template", ""), args.get("params"))
+    if name == "graph_context":
+        return _router.answer(args.get("question", ""), mode="context")
+    if name == "graph_schema":
+        from pipeline.schema_card import build, render
+        drv = lib.neo4j_driver()
+        try:
+            with drv.session() as s:
+                return {"answered_by": "schema", "schema": render(build(s))}
+        finally:
+            drv.close()
+    if name == "run_cypher":
+        from pipeline.cypher_guard import run as guarded
+        # The guard needs the QUESTION to judge whether a compliance claim is being made
+        # from a query nobody reviewed. Without it that check cannot fire.
+        return guarded(args.get("cypher", ""), question=_dispatch.question)
+    return {"error": f"no such tool {name!r}"}
+
+
+_dispatch.question = ""
+
+
+def _label(name: str, args: dict) -> str:
+    """What to show the viewer while a path runs."""
+    if name == "query_template":
+        return "Running " + (args.get("template") or "a reviewed query").replace("_", " ")
+    if name == "graph_context":
+        return "Pulling the surrounding neighbourhood"
+    if name == "graph_schema":
+        return "Reading the live schema"
+    if name == "run_cypher":
+        return "Writing and validating a query"
+    return "Querying"
 
 
 def answer(question: str, history: list[dict] | None = None) -> dict:
@@ -183,13 +240,13 @@ def stream(question: str, history: list[dict] | None = None):
                 args = json.loads(fn.get("arguments") or "{}")
             except json.JSONDecodeError:
                 args = {}
-            tid = args.get("template", "")
-            yield {"type": "stage",
-                   "stage": f"Running {tid.replace('_', ' ')}" if tid else "Querying"}
-            res = _run_template(tid, args.get("params"))
-            if not res.get("error"):
+            name = fn.get("name") or "query_template"
+            yield {"type": "stage", "stage": _label(name, args)}
+            _dispatch.question = question
+            res = _dispatch(name, args)
+            if not res.get("error") and name != "graph_schema":
                 evidence.append(res)
-                n = len(res.get("rows") or [])
+                n = len(res.get("rows") or res.get("nodes") or [])
                 yield {"type": "stage",
                        "stage": (f"{n} result{'' if n == 1 else 's'} — writing the answer"
                                  if n else "No rows — checking why, then another query")}

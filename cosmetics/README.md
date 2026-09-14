@@ -79,13 +79,30 @@ itself, and `make catalog-check` fails when a card has drifted from the live sto
 | **Catalog snapshots** | `catalog/snapshots/` | Dated measurements, committed, so growth is reviewable over time. |
 | **Public demo** | `serve/` → https://demo.lattix.co.in | One question box, for someone who has not read any of this. `setup/09_demo.sh`. |
 
+### The agent's skill lives here
+
+`skills/jarvis-cosmetics-search/` is the contract both answering surfaces run under — the
+Jarvis console chat and the public demo. `~/.hermes/profiles/cosmetics/skills/` holds a
+**symlink** to it, maintained by `setup/09_demo.sh`, so there is one file and one history.
+
+It was not always so, and the failure mode is worth recording because it is silent: the
+profile held a real directory containing a v1 skill, with a **newer v2 one level below it**
+where nothing loaded it. The console answered under v1 — templates only — for five days
+while the repo documented three answer paths. `tests/test_demo.py` now asserts the symlink
+resolves to this directory, so the two cannot drift again.
+
 ### The public demo
 
-`serve/app.py` is a deliberately smaller surface than the dashboard: read-only, no
-Postgres credentials at all (the query path never touches it, and people live there),
-and no generated Cypher — `--mode cypher` assumes a caller that has read the schema card
-and can repair a rejected query, which a public box cannot. Templates and graph context
-only.
+`serve/agent.py` runs the same loop the console's Hermes agent runs, on the model the
+profile names, under the skill above: it chooses a path, runs it, reads the honesty
+metadata and reasons over the JSON. All three paths are reachable — reviewed templates,
+graph context, and Cypher the agent writes — because a demo of a narrower product is a
+demo of a different product.
+
+What is NOT carried over is the rest of Hermes: terminal, browser, filesystem and MCP
+toolsets. The console has them because someone trusted is driving it. `serve/app.py` also
+holds no Postgres credentials at all — the query path never touches it, and people live
+there.
 
 Its suggested questions are served from `validate/demo_questions.yaml`, the same file
 `tests/test_demo.py` asserts still works, so a question cannot appear on the page unless

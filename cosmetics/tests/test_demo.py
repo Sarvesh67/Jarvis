@@ -13,6 +13,7 @@ offline. Run it before a demo:
 """
 from __future__ import annotations
 
+import pathlib
 import sys
 from pathlib import Path
 
@@ -114,16 +115,41 @@ def test_agent_reaches_the_same_evidence(gateway, qid, question, spec):
 
 @pytest.mark.demo
 def test_agent_carries_the_console_skill(gateway):
-    """The demo's instructions ARE the console skill's, read from the skill file.
+    """The demo's instructions ARE the console skill's, read from the versioned file.
 
-    A paraphrase kept in the repo drifts from the product within a week, and then the
-    demo stops being the product. If the skill moves, this fails loudly rather than the
-    demo quietly answering under different rules.
+    The demo and the console agent load the same `cosmetics/skills/` directory — the
+    console through a symlink from ~/.hermes. A paraphrase kept separately drifts from
+    the product within a week, and then the demo stops being the product.
+
+    The guarantees asserted here are v2's, and they are deliberately NOT "the model never
+    writes a query": v2 lets it, under a guard, for counting and ranking. What must hold
+    is the claim-based rule that replaced the structural one — a REGULATORY claim may
+    still only come from a reviewed template.
     """
     from serve import agent
     assert agent.SKILL_DIR.exists(), f"cosmetics skill missing at {agent.SKILL_DIR}"
-    for marker in ("never write database queries",
-                   "Never present registry presence as a licence",
-                   "Never mix jurisdictions"):
+    for marker in ("Regulatory claims come from templates only",
+                   "Registry presence is not permission to manufacture",
+                   "Never mix jurisdictions",
+                   "Tier 4 never answers a licence, compliance or restriction question"):
         assert marker.lower() in agent.SYSTEM.lower(), (
             f"the skill no longer carries {marker!r} — the demo's guarantees changed")
+
+
+@pytest.mark.demo
+def test_the_console_loads_the_same_skill_as_the_demo(gateway):
+    """~/.hermes must resolve to the repo copy, or the two answer under different rules.
+
+    This is the failure the wiring exists to prevent, and it is silent: a stale directory
+    in the profile keeps working, so the console goes on answering under an older
+    contract while the repo and the demo have moved on. That is exactly what had
+    happened — a v2 skill sat one level down from the v1 the console was loading.
+    """
+    from serve import agent
+    live = (pathlib.Path.home() / ".hermes" / "profiles" / "cosmetics"
+            / "skills" / "jarvis-cosmetics-search")
+    if not live.exists():
+        pytest.skip("no Hermes profile on this machine")
+    assert live.resolve() == agent.SKILL_DIR.resolve(), (
+        f"the console loads {live.resolve()} but the demo loads "
+        f"{agent.SKILL_DIR.resolve()} — re-run setup/09_demo.sh")

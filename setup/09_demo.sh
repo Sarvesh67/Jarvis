@@ -97,6 +97,26 @@ ingress:
 YAML
 log "Wrote ~/.cloudflared/config.yml"
 
+# The console agent and the demo must answer under the SAME skill. It lives in the repo;
+# ~/.hermes gets a symlink to it. A real directory there keeps working silently while the
+# repo moves on, which is how a v2 skill ended up sitting one level below the v1 the
+# console was actually loading.
+SKILL_SRC="$COS_DIR/skills/jarvis-cosmetics-search"
+SKILL_DST="$HOME/.hermes/profiles/cosmetics/skills/jarvis-cosmetics-search"
+if [ -d "$SKILL_SRC" ] && [ -d "$(dirname "$SKILL_DST")" ]; then
+  if [ "$(readlink "$SKILL_DST" 2>/dev/null)" != "$SKILL_SRC" ]; then
+    if [ -e "$SKILL_DST" ] && [ ! -L "$SKILL_DST" ]; then
+      log "Archiving the unversioned skill already in the Hermes profile..."
+      mv "$SKILL_DST" "$SKILL_DST.pre-symlink-$(date +%Y%m%d%H%M%S)"
+    fi
+    rm -f "$SKILL_DST"
+    ln -s "$SKILL_SRC" "$SKILL_DST"
+    log "Linked the Hermes cosmetics skill to the repo copy"
+  else
+    log "Hermes cosmetics skill already linked to the repo"
+  fi
+fi
+
 log "Installing the app launch agent..."
 mkdir -p "$HOME/Library/LaunchAgents"
 cp "$JARVIS_ROOT/launchagents/$PLIST" "$HOME/Library/LaunchAgents/$PLIST"
