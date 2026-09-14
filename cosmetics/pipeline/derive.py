@@ -30,14 +30,64 @@ from pipeline.load_neo4j import pv, run, q  # noqa: E402
 # NIC-2008 subclass -> plausible ProductCategory spine codes. Tier 4: this says
 # "a firm registered under this activity plausibly serves these categories", which is a
 # ranking signal, NOT a statement that it is licensed to make them.
+#
+# The spine codes follow the official NIC-2008 subclass TEXT, not the colloquial reading
+# of the class name. Class 2023 is "soap and detergents, cleaning and polishing
+# preparations, perfumes and toilet preparations" — most of it is not cosmetic:
+#   20232  cleaning and polishing products (waxes, leather/wood/metal polish, scouring)
+#   20233  detergent and similar washing agents excluding soap
+#   20238  "agarbatti" and other preparations which operate by burning
+# Those three are DELIBERATELY absent. A detergent plant is not a cosmetics plant. 20232
+# and 20233 are the 2nd and 7th most common codes in the Udyam cosmetics slice, and
+# mapping them would add 376 firms whose ONLY cosmetics-class code is one of the two —
+# i.e. 376 detergent and polish makers in a cosmetics ranking. 20230 is not a valid
+# subclass; it appears in the registry data anyway.
 NIC_TO_CATEGORY = {
     "20231": ["SOAP"],
     "20234": ["FRAGRANCE"],
     "20235": ["ORAL_CARE"],
     "20236": ["HAIR_CARE", "HAIR_COLOUR"],
-    "20237": ["SKIN_CARE", "MAKEUP"],
+    # 20237 reads "cosmetics and toileteries (includes pre-shave, shaving or after shave
+    # preparations; personal deodorants and anti-perspirants; perfumed bath salts and
+    # other bath preparations)". SHAVING and DEODORANT are named in the code text and
+    # were missing; MAKEUP was asserted and is named nowhere in it.
+    "20237": ["SKIN_CARE", "SKIN_CLEANSING", "SHAVING", "DEODORANT"],
     "20239": ["FRAGRANCE", "SKIN_CARE"],
 }
+
+# A CIN embeds the NIC edition current at INCORPORATION, so companies registered before
+# the 2008 revision carry NIC-2004 codes and miss NIC_TO_CATEGORY entirely. Of the 1,609
+# MCA rows held, 600 are NIC-2004 and only 20 matched the table above before this map.
+# Class 2424 is the NIC-2004 ancestor of class 2023 and maps subclass-for-subclass.
+# 24240 is class-level ("soap and detergents, cleaning and polishing preparations,
+# perfumes and toilet preparations") and names no product, so it stays unmapped rather
+# than being spread across every child category.
+NIC2004_TO_NIC2008 = {
+    "24241": "20231",   # soaps, all types
+    "24242": "20232",   # waxes and polishes          -> not cosmetic, maps to an excluded code
+    "24243": "20233",   # surfactants and detergents  -> not cosmetic, maps to an excluded code
+    "24244": "20234",   # perfumes and cologne de-eau
+    "24245": "20235",   # oral or dental hygiene
+    "24246": "20237",   # cosmetics and toileteries
+    "24247": "20236",   # hair oil, shampoo, hair dye
+    "24248": "20238",   # agarbatti                   -> not cosmetic, maps to an excluded code
+    "24249": "20239",   # other perfumes and toilet preparations n.e.c.
+}
+
+# MCA statuses that mean the company no longer trades. A struck-off firm in a "who can
+# make my face cream" ranking is a wrong answer with a tier-1 badge on it, so these are
+# dropped before any category edge is derived. Udyam carries no status field and is
+# unaffected.
+MCA_DEAD_STATUSES = {
+    "strike off", "dissolved", "amalgamated",
+    "converted to llp", "converted to llp and dissolved",
+    "under liquidation", "liquidated",
+}
+
+
+def normalise_nic(code: str) -> str:
+    """NIC-2004 subclass -> its NIC-2008 equivalent; anything else unchanged."""
+    return NIC2004_TO_NIC2008.get((code or "").strip(), (code or "").strip())
 SUBSTITUTE_TOP_K = 10
 
 
@@ -56,22 +106,43 @@ def serves_category_from_licence(s) -> None:
 
 def serves_category_from_nic(s) -> None:
     """The tier-4 path: what the firm's registered activity plausibly covers."""
+    # MERGE alone cannot retract. Every edge this rule wrote on a previous run is dropped
+    # first, so that narrowing NIC_TO_CATEGORY (or skipping a struck-off company) actually
+    # takes effect instead of silently leaving the old edge in place. Scoped to this
+    # rule_id: the tier-1 licence-derived edges are not touched.
+    res = s.run("""
+        MATCH ()-[e:SERVES_CATEGORY]->()
+        WHERE e._rule_id = 'serves_category_from_nic'
+        DELETE e RETURN count(e) AS n
+    """).single()
+    if res["n"]:
+        print(f"    (retracted {res['n']} SERVES_CATEGORY edges from the previous run)")
     rows = []
-    for r in q("""SELECT x.entity_id, r.payload FROM raw_company r
+    skipped_dead = 0
+    for r in q("""SELECT x.entity_id, r.source_id, r.payload FROM raw_company r
                   JOIN crosswalk x ON x.source_id=r.source_id AND x.source_key=r.source_key
                    AND x.entity_type='company' AND x.superseded_by IS NULL
                   WHERE r.source_id IN ('s17_udyam','s17b_udyam_api','s03_mca')"""):
         p = r["payload"] or {}
+        if r["source_id"] == "s03_mca":
+            if (p.get("company_status") or "").strip().lower() in MCA_DEAD_STATUSES:
+                skipped_dead += 1
+                continue
         codes = p.get("nic_codes_cosmetics") or []
         nic_cin = p.get("nic_from_cin")
         if nic_cin:
             codes = codes + [nic_cin]
-        cats = sorted({c for code in codes for c in NIC_TO_CATEGORY.get(code, [])})
+        # Raw codes are kept in inputs[] so an edge stays auditable back to the registry
+        # string; the crosswalk is applied only for the category lookup.
+        cats = sorted({c for code in codes
+                       for c in NIC_TO_CATEGORY.get(normalise_nic(code), [])})
         for cat in cats:
             rows.append({"company_id": r["entity_id"], "code": cat,
                          "prov": pv("stage6_derive", 4, 0.5, derived=True,
                                     rule_id="serves_category_from_nic",
                                     basis="nic_activity", inputs=codes)})
+    if skipped_dead:
+        print(f"    (skipped {skipped_dead} MCA rows whose company is struck off or dissolved)")
     run(s, """
         UNWIND $rows AS row
         MATCH (c:Company {company_id: row.company_id})
