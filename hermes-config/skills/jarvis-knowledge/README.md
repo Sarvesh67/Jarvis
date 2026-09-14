@@ -1,7 +1,11 @@
 # jarvis-knowledge
 
 Retrieval over a project's Cognee knowledge graph on FalkorDB. Shared by every Hermes
-profile, which is why it sits at the repo root rather than under one project.
+profile.
+
+Unlike its neighbours here, this skill was never installed by `setup/05_hermes.sh` — it
+existed only in `~/.hermes`, with no history and no review. This is that file, brought
+under version control so it is installed the same way as the rest.
 
 ## Which copy this is
 

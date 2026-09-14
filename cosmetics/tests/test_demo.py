@@ -162,7 +162,7 @@ def test_the_console_loads_the_same_skill_as_the_demo(gateway):
     # absence keeps the boundary honest.
     shared = profile / "jarvis-knowledge"
     if shared.exists():
-        repo_shared = agent.ROOT.parent / "skills" / "jarvis-knowledge"
+        repo_shared = agent.SKILL_DIR.parent / "jarvis-knowledge"
         assert shared.resolve() == repo_shared.resolve(), (
             f"jarvis-knowledge in the profile is {shared.resolve()}, not the repo copy "
             f"at {repo_shared} — re-run setup/09_demo.sh")

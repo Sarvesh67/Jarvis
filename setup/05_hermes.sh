@@ -71,13 +71,33 @@ make_profile cosmetics "$(env_get COSMETICS_LLM_KEY)"
 
 # --- project-specific skills (installed from Jarvis/hermes-config/skills) ---
 # jarvis-signals -> hedgefund; jarvis-vendor-search -> msme. Base copy + the owning profile.
+# SYMLINK, never copy. Two reasons, both learned the hard way:
+#
+#   1. `cp -R src dst` puts src INSIDE dst when dst already exists, so every re-run of
+#      this script nested another copy — `<skill>/<skill>/SKILL.md`. Hermes loads the
+#      OUTER one, so the nested copy is invisible, and which of the two is newer depends
+#      on the order the runs happened in. The cosmetics profile ended up loading a v1
+#      skill with a v2 sitting one level below it.
+#   2. A copy drifts. hermes-config/ is maintained and reviewed; a profile copy is a
+#      snapshot that silently stops matching it the next time the repo copy changes.
+#
+# A symlink has neither failure. Editing the repo file changes what every profile loads,
+# and there is one history.
 install_skill() {  # $1 = skill name, $2 = owning profile
   local src="$JARVIS_ROOT/hermes-config/skills/$1"
   [ -d "$src" ] || { warn "skill $1 missing in hermes-config/skills"; return; }
-  cp -R "$src" "$HOME/.hermes/skills/$1"
-  mkdir -p "$HOME/.hermes/profiles/$2/skills"
-  cp -R "$src" "$HOME/.hermes/profiles/$2/skills/$1"
-  ok "Installed skill $1 -> $2 profile."
+  local dst
+  for dst in "$HOME/.hermes/skills/$1" "$HOME/.hermes/profiles/$2/skills/$1"; do
+    mkdir -p "$(dirname "$dst")"
+    if [ "$(readlink "$dst" 2>/dev/null)" = "$src" ]; then continue; fi
+    if [ -e "$dst" ] && [ ! -L "$dst" ]; then
+      mv "$dst" "$dst.pre-symlink-$(date +%Y%m%d%H%M%S)"
+      warn "archived an unversioned $1 that was in $(dirname "$dst")"
+    fi
+    rm -f "$dst"
+    ln -s "$src" "$dst"
+  done
+  ok "Linked skill $1 -> $2 profile."
 }
 install_skill jarvis-signals       hedgefund
 # Domain skills are installed into their OWN profile only. jarvis-vendor-search is the
@@ -86,6 +106,17 @@ install_skill jarvis-signals       hedgefund
 # which is exactly what happened before the cosmetics skill existed.
 install_skill jarvis-vendor-search    msme
 install_skill jarvis-cosmetics-search cosmetics
+# Shared retrieval over each project's Cognee graph. Linked into the profiles that held a
+# byte-identical copy of it.
+#
+# `msme` is POINTEDLY ABSENT. Its copy carries ~1.7 KB the others do not — multi-angle
+# parallel querying, a Surat-cluster reference, conversation-level caching — written by
+# hand on the graph that needed it. Linking msme here would delete that in favour of the
+# leaner file, which is a decision about whether the technique generalises, not a tidy-up.
+# Until someone makes it, msme keeps its own copy. See hermes-config/skills/jarvis-knowledge/README.md.
+for _p in hedgefund cosmetics jarvis; do
+  install_skill jarvis-knowledge "$_p"
+done
 
 log "Smoke test (jarvis brain)..."
 jarvis chat -q "Reply with exactly: HERMES_OK" --yolo 2>&1 | grep -q "HERMES_OK" && ok "Hermes responding via gateway." || warn "No HERMES_OK — check gateway + keys."

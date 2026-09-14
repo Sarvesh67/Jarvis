@@ -35,11 +35,11 @@ GATEWAY = "http://127.0.0.1:4000/v1/chat/completions"
 MAX_TOOL_CALLS = 6          # schema + cypher + a template chain still fits
 MAX_HISTORY_TURNS = 8
 
-# In the repo, and symlinked into ~/.hermes so the console agent loads this same file.
-# Read from the repo path rather than through the symlink: the demo should fail loudly
-# if the skill is missing from version control, not quietly fall back to whatever a
-# machine happens to have in its profile directory.
-SKILL_DIR = ROOT / "skills" / "jarvis-cosmetics-search"
+# hermes-config/ is where this repo has always kept its Hermes skills — installed into
+# every profile by setup/05_hermes.sh. Read the repo copy directly rather than through
+# the profile symlink, so the demo fails loudly if the skill is missing from version
+# control instead of quietly using whatever a machine happens to have in ~/.hermes.
+SKILL_DIR = ROOT.parent / "hermes-config" / "skills" / "jarvis-cosmetics-search"
 
 
 def _skill_text() -> str:

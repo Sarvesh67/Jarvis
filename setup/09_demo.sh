@@ -97,34 +97,16 @@ ingress:
 YAML
 log "Wrote ~/.cloudflared/config.yml"
 
-# The console agent and the demo must answer under the SAME skills. They live in the repo;
-# ~/.hermes gets symlinks to them. A real directory there keeps working silently while the
-# repo moves on, which is how a v2 skill ended up sitting one level below the v1 the
-# console was actually loading.
-#
-# jarvis-knowledge sits at the repo ROOT, not under cosmetics/: four profiles carry it.
-# The msme profile's copy has diverged and is left alone — see skills/jarvis-knowledge/README.md.
-link_skill() {   # link_skill <repo path> <profile skills dir> <name>
-  src="$1"; dst="$2/$3"
-  [ -d "$src" ] || return 0
-  [ -d "$2" ] || return 0
-  if [ "$(readlink "$dst" 2>/dev/null)" = "$src" ]; then
-    log "  $3 already linked"
-    return 0
-  fi
-  if [ -e "$dst" ] && [ ! -L "$dst" ]; then
-    log "  archiving the unversioned $3 in the profile"
-    mv "$dst" "$dst.pre-symlink-$(date +%Y%m%d%H%M%S)"
-  fi
-  rm -f "$dst"
-  ln -s "$src" "$dst"
-  log "  linked $3 -> repo"
-}
-
-log "Linking the Hermes cosmetics skills to the repo..."
-PROFILE_SKILLS="$HOME/.hermes/profiles/cosmetics/skills"
-link_skill "$COS_DIR/skills/jarvis-cosmetics-search" "$PROFILE_SKILLS" jarvis-cosmetics-search
-link_skill "$JARVIS_ROOT/skills/jarvis-knowledge"    "$PROFILE_SKILLS" jarvis-knowledge
+# The console agent and the demo must answer under the SAME skill, and installing it is
+# setup/05_hermes.sh's job — it links every profile to hermes-config/skills/. Verify
+# rather than re-implement: a profile holding a real directory instead of a link is a
+# copy that has already stopped tracking the repo.
+SKILL_SRC="$JARVIS_ROOT/hermes-config/skills/jarvis-cosmetics-search"
+SKILL_DST="$HOME/.hermes/profiles/cosmetics/skills/jarvis-cosmetics-search"
+if [ -e "$SKILL_DST" ] && [ "$(readlink "$SKILL_DST" 2>/dev/null)" != "$SKILL_SRC" ]; then
+  fail "the cosmetics profile's skill is not linked to $SKILL_SRC — run setup/05_hermes.sh"
+fi
+log "Cosmetics skill linked to hermes-config"
 
 log "Installing the app launch agent..."
 mkdir -p "$HOME/Library/LaunchAgents"
