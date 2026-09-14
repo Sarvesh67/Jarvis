@@ -28,11 +28,20 @@ PLIST=com.lattix.demo.plist
 [ -f "$HOME/.cloudflared/cert.pem" ] || fail \
   "Not logged in. Run: cloudflared tunnel login  (pick lattix.co.in in the browser)"
 
-if ! cloudflared tunnel list 2>/dev/null | awk '{print $2}' | grep -qx "$TUNNEL"; then
+# Read the id out of JSON rather than off a column position — `tunnel list`'s table is
+# for humans and its widths shift with the longest name in it.
+tunnel_id() {
+  cloudflared tunnel list --output json 2>/dev/null \
+    | "$COS_DIR/.venv/bin/python" -c \
+      'import json,sys; print(next((t["id"] for t in json.load(sys.stdin) if t["name"]==sys.argv[1] and not t.get("deleted_at")), ""))' \
+      "$TUNNEL"
+}
+ID=$(tunnel_id)
+if [ -z "$ID" ]; then
   log "Creating tunnel $TUNNEL..."
   cloudflared tunnel create "$TUNNEL"
+  ID=$(tunnel_id)
 fi
-ID=$(cloudflared tunnel list 2>/dev/null | awk -v t="$TUNNEL" '$2==t {print $1}')
 [ -n "$ID" ] || fail "could not determine the tunnel id for $TUNNEL"
 log "Tunnel $TUNNEL is $ID"
 
