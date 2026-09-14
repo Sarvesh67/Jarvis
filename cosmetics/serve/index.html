@@ -1,240 +1,375 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lattix — India cosmetics supply chain</title>
+<meta name="robots" content="noindex, nofollow">
+<title>Lattix</title>
 <style>
+  /* Warm enterprise palette, shared with the Jarvis console. */
   :root{
-    --ink:#1c1917; --muted:#78716c; --faint:#a8a29e;
-    --bg:#fbfaf9; --card:#ffffff; --line:#e7e5e4; --line-soft:#f0efed;
-    --accent:#9a3412; --accent-soft:#fff7ed; --accent-line:#fed7aa;
-    --t1:#166534; --t1bg:#f0fdf4; --t1line:#bbf7d0;
-    --t3:#a16207; --t3bg:#fefce8; --t3line:#fef08a;
-    --t4:#9f1239; --t4bg:#fff1f2; --t4line:#fecdd3;
+    --bg:#f3ede3; --bg2:#ece4d6; --panel:#fffdf9; --panel2:#f8f2e8;
+    --line:#e7ddcc; --line2:#dacdb4;
+    --fg:#2c2823; --mut:#6f6557; --faint:#9b9183;
+    --accent:#b15a31; --accent-soft:#c47a52; --accent-dim:#efdccc;
+    --ok:#4d7c54; --okdim:#e2ecdf; --okline:#c3d8c6;
+    --warn:#b0851d; --warndim:#f2e8cf; --warnline:#e3d199;
+    --bad:#b04a3c; --baddim:#f1ddd8; --badline:#e0bdb4;
+    --shadow:0 1px 2px rgba(74,54,30,.05),0 3px 12px rgba(74,54,30,.05);
+    --radius:13px; --radius-sm:9px;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
   }
-  @media (prefers-color-scheme: dark){
-    :root{
-      --ink:#f5f5f4; --muted:#a8a29e; --faint:#78716c;
-      --bg:#1c1917; --card:#292524; --line:#44403c; --line-soft:#353130;
-      --accent:#fdba74; --accent-soft:#2a1c12; --accent-line:#7c2d12;
-      --t1:#86efac; --t1bg:#14261a; --t1line:#166534;
-      --t3:#fde047; --t3bg:#2a2410; --t3line:#854d0e;
-      --t4:#fda4af; --t4bg:#2a1418; --t4line:#9f1239;
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#1d1a16; --bg2:#242019; --panel:#272219; --panel2:#2e2820;
+      --line:#3a332a; --line2:#4a4136;
+      --fg:#f2ece1; --mut:#b4a894; --faint:#8b8172;
+      --accent:#d98254; --accent-soft:#e09a72; --accent-dim:#3a2a1f;
+      --ok:#8fc496; --okdim:#1e2a1f; --okline:#37503a;
+      --warn:#dcb455; --warndim:#2c2415; --warnline:#5a4a1d;
+      --bad:#e08e80; --baddim:#2e1c18; --badline:#5e332b;
+      --shadow:0 1px 2px rgba(0,0,0,.2),0 3px 12px rgba(0,0,0,.18);
     }
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-    font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Inter,system-ui,sans-serif;
-    -webkit-font-smoothing:antialiased}
-  .wrap{max-width:1000px;margin:0 auto;padding:0 20px 80px}
-  header{padding:38px 0 22px;border-bottom:1px solid var(--line)}
-  h1{margin:0 0 6px;font-size:21px;font-weight:640;letter-spacing:-.015em}
-  .sub{color:var(--muted);font-size:13.5px;max-width:62ch;margin:0}
-  .stats{margin-top:14px;font-size:12px;color:var(--faint);
-    font-variant-numeric:tabular-nums}
-  form{display:flex;gap:8px;margin:24px 0 6px;flex-wrap:wrap}
-  input[type=text]{flex:1 1 320px;min-width:0;padding:12px 14px;font:inherit;
-    color:var(--ink);background:var(--card);
-    border:1px solid var(--line);border-radius:9px;outline:none}
-  input[type=text]:focus{border-color:var(--accent);
-    box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}
-  button{padding:12px 20px;font:inherit;font-weight:560;cursor:pointer;
-    background:var(--ink);color:var(--bg);border:1px solid var(--ink);border-radius:9px}
-  button:disabled{opacity:.45;cursor:default}
-  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0 4px}
-  .chip{padding:6px 11px;font-size:12.5px;color:var(--muted);cursor:pointer;
-    background:var(--card);border:1px solid var(--line);border-radius:999px;
-    text-align:left;font-weight:450}
-  .chip:hover{border-color:var(--accent);color:var(--accent)}
-  .presenter{margin:14px 0 0;padding:12px 14px;font-size:12.5px;line-height:1.5;
-    background:var(--accent-soft);border:1px solid var(--accent-line);
-    border-left:3px solid var(--accent);border-radius:0 8px 8px 0;color:var(--ink)}
-  .presenter b{color:var(--accent);font-weight:620;
-    text-transform:uppercase;letter-spacing:.05em;font-size:10.5px}
-  .presenter .alts{margin-top:8px;color:var(--muted);font-size:12px}
-  #out{margin-top:26px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
-    padding:18px 20px;margin-bottom:14px}
-  .meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
-  .tier{font-size:11px;font-weight:640;padding:3px 9px;border-radius:999px;
-    letter-spacing:.02em;border:1px solid}
-  .tier-1{color:var(--t1);background:var(--t1bg);border-color:var(--t1line)}
-  .tier-2{color:var(--t1);background:var(--t1bg);border-color:var(--t1line)}
-  .tier-3{color:var(--t3);background:var(--t3bg);border-color:var(--t3line)}
-  .tier-4{color:var(--t4);background:var(--t4bg);border-color:var(--t4line)}
-  .path{font-size:11.5px;color:var(--faint);font-family:ui-monospace,SFMono-Regular,
-    Menlo,monospace}
-  .intent{color:var(--muted);font-size:13px;margin:0 0 12px}
-  .resolved{font-size:11.5px;color:var(--faint);margin:0 0 12px;
-    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.7}
-  .note{font-size:12.5px;color:var(--muted);line-height:1.55;margin:12px 0 0;
-    padding-top:12px;border-top:1px solid var(--line-soft)}
-  .nothing{padding:16px 18px;background:var(--t3bg);border:1px solid var(--t3line);
-    border-radius:9px;font-size:13.5px;line-height:1.6}
-  .nothing b{display:block;margin-bottom:6px;color:var(--t3)}
-  .scroll{overflow-x:auto;margin:0 -20px;padding:0 20px}
-  table{border-collapse:collapse;font-size:12.5px;min-width:100%}
-  th{text-align:left;padding:7px 14px 7px 0;color:var(--faint);font-weight:560;
-    white-space:nowrap;border-bottom:1px solid var(--line);
-    text-transform:uppercase;font-size:10.5px;letter-spacing:.04em}
-  td{padding:8px 14px 8px 0;border-bottom:1px solid var(--line-soft);
-    vertical-align:top;max-width:340px}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--fg);
+    font-family:var(--sans);font-size:15px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    display:flex;flex-direction:column;
+  }
+  button,textarea{font:inherit;color:inherit}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  /* ---------- masthead ---------- */
+  .top{
+    display:flex;align-items:center;gap:11px;flex:none;
+    padding:13px 24px;border-bottom:1px solid var(--line);background:var(--panel);
+  }
+  .mark{
+    width:27px;height:27px;border-radius:8px;flex:none;
+    background:var(--accent);color:#fff;display:flex;align-items:center;
+    justify-content:center;font-weight:700;font-size:13px;letter-spacing:-.02em;
+  }
+  .wordmark{font-weight:640;letter-spacing:-.01em;font-size:15px}
+  .tagline{color:var(--faint);font-size:12.5px;margin-left:2px}
+  .demo-tag{
+    margin-left:auto;font-size:10.5px;font-weight:650;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--accent);background:var(--accent-dim);
+    border:1px solid var(--accent-soft);border-radius:999px;padding:3px 10px;flex:none;
+  }
+  @media (max-width:620px){ .tagline{display:none} }
+
+  /* ---------- transcript ---------- */
+  .msgs{
+    flex:1;overflow-y:auto;overflow-x:hidden;
+    padding:26px 24px 8px;
+    display:flex;flex-direction:column;gap:20px;
+  }
+  .inner{width:100%;max-width:780px;margin:0 auto;display:flex;
+    flex-direction:column;gap:20px}
+
+  .turn{display:flex;flex-direction:column}
+  .turn.user{align-items:flex-end}
+  .ubub{
+    background:var(--accent-dim);border:1px solid var(--accent-soft);
+    border-radius:var(--radius);padding:10px 15px;max-width:80%;
+    font-size:14.5px;line-height:1.5;
+  }
+  .abub{
+    background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);
+    border-radius:var(--radius);padding:15px 17px;
+    display:flex;flex-direction:column;gap:12px;min-width:0;
+  }
+
+  .pill{
+    display:inline-flex;align-items:center;gap:6px;align-self:flex-start;
+    font-size:11px;font-weight:650;padding:3px 10px;border-radius:999px;
+    border:1px solid;letter-spacing:.01em;
+  }
+  .p-ok{color:var(--ok);background:var(--okdim);border-color:var(--okline)}
+  .p-warn{color:var(--warn);background:var(--warndim);border-color:var(--warnline)}
+  .p-bad{color:var(--bad);background:var(--baddim);border-color:var(--badline)}
+
+  .scroll{overflow-x:auto;margin:0 -17px;padding:0 17px}
+  table{border-collapse:collapse;font-size:13px;min-width:100%}
+  th{
+    text-align:left;padding:0 16px 7px 0;color:var(--faint);font-weight:650;
+    white-space:nowrap;border-bottom:1px solid var(--line2);
+    text-transform:uppercase;font-size:10px;letter-spacing:.06em;
+  }
+  /* One line per cell. A NABL row carries three array columns of accreditation scopes,
+     and letting them wrap turned a ten-row answer into a wall four screens tall — which
+     reads as raw output rather than as a product. Full value stays in the title. */
+  td{padding:8px 16px 8px 0;border-bottom:1px solid var(--line);
+    vertical-align:top;max-width:260px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   tr:last-child td{border-bottom:none}
-  .count{font-size:12px;color:var(--faint);margin:12px 0 8px}
-  .err{color:var(--t4);font-size:13.5px}
-  footer{margin-top:42px;padding-top:18px;border-top:1px solid var(--line);
-    font-size:11.5px;color:var(--faint);line-height:1.7}
-  .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
-    border-top-color:var(--accent);border-radius:50%;animation:s .7s linear infinite;
-    vertical-align:-2px;margin-right:7px}
-  @keyframes s{to{transform:rotate(360deg)}}
+  tr:hover td{background:var(--panel2)}
+  .more{font-size:12.5px;color:var(--faint)}
+
+  .nothing{
+    background:var(--warndim);border:1px solid var(--warnline);
+    border-radius:var(--radius-sm);padding:12px 14px;font-size:14px;line-height:1.55;
+  }
+  .nothing b{display:block;margin-bottom:4px;color:var(--warn);font-size:12.5px;
+    text-transform:uppercase;letter-spacing:.05em}
+  .note{font-size:13px;color:var(--mut);line-height:1.55;
+    padding-top:11px;border-top:1px solid var(--line)}
+
+  details.prov{font-size:12.5px}
+  details.prov summary{
+    color:var(--faint);cursor:pointer;list-style:none;
+    display:inline-flex;align-items:center;gap:5px;
+  }
+  details.prov summary::-webkit-details-marker{display:none}
+  details.prov summary::before{content:"▸";font-size:9px;transition:transform .15s}
+  details.prov[open] summary::before{transform:rotate(90deg)}
+  details.prov summary:hover{color:var(--accent)}
+  .prov-body{
+    margin-top:9px;font-family:var(--mono);font-size:11.5px;line-height:1.75;
+    color:var(--mut);background:var(--panel2);border:1px solid var(--line);
+    border-radius:var(--radius-sm);padding:10px 12px;
+    overflow-x:auto;white-space:pre-wrap;word-break:break-word;
+  }
+
+  .think{display:flex;gap:6px;align-items:center;color:var(--mut);font-size:13.5px}
+  .think .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);
+    animation:blink 1.2s infinite}
+  .think .dot:nth-child(2){animation-delay:.2s}
+  .think .dot:nth-child(3){animation-delay:.4s}
+  @keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+
+  .err{color:var(--bad);font-size:14px}
+
+  /* ---------- empty state ---------- */
+  .empty{margin:auto;text-align:center;max-width:540px;padding:20px 0 40px}
+  .empty h1{
+    font-size:23px;font-weight:640;letter-spacing:-.015em;margin:0 0 8px;
+    color:var(--fg);text-wrap:balance;
+  }
+  .empty p{margin:0 auto;color:var(--mut);font-size:14.5px;max-width:46ch}
+  .stats{
+    margin-top:16px;font-size:11.5px;color:var(--faint);font-family:var(--mono);
+    font-variant-numeric:tabular-nums;
+  }
+  .chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:24px}
+  .schip{
+    font-size:12.5px;color:var(--mut);background:var(--panel);
+    border:1px solid var(--line2);border-radius:20px;padding:7px 14px;
+    cursor:pointer;transition:.15s;box-shadow:var(--shadow);text-align:left;
+  }
+  .schip:hover{color:var(--accent);border-color:var(--accent-soft)}
+
+  /* ---------- composer ---------- */
+  .composer-wrap{flex:none;border-top:1px solid var(--line);background:var(--panel)}
+  .composer{
+    width:100%;max-width:780px;margin:0 auto;
+    display:flex;gap:10px;align-items:flex-end;padding:14px 24px 10px;
+  }
+  .composer textarea{
+    flex:1;resize:none;min-height:44px;max-height:150px;
+    padding:11px 14px;line-height:1.5;font-size:14.5px;
+    background:var(--bg);border:1px solid var(--line2);border-radius:var(--radius-sm);
+    outline:none;
+  }
+  .composer textarea:focus{border-color:var(--accent-soft)}
+  .send{
+    flex:none;width:44px;height:44px;border-radius:var(--radius-sm);cursor:pointer;
+    background:var(--accent);color:#fff;border:1px solid var(--accent);
+    display:flex;align-items:center;justify-content:center;font-size:17px;
+  }
+  .send:disabled{opacity:.4;cursor:default}
+  .foot{
+    max-width:780px;margin:0 auto;padding:0 24px 12px;
+    font-size:11px;color:var(--faint);line-height:1.5;
+  }
+  @media (prefers-reduced-motion:reduce){ *{animation:none!important} }
 </style>
 
-<div class="wrap">
-  <header>
-    <h1>India cosmetics supply chain</h1>
-    <p class="sub">Who can legally make what, where, from which ingredients, under which
-      standard — and how much of that we can actually prove. Every answer carries the
-      evidence it rests on.</p>
-    <div class="stats" id="stats"></div>
-  </header>
+<div class="top">
+  <div class="mark">L</div>
+  <span class="wordmark">Lattix</span>
+  <span class="tagline">India cosmetics supply chain</span>
+  <span class="demo-tag">Demo</span>
+</div>
 
-  <form id="f">
-    <input type="text" id="q" autocomplete="off" spellcheck="false"
-           placeholder="Ask about a manufacturer, an ingredient, a cluster, a standard…">
-    <button id="go" type="submit">Ask</button>
-  </form>
+<div class="msgs" id="msgs">
+  <div class="inner" id="inner">
+    <div class="empty" id="empty">
+      <h1>Ask about the Indian cosmetics supply chain</h1>
+      <p>Manufacturers, ingredients, regulations, testing labs and packaging —
+         every answer carries the source it came from.</p>
+      <div class="stats" id="stats"></div>
+      <div class="chips" id="chips"></div>
+    </div>
+  </div>
+</div>
 
-  <div class="chips" id="chips"></div>
-  <div class="presenter" id="presenter" hidden></div>
-
-  <div id="out"></div>
-
-  <footer>
-    Evidence tiers: <b>1</b> regulator · <b>2</b> company-declared · <b>3</b> observed ·
-    <b>4</b> inferred. A tier-4 answer ranks and suggests; it is never a compliance
-    answer. Restrictions shown for the EU are EU law and have no force in India.
-  </footer>
+<div class="composer-wrap">
+  <div class="composer">
+    <textarea id="q" rows="1" placeholder="Ask a question…"
+              autocomplete="off" spellcheck="false"></textarea>
+    <button class="send" id="go" aria-label="Send">↑</button>
+  </div>
+  <div class="foot">
+    Evidence tiers: regulator · company-declared · observed · inferred. EU restrictions
+    are EU law and have no force in India. Answers are computed live, never cached.
+  </div>
 </div>
 
 <script>
 const $ = s => document.querySelector(s);
 const el = (t, c, x) => { const n = document.createElement(t);
   if (c) n.className = c; if (x !== undefined) n.textContent = x; return n; };
-let SUGG = [];
+
+const TIER = {
+  1: ["p-ok",   "Regulator"],
+  2: ["p-ok",   "Company-declared"],
+  3: ["p-warn", "Observed"],
+  4: ["p-bad",  "Inferred — not a compliance answer"],
+};
 
 fetch("/healthz").then(r => r.json()).then(d => {
   if (d.ok) $("#stats").textContent =
     d.companies.toLocaleString("en-IN") + " companies · 35,864 ingredients · "
-    + "2,445 regulatory rules · 201 accredited testing labs";
+    + "2,445 rules · 201 accredited labs";
 }).catch(() => {});
 
 fetch("/api/suggestions").then(r => r.json()).then(list => {
-  SUGG = list;
   const c = $("#chips");
-  list.forEach(s => {
-    const b = el("button", "chip", s.ask);
+  list.slice(0, 6).forEach(s => {
+    const b = el("button", "schip", s.ask);
     b.type = "button";
-    b.onclick = () => { $("#q").value = s.ask; showPresenter(s); run(s.ask); };
+    b.onclick = () => ask(s.ask);
     c.appendChild(b);
   });
-});
+}).catch(() => {});
 
-function showPresenter(s){
-  const p = $("#presenter");
-  if (!s) { p.hidden = true; return; }
-  p.replaceChildren();
-  p.appendChild(el("b", null, "Say this while the answer is on screen"));
-  p.appendChild(el("div", null, s.caveat));
-  if (s.alts && s.alts.length)
-    p.appendChild(el("div", "alts", "Also tested: " + s.alts.map(a => "“"+a+"”").join("  ·  ")));
-  p.hidden = false;
+const ta = $("#q");
+ta.addEventListener("input", () => {
+  ta.style.height = "auto";
+  ta.style.height = Math.min(ta.scrollHeight, 150) + "px";
+});
+ta.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+});
+$("#go").onclick = submit;
+
+function submit(){
+  const v = ta.value.trim();
+  if (!v) return;
+  ta.value = ""; ta.style.height = "auto";
+  ask(v);
 }
 
-$("#f").onsubmit = e => {
-  e.preventDefault();
-  const q = $("#q").value.trim();
-  if (!q) return;
-  // A typed question is not necessarily one of the tested ones, so drop the presenter
-  // note rather than leave a caveat sitting under an answer it was not written about.
-  showPresenter(SUGG.find(s => s.ask.toLowerCase() === q.toLowerCase()));
-  run(q);
-};
+function scrollDown(){
+  const m = $("#msgs");
+  m.scrollTop = m.scrollHeight;
+}
 
-async function run(question){
-  const out = $("#out"), go = $("#go");
+async function ask(question){
+  const inner = $("#inner"), go = $("#go");
+  const empty = $("#empty");
+  if (empty) empty.remove();
   go.disabled = true;
-  out.replaceChildren();
-  const load = el("div", "count");
-  load.appendChild(el("span", "spin"));
-  load.appendChild(el("span", null, "asking the graph…"));
-  out.appendChild(load);
+
+  const uturn = el("div", "turn user");
+  uturn.appendChild(el("div", "ubub", question));
+  inner.appendChild(uturn);
+
+  const aturn = el("div", "turn");
+  const bub = el("div", "abub");
+  const think = el("div", "think");
+  think.appendChild(el("span", null, "Querying the graph"));
+  for (let i = 0; i < 3; i++) think.appendChild(el("span", "dot"));
+  bub.appendChild(think);
+  aturn.appendChild(bub);
+  inner.appendChild(aturn);
+  scrollDown();
+
   try {
     const r = await fetch("/api/ask", {
-      method: "POST", headers: {"content-type": "application/json"},
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      cache: "no-store",
       body: JSON.stringify({question})
     });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || "something went wrong");
-    render(d);
+    if (!r.ok) throw new Error(d.detail || "Something went wrong.");
+    bub.replaceChildren();
+    render(bub, d);
   } catch (err) {
-    out.replaceChildren(el("div", "card err", String(err.message || err)));
-  } finally { go.disabled = false; }
+    bub.replaceChildren(el("div", "err", String(err.message || err)));
+  } finally {
+    go.disabled = false;
+    scrollDown();
+    ta.focus();
+  }
 }
 
-function render(d){
-  const out = $("#out"); out.replaceChildren();
-  const card = el("div", "card");
-
-  const meta = el("div", "meta");
-  if (d.tier) {
-    meta.appendChild(el("span", "tier tier-" + d.tier,
-      "tier " + d.tier + " — " + d.tier_meaning));
-  } else {
-    meta.appendChild(el("span", "tier tier-3", "exploratory — not a reviewed answer"));
-  }
-  meta.appendChild(el("span", "path", d.template || d.answered_by));
-  card.appendChild(meta);
-
-  if (d.intent) card.appendChild(el("p", "intent", d.intent));
-
-  // How free text became a value that exists in the graph. This is the bit that shows
-  // the answer was looked up rather than generated, so it is worth the space.
-  const res = Object.entries(d.param_resolution)
-    .filter(([, v]) => v && !/-> None/.test(v));
-  if (res.length)
-    card.appendChild(el("p", "resolved",
-      res.map(([k, v]) => k + ": " + v).join("\n")));
+function render(bub, d){
+  const [cls, label] = TIER[d.tier] || ["p-warn", "Exploratory — not a reviewed answer"];
+  bub.appendChild(el("span", "pill " + cls, label));
 
   if (d.rows.length) {
-    card.appendChild(el("div", "count", d.rows.length + " result"
-      + (d.rows.length === 1 ? "" : "s")));
-    const cols = Object.keys(d.rows[0]);
+    // Columns that are empty across every returned row say nothing and cost width.
+    const all = Object.keys(d.rows[0]);
+    const cols = all.filter(c => d.rows.some(r =>
+      r[c] !== null && r[c] !== undefined && String(r[c]).length
+      && !(Array.isArray(r[c]) && !r[c].length)));
     const wrap = el("div", "scroll"), t = el("table");
     const hr = el("tr");
-    cols.forEach(c => hr.appendChild(el("th", null, c.replace(/_/g, " "))));
+    (cols.length ? cols : all).forEach(c =>
+      hr.appendChild(el("th", null, c.replace(/_/g, " "))));
     t.appendChild(el("thead")).appendChild(hr);
     const tb = el("tbody");
-    d.rows.forEach(row => {
+    // A transcript is read, not browsed. Ten rows is enough to make the point and short
+    // enough that the next question stays on screen; the count says what was held back.
+    d.rows.slice(0, 10).forEach(row => {
       const tr = el("tr");
-      cols.forEach(c => {
+      (cols.length ? cols : all).forEach(c => {
         let v = row[c];
         if (Array.isArray(v)) v = v.join(", ");
-        tr.appendChild(el("td", null, v === null || v === undefined ? "—" : String(v)));
+        const text = (v === null || v === undefined || v === "") ? "—" : String(v);
+        const td = el("td", null, text);
+        if (text.length > 28) td.title = text;   // the cell clips; the hover does not
+        tr.appendChild(td);
       });
       tb.appendChild(tr);
     });
-    t.appendChild(tb); wrap.appendChild(t); card.appendChild(wrap);
+    t.appendChild(tb); wrap.appendChild(t); bub.appendChild(wrap);
+    if (d.rows.length > 10)
+      bub.appendChild(el("div", "more",
+        `Showing 10 of ${d.rows.length} results.`));
   } else {
     const n = el("div", "nothing");
-    n.appendChild(el("b", null, "No rows — and here is why"));
-    n.appendChild(el("div", null, d.empty_reason
-      || d.trust || "Nothing matched. That is a gap in what has been collected, not a "
-         + "statement that none exist."));
-    card.appendChild(n);
+    n.appendChild(el("b", null, "No results — and why"));
+    n.appendChild(el("div", null, d.empty_reason || d.trust
+      || "Nothing matched. That is a gap in what has been collected, not a statement "
+       + "that none exist."));
+    bub.appendChild(n);
   }
 
-  if (d.warning) card.appendChild(el("p", "note", d.warning));
-  if (d.note) card.appendChild(el("p", "note", d.note));
-  out.appendChild(card);
+  if (d.warning) bub.appendChild(el("p", "note", d.warning));
+  if (d.note) bub.appendChild(el("p", "note", d.note));
+
+  // The mechanism, folded away. It is the strongest thing about the product and the
+  // worst thing to lead with: open it when someone asks how the answer was reached,
+  // and it shows free text resolving to a value that exists in the graph.
+  const res = Object.entries(d.param_resolution || {})
+    .filter(([, v]) => v && !/-> None/.test(v));
+  if (d.template || res.length) {
+    const det = el("details", "prov");
+    det.appendChild(el("summary", null, "How this was answered"));
+    const body = el("div", "prov-body");
+    const lines = [];
+    if (d.template) lines.push("reviewed query   " + d.template);
+    res.forEach(([k, v]) => lines.push(String(k).padEnd(17) + v));
+    if (d.asked_at) lines.push("computed at      " + d.asked_at + " — live, not cached");
+    body.textContent = lines.join("\n");
+    det.appendChild(body);
+    bub.appendChild(det);
+  }
 }
 </script>

@@ -51,6 +51,22 @@ MAX_QUESTION_CHARS = 300
 
 app = FastAPI(title="Lattix — cosmetics supply-chain graph", docs_url=None, redoc_url=None)
 
+
+@app.middleware("http")
+async def no_store(request: Request, call_next):
+    """Nothing here is cacheable, and the demo should be able to say so.
+
+    Cloudflare already reports `cf-cache-status: DYNAMIC` for these routes and never
+    caches a POST, so this changes no behaviour — it removes the question. Every answer
+    is computed against the live graph at the moment it is asked, and a stale row on a
+    screen in front of a customer is not a risk worth carrying for a response time that
+    is already about two seconds.
+    """
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
 _recent: dict[str, deque] = defaultdict(deque)
 _day = {"stamp": time.strftime("%Y-%m-%d"), "asked": 0}
 
@@ -95,13 +111,16 @@ def healthz():
 
 @app.get("/api/suggestions")
 def suggestions():
-    """The demo set, as the page's starting points.
+    """Opening questions for the empty state.
 
     Served from `validate/demo_questions.yaml` — the same file `tests/test_demo.py`
-    asserts still works — so a question cannot appear on the page unless it is tested.
+    asserts still works — so a question cannot appear here unless it is tested.
+
+    The `caveat` on each entry is deliberately NOT sent. It is a note to whoever is
+    presenting, and this page is the product as a customer sees it. That material lives
+    in the playbook, which is where the presenter reads it — off screen.
     """
-    return [{"id": d["id"], "ask": d["asks"][0], "alts": d["asks"][1:],
-             "caveat": " ".join((d.get("caveat") or "").split())} for d in DEMO]
+    return [{"id": d["id"], "ask": d["asks"][0]} for d in DEMO]
 
 
 @app.post("/api/ask")
@@ -126,6 +145,7 @@ async def ask(request: Request):
         "template": res.get("template"),
         "answered_by": res.get("answered_by", "graph context"),
         "intent": " ".join((res.get("intent") or "").split()),
+        "asked_at": time.strftime("%H:%M:%S"),
         "tier": tier,
         "tier_meaning": res.get("tier_meaning"),
         "note": " ".join((res.get("note") or "").split()) or None,
