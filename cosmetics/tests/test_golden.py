@@ -383,12 +383,39 @@ def test_guard_requires_jurisdiction_on_regulatory_rules():
     assert ok.ok, ok.reason
 
 
-def test_guard_blocks_tier4_edges_on_compliance_questions():
-    """Hard rule 3 — inference ranks and suggests; it never decides permission."""
+def test_every_declared_derived_edge_is_registered_with_the_guard():
+    """ontology.yaml is the single source of truth for what is derived.
+
+    Parametrising the guard test over the guard's OWN list is circular — forget to
+    register an edge and you simply get one fewer test case. This closes the loop: an
+    edge declared derived in the ontology but missing from the guard is a tier-4 edge
+    that will happily answer a compliance question, which is hard rule 3 broken.
+    """
+    import lib
+    from pipeline.cypher_guard import DERIVED_EDGES as guard_edges
+    from pipeline.context import DERIVED_EDGES as context_edges
+
+    declared = {e["type"] for e in lib.load_yaml("ontology.yaml")["derived_edges"]}
+    assert not (declared - set(guard_edges)), \
+        f"declared derived but not guarded: {sorted(declared - set(guard_edges))}"
+    assert not (declared - set(context_edges)), \
+        f"declared derived but not held out of context: {sorted(declared - set(context_edges))}"
+
+
+@pytest.mark.parametrize("rel", sorted(
+    __import__("pipeline.cypher_guard", fromlist=["x"]).DERIVED_EDGES))
+def test_guard_blocks_tier4_edges_on_compliance_questions(rel):
+    """Hard rule 3 — inference ranks and suggests; it never decides permission.
+
+    Parametrised over DERIVED_EDGES rather than naming one edge, so registering a new
+    derived edge without the guard covering it fails here instead of shipping.
+    """
     from pipeline.cypher_guard import validate
-    q = "MATCH (a)-[:SUBSTITUTE_FOR]->(b) RETURN a, b LIMIT 5"
-    assert not validate(q, question="is salicylic acid allowed in India").ok
-    assert validate(q, question="what could I use instead of salicylic acid").ok
+    q = f"MATCH (a)-[:{rel}]->(b) RETURN a, b LIMIT 5"
+    assert not validate(q, question="is salicylic acid allowed in India").ok, \
+        f"{rel} is in DERIVED_EDGES but answers a compliance question"
+    assert validate(q, question="what could I use instead of salicylic acid").ok, \
+        f"{rel} is blocked even for an exploratory question"
 
 
 def test_guard_always_bounds_the_result():

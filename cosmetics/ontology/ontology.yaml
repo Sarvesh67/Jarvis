@@ -151,3 +151,8 @@ derived_edges:                        # Stage 6 — all carry derived:true, rule
   - {type: SERVES_CATEGORY,      from: Facility,   to: ProductCategory}
   - {type: IN_CLUSTER_WITH,      from: Company,    to: Company}
   - {type: LIKELY_MANUFACTURES_FOR, from: Company, to: Company}
+  # What a firm SAYS it makes, mapped onto the Fourth Schedule spine. Its input is a
+  # tier-2 claim carrying a quoted sentence, so it is better evidenced than the NIC
+  # path — but it is still the company talking about itself, so it ranks and never
+  # permits. PERMITS remains the only edge that may answer "is this firm allowed to".
+  - {type: LIKELY_MAKES,         from: Company,    to: ProductCategory}

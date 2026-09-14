@@ -35,7 +35,7 @@ HUB_DEGREE = 500
 
 # Derived, tier-4 edges. SUBSTITUTE_FOR alone is 80k and would swamp any neighbourhood.
 DERIVED_EDGES = ["SUBSTITUTE_FOR", "SERVES_CATEGORY", "IN_CLUSTER_WITH",
-                 "LIKELY_MANUFACTURES_FOR", "CAN_FILL"]
+                 "LIKELY_MANUFACTURES_FOR", "CAN_FILL", "LIKELY_MAKES"]
 
 # label -> the property that names it, used to build a stable, human-readable ref
 KEY_OF = {

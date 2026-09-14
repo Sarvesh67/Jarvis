@@ -48,7 +48,7 @@ FORBIDDEN_CALLS = re.compile(
 DIRECTION_UNKNOWN_EDGES = {"LOAN_LICENCE_WITH"}
 
 DERIVED_EDGES = {"SUBSTITUTE_FOR", "SERVES_CATEGORY", "IN_CLUSTER_WITH",
-                 "LIKELY_MANUFACTURES_FOR", "CAN_FILL"}
+                 "LIKELY_MANUFACTURES_FOR", "CAN_FILL", "LIKELY_MAKES"}
 
 # Words that mean the user is asking whether something is permitted, not exploring.
 COMPLIANCE_WORDS = re.compile(

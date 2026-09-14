@@ -200,7 +200,8 @@ def drift(snap: dict) -> list[str]:
 # Derived edges rank and suggest; they never answer a compliance question (hard rule 3).
 # The site must show this next to the counts or it invites exactly the misreading the
 # rule exists to prevent.
-DERIVED_EDGES = {"LOCATED_IN", "SERVES_CATEGORY", "SUBSTITUTE_FOR", "SUPPLIES_PACKAGING"}
+DERIVED_EDGES = {"LOCATED_IN", "SERVES_CATEGORY", "SUBSTITUTE_FOR", "SUPPLIES_PACKAGING",
+                 "LIKELY_MAKES"}
 
 
 def _csv(path: Path, header: list[str], rows: list[list]) -> None:

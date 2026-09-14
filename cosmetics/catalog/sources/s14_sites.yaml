@@ -1,0 +1,86 @@
+id: s14
+slug: sites
+name: Company websites — contact, identifiers, capabilities
+tier: 2
+status: live
+jurisdiction: IN
+
+what_it_is: >
+  The 2,379 websites CHEMEXCIL publishes, crawled and parsed. This is the largest raw
+  payload in the project (665 MB of HTML, 4,308 pages) and the only source of
+  self-declared capability: what a firm says it can make, which certifications it claims,
+  and a checksum-valid GSTIN when it prints one.
+
+what_it_answers:
+  - "What does this company say it can manufacture?"
+  - "What certifications does it claim (GMP, ISO, Halal, cruelty-free)?"
+  - "What is its GSTIN, and does the checksum hold?"
+
+publisher:
+  org: the companies themselves
+  url: null
+  access: public
+
+acquisition:
+  adapter: adapters/s14_company_sites.py
+  method: html_crawl
+  landed_at: raw/s14_sites/
+  payloads: 3555
+  bytes: 688218468
+  first_seen: 2026-09-05
+  last_seen: 2026-09-06
+  refresh:
+    cadence: annual
+    why: >
+      Expensive (665 MB, three passes) and low-yield on re-run. Marketing copy changes;
+      the facts extracted from it rarely do.
+
+volume:
+  raw_rows: 1499
+  graph:
+    ProcessCapability: 13
+    Certification: 13
+
+coverage:
+  claimed: 2379
+  obtained: 1499
+  pct: 63.0
+  note: >
+    880 sites were dead, parked, JS-only, or timed out across three passes
+    (cache/s14_pass2.log, s14_pass3.log, s14_pass3b.log). This is a floor, not a failure.
+
+defects:
+  - >
+    Identifiers scraped from a site are promoted to spine fields ONLY when the company's
+    own name appears on that site. A GSTIN lifted from the wrong company's page would
+    merge two unrelated entities. Unconfirmed ones stay in the payload. Every candidate
+    is checksum-validated first. See decisions/0010.
+
+  - >
+    The capability matcher is a keyword matcher, so a capability string can be matched in
+    a non-cosmetic sense. Measured against the six capabilities that feed LIKELY_MAKES:
+    2 of 462 claims (0.4%) sit in a pharmaceutical context — "Vaccines and Serums"
+    matching `serum_gel` is the clearest. Not filtered: a negative-keyword guard for two
+    rows would drop genuine cosmetics firms that also mention veterinary or injectable
+    work, which is the worse error. The rate is stated here so a reader can price it, and
+    LIKELY_MAKES is tier 4 and ranks only — no compliance answer rests on it.
+
+feeds:
+  nodes: [ProcessCapability, Certification, Company]
+  edges: [CLAIMS_CAPABILITY, CLAIMS_CERTIFICATION]
+  derived_edges: [LIKELY_MAKES]
+
+do_not:
+  - >
+    A CLAIMS_* edge is a claim, not a fact. Never present a claimed certification as a
+    verified one — tier 2 is company-declared.
+  - >
+    Tier 2 never answers a licence or compliance question (hard rule 3, enforced by the
+    `tier4_never_answers_compliance` golden query and the Cypher guard).
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+keys:
+  raw_company: s14_sites
+  fetch_manifest: s14_sites
+  raw_dir: s14_sites

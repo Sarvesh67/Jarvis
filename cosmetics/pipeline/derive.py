@@ -236,6 +236,69 @@ def substitute_for(s) -> None:
     """, rows, f"SUBSTITUTE_FOR (tier 4, top {SUBSTITUTE_TOP_K})")
 
 
+# What a firm SAYS it makes -> the Fourth Schedule spine. Keyed on capability_id, not
+# on ProcessCapability.kind: kind is `capability_id.split("_")[0]`, so `colour_cosmetics`
+# and a hypothetical `colour_dyes` would collide on "colour".
+#
+# Only capabilities whose vocabulary names a FINISHED COSMETIC are mapped. Deliberately
+# absent, and why:
+#   powder    "POWDER"/"TALC"/"COMPACT" — talc is skin care, compact is make-up, and a
+#             bare "powder" on a chemicals site is as likely detergent. Three readings,
+#             no way to choose between them from the matched string.
+#   aerosol   propellant fill is a PROCESS. It carries deodorant, hairspray and half of
+#             household. The capability is real; the category is not inferable from it.
+#   liquid_filling / sachet_tube / rnd_formulation / export / third_party_manufacturing
+#             process and commercial capabilities. They say how a firm works, not what
+#             it makes.
+# Following decisions/0011: recall is sacrificed for precision. Adding the ambiguous
+# three would raise the company count ~27% and put detergent plants in a cosmetics rank.
+CAPABILITY_TO_CATEGORY = {
+    "cream_lotion":     ["SKIN_CARE"],
+    "serum_gel":        ["SKIN_CARE"],
+    "soap_bar":         ["SOAP"],
+    "shampoo_hair":     ["HAIR_CARE"],
+    "colour_cosmetics": ["MAKEUP"],
+    "oral_care":        ["ORAL_CARE"],
+}
+
+
+def likely_makes_from_capability(s) -> None:
+    """Tier 4, from a tier-2 claim: what the firm says it makes, on the spine.
+
+    Confidence 0.65 against the NIC path's 0.5. Both are tier 4 and neither may answer a
+    compliance question, but a sentence on the firm's own site naming the product form is
+    a better ranking signal than a five-digit activity code chosen at registration, and
+    the quoted sentence travels with the edge so a reader can judge it.
+    """
+    s.run("MATCH ()-[e:LIKELY_MAKES]->() WHERE e._rule_id = 'likely_makes_from_capability' "
+          "DELETE e")
+    rows = []
+    for cap_id, cats in CAPABILITY_TO_CATEGORY.items():
+        for cat in cats:
+            rows.append({"capability_id": cap_id, "code": cat,
+                         "prov": pv("stage6_derive", 4, 0.65, derived=True,
+                                    rule_id="likely_makes_from_capability",
+                                    basis="capability_claim", inputs=[cap_id])})
+    # run() reports the parameter-row count, which here is the size of the mapping table
+    # (6), not the number of edges written. Report what actually landed.
+    run(s, """
+        UNWIND $rows AS row
+        MATCH (c:Company)-[claim:CLAIMS_CAPABILITY]->(:ProcessCapability
+              {capability_id: row.capability_id})
+        MATCH (p:ProductCategory {code: row.code})
+        MERGE (c)-[e:LIKELY_MAKES]->(p)
+        SET e += row.prov, e.derived = true,
+            e.evidence = coalesce(e.evidence, claim.evidence)
+    """, rows, "LIKELY_MAKES mapping rows")
+    res = s.run("""
+        MATCH (c:Company)-[e:LIKELY_MAKES]->(:ProductCategory)
+        WHERE e._rule_id = 'likely_makes_from_capability'
+        RETURN count(e) AS edges, count(DISTINCT c) AS companies
+    """).single()
+    print(f"    LIKELY_MAKES (company capability claim, tier 4): "
+          f"{res['edges']} edges over {res['companies']} companies")
+
+
 def capability_to_facility(s) -> None:
     """Company claim -> Facility capability, ONLY where the company operates exactly one.
 
@@ -267,6 +330,7 @@ def main() -> int:
         company_located_in(s)
         serves_category_from_licence(s)
         serves_category_from_nic(s)
+        likely_makes_from_capability(s)
         capability_to_facility(s)
         if not a.skip_substitutes:
             substitute_for(s)
