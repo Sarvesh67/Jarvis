@@ -1,0 +1,5 @@
+# Flat files written by `make catalog` (pipeline/snapshot.py). No secrets — commit this.
+# Neo4j is not an Evidence connector and the source cards are YAML, so both are
+# flattened to CSV rather than taught to the site.
+name: catalog
+type: csv

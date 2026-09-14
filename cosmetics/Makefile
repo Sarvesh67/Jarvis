@@ -6,7 +6,8 @@ PY := .venv/bin/python
 PG := docker exec -i jarvis-postgres psql -U $(shell grep -m1 '^POSTGRES_USER=' ../platform/.env | cut -d= -f2-) -d cosmetics
 
 .PHONY: bootstrap ingest normalize resolve reconcile constraints load derive trust \
-        validate coverage rebuild pipeline clean-graph help
+        validate coverage rebuild pipeline clean-graph help \
+        catalog catalog-check site site-dev viz-up viz-down
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -84,3 +85,26 @@ schema:                 ## the live schema the agent reads before writing Cypher
 
 context:                ## graph-context retrieval. make context Q="..."
 	$(PY) -m pipeline.router --mode context "$(Q)"
+
+catalog:                ## write today's catalog snapshot of the live stores
+	$(PY) -m pipeline.snapshot
+
+catalog-check:          ## fail if a source card disagrees with the live stores
+	$(PY) -m pipeline.snapshot --drift
+
+site-dev:               ## Evidence site with live reload on :3002
+	cd site && npx evidence dev --port 3002
+
+site:                   ## refresh catalog data, then build the static site to site/build
+	$(MAKE) catalog
+	cd site && npx evidence sources && npx evidence build
+
+bi-views:               ## (re)build the Postgres serving layer Metabase reads
+	docker exec -i jarvis-postgres psql -U jarvis -d cosmetics -v ON_ERROR_STOP=1 < sql/002_bi_views.sql
+
+viz-up:                 ## start Metabase (:3001), NeoDash (:5005), Neo4j Browser (:7474)
+	docker compose up -d
+	$(MAKE) bi-views
+
+viz-down:               ## stop them
+	docker compose stop metabase neodash neo4j

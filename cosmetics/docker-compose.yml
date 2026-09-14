@@ -28,6 +28,67 @@ services:
       timeout: 5s
       retries: 12
 
+  metabase:
+    image: metabase/metabase:v0.56.8    # pinned; first tags with native arm64 are v0.53+
+    container_name: cosmetics-metabase
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"   # 3000 is taken by jarvis-falkordb
+    environment:
+      # Metabase's own app database — its saved questions, dashboards and column
+      # descriptions. A file on a named volume, NOT the cosmetics db: Metabase would
+      # otherwise create its ~40 internal tables inside the data it is meant to describe.
+      - MB_DB_FILE=/metabase-data/metabase.db
+      - MB_ANON_TRACKING_ENABLED=false
+      - JAVA_TIMEZONE=Asia/Kolkata
+    volumes:
+      - metabase_data:/metabase-data
+    networks:
+      - default          # cosmetics_default
+      - jarvis           # to reach jarvis-postgres by container name
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+
+  neodash:
+    image: neo4jlabs/neodash:2.4.9
+    container_name: cosmetics-neodash
+    restart: unless-stopped
+    # NeoDash publishes amd64 only; this Mac is arm64, so it runs under emulation.
+    # That is acceptable here and nowhere else in this stack: the container is nginx
+    # serving a static React bundle. Every Cypher query runs in the browser against
+    # Bolt, so the emulated process is never on the query path.
+    platform: linux/amd64
+    ports:
+      - "127.0.0.1:5005:5005"   # NeoDash UI
+    environment:
+      # The browser — not this container — opens the Bolt connection, so the host it
+      # needs is the one the browser can reach, not a container name.
+      - ssoEnabled=false
+      - standalone=false
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    healthcheck:
+      # 127.0.0.1, not localhost: inside this image localhost resolves to ::1 and
+      # nginx binds IPv4 only, so the IPv6 attempt is refused and never recovers.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5005 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+networks:
+  jarvis:
+    # The platform stack's network, created by platform/docker-compose.yml.
+    # External so this compose file never owns or tears down jarvis-postgres' network.
+    external: true
+    name: jarvis_default
+
 volumes:
   neo4j_data:
   neo4j_logs:
+  metabase_data:

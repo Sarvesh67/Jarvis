@@ -1,0 +1,21 @@
+{
+  "name": "cosmetics-catalog-site",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "sources": "evidence sources",
+    "dev": "evidence dev --port 3002",
+    "build": "evidence build",
+    "preview": "evidence preview --port 3002"
+  },
+  "devDependencies": {
+    "@evidence-dev/core-components": "^5.2.0",
+    "@evidence-dev/evidence": "40.1.8",
+    "@evidence-dev/postgres": "^1.0.4",
+    "typescript": "5.4.2"
+  },
+  "dependencies": {
+    "@evidence-dev/csv": "^1.0.16"
+  }
+}

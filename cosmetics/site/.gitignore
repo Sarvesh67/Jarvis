@@ -1,0 +1,7 @@
+.evidence/
+build/
+node_modules/
+
+# Carries the platform Postgres password. The catalog CSV source has no secret
+# and IS committed, so do not widen this back to a bare `connection.yaml`.
+sources/cosmetics/connection.yaml

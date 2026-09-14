@@ -61,6 +61,34 @@ python -m pipeline.review --distinct 42
 python -m pipeline.review --auto-distinct-below 0.80
 ```
 
+## Reading surfaces
+
+The graph answers questions. `catalog/` answers *"should I believe that answer?"* — it
+carries what each source is, what it may be used to claim, and the defects found by
+building it. **Read `catalog/README.md` before querying.** `CLAUDE.md` is the same brief
+for an agent.
+
+Judgement in the catalog is hand-written; measurement is generated. Nothing rewrites
+itself, and `make catalog-check` fails when a card has drifted from the live stores.
+
+| Surface | Where | For |
+|---|---|---|
+| **Evidence site** | `make site` → `site/build`, or `make site-dev` on :3002 | The narrated view. Source is markdown + SQL in `site/pages/`, so it reads well as prose and as a file. |
+| **Metabase** | :3001 (`make viz-up`) | Point-and-click over Postgres. Saved questions, dashboards, per-column descriptions. |
+| **Neo4j Browser** | :7474 | Cypher against the graph. Run `make schema` first. |
+| **Catalog snapshots** | `catalog/snapshots/` | Dated measurements, committed, so growth is reviewable over time. |
+
+Metabase's first run asks you to create an admin account and add a database. Connect it to
+`jarvis-postgres` / `cosmetics` — host `jarvis-postgres`, port `5432`, user and password
+from `platform/.env`. Use the container name, not `127.0.0.1`: Metabase is on the
+`jarvis_default` network and localhost inside the container is the container.
+
+Its own app database is a file on the `metabase_data` volume, deliberately not the
+`cosmetics` db — otherwise Metabase creates its ~40 internal tables inside the data it is
+meant to describe.
+
+Everything binds to `127.0.0.1`. Nothing is exposed off-box.
+
 ## Sources
 
 | ID | Source | Tier | What it gives | State |

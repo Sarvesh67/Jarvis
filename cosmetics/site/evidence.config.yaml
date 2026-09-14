@@ -1,0 +1,13 @@
+# Evidence 40.x (classic) config. The degit template ships the new-CLI format, which has
+# no `plugins` block and fails to load here.
+project:
+  name: Cosmetics supply-chain graph
+
+plugins:
+  components:
+    "@evidence-dev/core-components": {}
+  datasources:
+    "@evidence-dev/postgres": {}
+    "@evidence-dev/csv": {}
+
+pages: ./pages
