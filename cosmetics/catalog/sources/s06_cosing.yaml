@@ -1,0 +1,83 @@
+id: s06
+slug: cosing
+name: EU CosIng — Cosmetic Ingredient Database
+tier: 1
+status: live
+jurisdiction: EU
+
+what_it_is: >
+  The European Commission's register of every substance used in cosmetics sold in the EU.
+  Each entry has an INCI name (the international naming standard printed on packs
+  worldwide, including in India), the functions it performs, and — where it is
+  restricted — the Annex II-VI entry that restricts it. This is the ingredient
+  vocabulary the whole graph hangs off: it is what lets a scraped word on a company
+  website be recognised as a real substance rather than a noun.
+
+what_it_answers:
+  - "Is this ingredient restricted or banned in the EU, and at what concentration?"
+  - "What does this ingredient actually do (emulsifier, preservative, UV filter)?"
+  - "What else performs the same function as this restricted ingredient?"
+  - "Is this string on a company website an ingredient at all?"
+
+publisher:
+  org: European Commission, DG GROW
+  url: https://ec.europa.eu/growth/tools-databases/cosing/
+  access: public
+
+acquisition:
+  adapter: adapters/s06_cosing.py
+  method: json_api
+  landed_at: raw/s06_cosing/
+  payloads: 2
+  bytes: 73167160
+  first_seen: 2026-09-05
+  last_seen: 2026-09-05
+  refresh:
+    cadence: quarterly
+    why: >
+      Annexes change by Commission Regulation a few times a year. Nothing downstream
+      breaks if it is stale, but a newly-banned substance would be answered wrongly.
+
+volume:
+  raw_rows: 33638
+  graph:
+    Ingredient: 35864
+    RegulatoryRule: 2445
+
+coverage:
+  claimed: 33654
+  obtained: 33638
+  pct: 99.95
+  note: >
+    The SPA enforces a hard 10,000-result paging window. Worked around with recursive
+    prefix buckets on inciName, deduped on substanceId. The missing 16 are entries whose
+    inciName is empty or non-Latin and so fall outside every prefix bucket.
+
+defects:
+  - >
+    The endpoint and its API key are published by the SPA itself in
+    assets/env-json-config.json — this is not a private credential and may be rotated
+    without notice. If ingest 401s, re-read that file rather than assuming a block.
+  - >
+    The query DSL accepts only `term`/`terms`/`text`. Field-scoped queries silently
+    match the whole record.
+
+feeds:
+  nodes: [Ingredient, RegulatoryRule]
+  edges: [RESTRICTED_BY, SUBJECT_TO_GENERAL_RULE, SUBSTITUTE_FOR]
+
+do_not:
+  - >
+    EU restriction is NOT Indian restriction. Never answer an Indian compliance question
+    from a CosIng rule alone — the India limits come from S5 (Cosmetics Rules 2020).
+    Every RegulatoryRule carries `jurisdiction`; pin it (hard rule 2).
+  - >
+    Do not treat an ingredient's presence in CosIng as permission to use it. CosIng lists
+    substances, including banned ones; permission is the Annex entry, not the listing.
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+keys:
+  raw_company: null
+  fetch_manifest: s06_cosing
+  raw_dir: s06_cosing

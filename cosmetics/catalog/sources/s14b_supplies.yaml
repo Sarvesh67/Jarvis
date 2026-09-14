@@ -1,0 +1,69 @@
+id: s14b
+slug: supplies
+name: Ingredient supply claims from company pages
+tier: 3
+status: live
+jurisdiction: IN
+
+what_it_is: >
+  A second pass over the S14 HTML that looks for INCI names on the page and, where enough
+  of them appear together, asserts that the company supplies them. This is the only path
+  from "a company exists" to "a company sells this specific substance", which is the
+  question a formulator actually asks.
+
+what_it_answers:
+  - "Who supplies this ingredient in India?"
+  - "What does this supplier's range actually cover?"
+
+publisher:
+  org: the companies themselves
+  url: null
+  access: public
+
+acquisition:
+  adapter: adapters/s14b_supplies.py
+  method: html_crawl
+  landed_at: raw/s14_sites/
+  payloads: 0
+  bytes: 0
+  first_seen: 2026-09-06
+  last_seen: 2026-09-06
+  refresh:
+    cadence: on_demand
+    why: Re-derivable from landed S14 HTML without refetching. Cheap to replay.
+
+volume:
+  raw_rows: 804
+  graph: {}
+
+coverage:
+  claimed: null
+  obtained: 804
+  pct: null
+  note: >
+    764 SUPPLIES edges from 804 raw claims. Coverage is undefined — there is no
+    denominator for "ingredients a company could have mentioned".
+
+defects:
+  - >
+    Matched only on unambiguous INCI names. "MILK", "SAND", "HONEY" and "TALC" are real
+    INCI names and also ordinary English; they are excluded rather than guessed at.
+    A page must yield >= 3 distinct ingredients before any of them is believed.
+    See decisions/0011.
+
+feeds:
+  nodes: [Ingredient]
+  edges: [SUPPLIES]
+
+do_not:
+  - >
+    Tier 3 is observed, not declared and not regulated. A SUPPLIES edge means the words
+    co-occurred on a page the company controls — treat it as a lead, not as inventory.
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+# S14b re-reads S14's landed HTML. It owns no payload and no bytes of its own.
+keys:
+  raw_company: null
+  fetch_manifest: null
+  raw_dir: null

@@ -1,0 +1,74 @@
+id: s09
+slug: chemexcil
+name: CHEMEXCIL member directory
+tier: 2
+status: live
+jurisdiction: IN
+
+what_it_is: >
+  The export promotion council's member list. Specced as an export-activity source, it
+  turned out to matter for a different reason: it publishes a website per member, 2,379
+  of them, and that URL list is the only thing that makes S14 (company site scraping)
+  possible at all.
+
+what_it_answers:
+  - "Is this firm an active exporter?"
+  - "What is this company's website?"
+
+publisher:
+  org: Basic Chemicals, Cosmetics & Dyes Export Promotion Council
+  url: https://chemexcil.gov.in/
+  access: public
+
+acquisition:
+  adapter: adapters/s09_chemexcil.py
+  method: html_crawl
+  landed_at: raw/s09_chemexcil/
+  payloads: 74
+  bytes: 9035690
+  first_seen: 2026-09-05
+  last_seen: 2026-09-05
+  refresh:
+    cadence: annual
+    why: Membership turns over slowly.
+
+volume:
+  raw_rows: 4005
+  graph:
+    Association: 1
+    Company: 45546
+
+coverage:
+  claimed: 4005
+  obtained: 4005
+  pct: 100.0
+  note: 4,005 members, 2,379 with a website.
+
+defects:
+  - >
+    Enumerate at /members-alpha/{A-Z,0-9}. Do NOT parse /members.html search results —
+    that page wraps the matched term in markup and splits names mid-word.
+  - >
+    Member profiles need a council login, so membership type (manufacturer-exporter vs
+    merchant-exporter) is unavailable. That role split is deliberately not made.
+  - >
+    The directory legitimately lists a parent or group site against a subsidiary —
+    Bombay Perfumery against aacipl.com is their data, verified against raw HTML, not a
+    parse error. See decisions/0010.
+
+feeds:
+  nodes: [Company, Association]
+  edges: [MEMBER_OF]
+
+do_not:
+  - >
+    Do not auto-merge on a fuzzy name match from this source. It publishes a name and a
+    website and nothing else; without the exact-normalised-name guard every generic name
+    in a 4,000-row directory collapses into one entity.
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+keys:
+  raw_company: s09_chemexcil
+  fetch_manifest: s09_chemexcil
+  raw_dir: s09_chemexcil

@@ -1,0 +1,64 @@
+id: s07
+slug: obf
+name: Open Beauty Facts
+tier: 3
+status: live
+jurisdiction: "-"
+
+what_it_is: >
+  A crowd-sourced product database. Its value here is not the products but the alias
+  table: the many ways a real-world label writes the same ingredient. It is the bridge
+  between messy consumer-facing strings and CosIng's canonical INCI names.
+
+what_it_answers:
+  - "Is this label string an alias for a known INCI name?"
+  - "What ingredients typically appear in this product type?"
+
+publisher:
+  org: Open Food Facts / Open Beauty Facts
+  url: https://world.openbeautyfacts.org/data
+  access: public
+
+acquisition:
+  adapter: adapters/s07_obf.py
+  method: bulk_file
+  landed_at: raw/s07_obf/
+  payloads: 2
+  bytes: 97512406
+  first_seen: 2026-09-05
+  last_seen: 2026-09-05
+  refresh:
+    cadence: on_demand
+    why: Crowd-sourced and slow-moving; the alias table is the stable part.
+
+volume:
+  raw_rows: 1751
+  graph:
+    Product: 1751
+
+coverage:
+  claimed: null
+  obtained: 1751
+  pct: null
+  note: Products with a usable ingredient list after filtering. No meaningful denominator.
+
+defects:
+  - >
+    Crowd-sourced: entries are unreviewed, regionally skewed to the EU, and ingredient
+    lists are frequently partial or transcribed with OCR errors.
+
+feeds:
+  nodes: [Product]
+  edges: [CONTAINS, IN_CATEGORY]
+
+do_not:
+  - >
+    Tier 3. Never use an OBF product to assert what an Indian product contains, and never
+    use it in a compliance answer.
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+keys:
+  raw_company: null
+  fetch_manifest: null
+  raw_dir: s07_obf

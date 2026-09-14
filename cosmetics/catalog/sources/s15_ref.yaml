@@ -1,0 +1,65 @@
+id: s15
+slug: ref
+name: GeoNames pincode reference
+tier: 1
+status: live
+jurisdiction: IN
+
+what_it_is: >
+  A plain lookup table: pincode -> district -> state. Unglamorous and load-bearing. Every
+  address in every other source is a free-text string; this is what turns it into a place,
+  and therefore what makes clusters, proximity and "who is near whom" answerable at all.
+
+what_it_answers:
+  - "Where is this pincode, and which district and state is it in?"
+  - "Which cluster does this address fall in?"
+
+publisher:
+  org: GeoNames
+  url: https://download.geonames.org/export/zip/
+  access: public
+
+acquisition:
+  adapter: adapters/s15_reference.py
+  method: bulk_file
+  landed_at: raw/s15_ref/
+  payloads: 1
+  bytes: 1742997
+  first_seen: 2026-09-05
+  last_seen: 2026-09-05
+  refresh:
+    cadence: annual
+    why: Pincodes are stable; district boundaries occasionally split.
+
+volume:
+  raw_rows: 19238
+  graph:
+    Cluster: 17
+
+coverage:
+  claimed: 19238
+  obtained: 19238
+  pct: 100.0
+  note: Complete for the published file.
+
+defects:
+  - >
+    `ref_pincode` currently reports 0 rows in Postgres — the reference is consumed at
+    normalize time rather than persisted. Verify before relying on the table directly;
+    read through ontology/cluster_map.yaml instead.
+
+feeds:
+  nodes: [Cluster]
+  edges: [LOCATED_IN]
+
+do_not:
+  - >
+    Do not resolve a district by name alone across states — see the Raigarh/Raigad trap
+    in s17b_udyam.yaml and decisions/0008.
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+keys:
+  raw_company: null
+  fetch_manifest: s15_ref
+  raw_dir: s15_ref

@@ -1,0 +1,88 @@
+id: s17b
+slug: udyam
+name: Udyam MSME registry — national slice (data.gov.in)
+tier: 1
+status: live
+jurisdiction: IN
+
+what_it_is: >
+  India's MSME registration database, filtered to the cosmetics NIC slice. This is the
+  long tail and by far the largest contributor of companies to the graph. It matters
+  because it is the only spine that sees proprietorships and partnerships — MCA
+  structurally cannot, and those legal forms are most of the industry by headcount.
+  It is also where the packaging converters come from.
+
+what_it_answers:
+  - "Which firms operate in this cluster or pincode?"
+  - "Who converts packaging near this manufacturer?"
+  - "What is the actual size of the industry in this district?"
+
+publisher:
+  org: Ministry of MSME, via data.gov.in
+  url: https://www.data.gov.in/
+  access: key_required
+
+acquisition:
+  adapter: adapters/s17b_udyam_api.py
+  method: json_api
+  landed_at: raw/s17_udyam/
+  payloads: 0
+  bytes: 0
+  first_seen: 2026-09-06
+  last_seen: 2026-09-06
+  refresh:
+    cadence: on_demand
+    why: >
+      43.9M records behind a 10k-per-query cap; a full re-read is days of API budget.
+      Refresh a cluster at a time when a question needs it.
+
+volume:
+  raw_rows: 119120
+  graph:
+    Company: 45546
+
+coverage:
+  claimed: null
+  obtained: 119120
+  pct: null
+  note: >
+    Coverage is genuinely unknown and should not be guessed. The registry has no activity
+    index, so the cosmetics slice is cut locally at ~5% yield. Pincode-partitioned, not
+    district — see defects.
+
+defects:
+  - >
+    The API caps every distinct query at 10,000 rows against a 43.9M-record registry.
+    District buckets can never be read completely (Surat is 560,180; Thane 684,886).
+    Pincode is the only partition key that mostly fits, and is globally unique so no
+    district filter is needed alongside. See decisions/0006.
+  - >
+    There is no server-side activity filter. `filters[Activities]` matches the whole JSON
+    blob and `q=` is ignored. The NIC slice is cut client-side; the ~5% yield is the cost
+    of the registry having no activity index.
+  - >
+    A district name match must agree on state. Raigarh (CG) is not Raigad (MH); treating
+    them as variants put nine Chhattisgarh firms in the Palghar-Tarapur wedge. Same trap:
+    Aurangabad (MH/BR), Bilaspur (HP/CG), Hamirpur (HP/UP). An unknown state still
+    matches — a missing state is not evidence of mismatch. See decisions/0008.
+
+feeds:
+  nodes: [Company, PackagingComponent]
+  edges: [LOCATED_IN, SUPPLIES_PACKAGING, SERVES_CATEGORY]
+
+do_not:
+  - >
+    Do not count or rank the industry from this source and present it as complete.
+    Coverage is unmeasured; say so in the answer.
+  - >
+    Where `is_proprietorship`, the GSTIN derives from an individual's PAN and is arguably
+    personal data under DPDP. It gets person-table handling — consent basis recorded,
+    deletable — never industrial-spine handling.
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+# The API writes straight to Postgres; nothing lands under raw/.
+keys:
+  raw_company: s17b_udyam_api
+  fetch_manifest: null
+  raw_dir: null

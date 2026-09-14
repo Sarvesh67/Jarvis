@@ -1,0 +1,50 @@
+id: s10
+slug: indiamart
+name: IndiaMART / retail / trade data
+tier: 3
+status: not_built
+jurisdiction: IN
+
+what_it_is: >
+  Marketplace listings and trade data. Enrichment only — price points, MOQs, what is
+  actually being offered rather than what is registered. Grouped here with S12/S13 from
+  the build spec, none of which are built.
+
+what_it_answers:
+  - "What is this firm actually offering for sale, at what price and MOQ?"
+
+publisher:
+  org: IndiaMART and others
+  url: https://www.indiamart.com/
+  access: public
+
+acquisition:
+  adapter: null
+  method: none
+  landed_at: raw/s10_indiamart/
+  payloads: 0
+  bytes: 0
+  first_seen: null
+  last_seen: null
+  refresh: {cadence: never, why: Not built.}
+
+volume: {raw_rows: 0, graph: {}}
+
+coverage: {claimed: null, obtained: 0, pct: 0.0, note: Not built.}
+
+defects: []
+
+feeds: {nodes: [], edges: []}
+
+do_not:
+  - >
+    Tier 3-4. If built, its category strings are tags mapped through
+    ontology/category_map.yaml — never a substitute for the Fourth Schedule spine
+    (hard rule 9).
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+keys:
+  raw_company: null
+  fetch_manifest: null
+  raw_dir: null

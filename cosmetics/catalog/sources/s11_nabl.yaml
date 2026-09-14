@@ -1,0 +1,72 @@
+id: s11
+slug: nabl
+name: NABL accredited testing laboratories
+tier: 1
+status: live
+jurisdiction: IN
+
+what_it_is: >
+  The register of laboratories accredited to test cosmetics in India. A manufacturer
+  cannot release a batch without a test, so this answers the half of the supply chain
+  that is not manufacturing. It is also the source of the `person` table — lab contacts
+  are named individuals, which is why this source is the main DPDP surface.
+
+what_it_answers:
+  - "Who can legally test this product, and where?"
+  - "Is there an accredited lab within reach of this cluster?"
+
+publisher:
+  org: National Accreditation Board for Testing and Calibration Laboratories
+  url: https://nabl-india.org/
+  access: public
+
+acquisition:
+  adapter: adapters/s11_nabl.py
+  method: pdf
+  landed_at: raw/s11_nabl/
+  payloads: 1
+  bytes: 184435
+  first_seen: 2026-09-05
+  last_seen: 2026-09-05
+  refresh:
+    cadence: quarterly
+    why: Accreditations lapse. A lapsed lab presented as accredited is a real-world error.
+
+volume:
+  raw_rows: 6682
+  graph:
+    Certification: 13
+    Company: 45546
+
+coverage:
+  claimed: 184
+  obtained: 184
+  pct: 100.0
+  note: 184 labs with a genuine cosmetics scope, from 6,682 register rows.
+
+defects:
+  - >
+    Scope must be read from the register, not inferred from keywords. "Accredited for
+    cosmetics" means the Cosmetics & Essential Oils / AYUSH / Soap-Detergent-Toiletries
+    scope specifically. An earlier keyword list containing the bare word CHEMICAL flagged
+    a CENTRAL FORENSIC SCIENCE LABORATORY as a cosmetics lab and inflated 184 to 442.
+    See decisions/0009.
+
+feeds:
+  nodes: [Certification, Company]
+  edges: [ACCREDITED_AS]
+
+do_not:
+  - >
+    Pharma accreditation is adjacent capability, never cosmetics accreditation. Do not
+    collapse them.
+  - >
+    Lab contacts are people. They live in Postgres `person` only; `Person` must never
+    appear as a Neo4j label (hard rule 4, enforced by the `no_person_nodes` golden query).
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+keys:
+  raw_company: s11_nabl
+  fetch_manifest: null
+  raw_dir: s11_nabl

@@ -1,0 +1,140 @@
+# Domain and project vocabulary. Read this before interpreting any figure in the catalog.
+# Terms an agent will otherwise get subtly and confidently wrong.
+
+regulatory:
+  INCI:
+    expand: International Nomenclature of Cosmetic Ingredients
+    means: >
+      The global naming standard for cosmetic ingredients, printed on packs worldwide
+      including in India. It is the join key between EU CosIng, scraped web pages and
+      product data.
+    gotcha: >
+      Several INCI names are also ordinary English words — MILK, SAND, HONEY, TALC.
+      See decisions/0011.
+
+  Fourth Schedule:
+    means: >
+      CDSCO's own 80-entry vocabulary of cosmetic product categories under the Cosmetics
+      Rules 2020. The category spine of this graph.
+    gotcha: Not the Ninth Schedule. See decisions/0003.
+
+  Ninth Schedule:
+    means: >
+      The 37 BIS standards a product must meet, attaching to Fourth Schedule categories
+      via GOVERNED_BY. Standards, not categories.
+
+  COS-8:
+    means: Indian licence to manufacture cosmetics, issued by a state FDA.
+    gotcha: Not held in the graph. No state publishes a bulk list. See s02_state_fda.yaml.
+
+  COS-9:
+    means: Indian loan licence — manufacture on someone else's approved premises.
+
+  loan licence:
+    means: >
+      A licence to manufacture on premises owned by another firm. The basic structure of
+      Indian cosmetics contract manufacturing.
+    gotcha: >
+      The CDSCO register names both parties but not which owns the plant. LOAN_LICENCE_WITH
+      is written both ways with direction_known:false. See decisions/0002.
+
+  Annex II-VI:
+    means: >
+      The EU Cosmetics Regulation annexes listing banned (II) and restricted (III-VI)
+      substances.
+    gotcha: EU only. Never answers an Indian compliance question. Pin `jurisdiction`.
+
+  NABL:
+    expand: National Accreditation Board for Testing and Calibration Laboratories
+    means: Accredits the labs that may legally test a cosmetic product in India.
+    gotcha: >
+      "Accredited for cosmetics" means a specific register scope, not a keyword match.
+      See decisions/0009.
+
+  Udyam:
+    means: >
+      India's MSME registration. Registers by enterprise rather than legal form, so unlike
+      MCA it sees proprietorships and partnerships.
+
+  NIC code:
+    means: National Industrial Classification — the activity code used to cut the cosmetics
+      slice out of Udyam.
+    gotcha: Cut client-side; the registry has no activity index. ~5% yield.
+
+project:
+  tier:
+    means: Where a fact came from, and therefore what it may be used to claim.
+    values:
+      1: regulator — may answer a compliance question
+      2: company-declared — a claim, not a fact
+      3: observed / scraped — a lead
+      4: inferred / derived — ranks and suggests, never answers compliance
+    gotcha: >
+      Hard rule 3. Enforced by the tier4_never_answers_compliance golden query and by the
+      Cypher guard, not by convention.
+
+  trust_level:
+    means: >
+      L0-L6 per company, recomputed nightly, never ingested. How much corroboration exists
+      for that entity's identity.
+    gotcha: >
+      trust_level is a MAXIMUM. To filter on a rung being present, use `2 IN trust_rungs`,
+      not `trust_level = 2`. This has produced wrong answers here before.
+
+  trust_rungs:
+    means: The array of rungs actually achieved. This is what you filter on.
+
+  provenance envelope:
+    means: >
+      source_id, retrieved_at, tier, confidence, valid_from, valid_to — carried on every
+      property group and every edge.
+    gotcha: Hard rule 8. The every_edge_has_provenance golden query fails the build without it.
+
+  crosswalk:
+    means: >
+      The append-only record of entity-resolution decisions. Supersede, never delete
+      (hard rule 6). 137,399 rows.
+
+  cluster:
+    means: >
+      A named industrial geography (17 of them, 4 marked `wedge`), defined by district and
+      pincode-prefix in ontology/cluster_map.yaml.
+    gotcha: >
+      IN_CLUSTER_WITH is deliberately not materialised — it is a clique. Two-hop through
+      LOCATED_IN. See decisions/0013.
+
+  wedge cluster:
+    means: >
+      A cluster included to test the boundary of the geography rather than because it is a
+      settled cosmetics centre. Treat its membership as provisional.
+
+  review_queue:
+    means: >
+      Resolution pairs below the auto-merge threshold, staffed via `pipeline.review`.
+      3,759 pending. A workflow, not an exception hopper.
+
+  answer path:
+    means: >
+      template (13 reviewed queries — the ONLY path that may assert a regulatory fact) |
+      context (graph neighbourhood, exploratory) | cypher (agent-written, validated,
+      exploratory).
+
+compliance:
+  DPDP:
+    expand: Digital Personal Data Protection Act
+    means: >
+      A proprietorship GSTIN derives from an individual's PAN and is arguably personal
+      data. Where is_proprietorship, it gets person-table handling — consent basis
+      recorded, deletable — not industrial-spine handling.
+
+  person handling:
+    means: >
+      People live in Postgres `person` ONLY. There is no Person label; validate/checks.py
+      fails the build if one appears (hard rule 4). 6,682 rows, mostly NABL lab contacts.
+
+  filing history:
+    means: GST return filing regularity.
+    gotcha: >
+      NEVER PUBLISH IT. Verify against it, rank with it, warn a buyer privately.
+      "Hasn't filed in 8 months" on a public profile is a defamation problem.
+      trust.py records the fact, never the period, in public reasons (hard rule 7).

@@ -1,0 +1,69 @@
+id: s16
+slug: gstin
+name: GSTIN verification
+tier: 1
+status: blocked
+jurisdiction: IN
+
+what_it_is: >
+  Live verification of a GSTIN against the GST network — constitution, registration
+  status, filing history. It is what would lift a company from trust L2 to L3: the
+  difference between "a number that passes a checksum" and "a number that is currently
+  active and belongs to this firm".
+
+what_it_answers:
+  - "Is this GSTIN active, and whose is it?"
+  - "What is the firm's legal constitution?"
+
+publisher:
+  org: GSTN, via a commercial API provider
+  url: null
+  access: key_required
+
+acquisition:
+  adapter: null
+  method: none
+  landed_at: null
+  payloads: 0
+  bytes: 0
+  first_seen: null
+  last_seen: null
+  refresh:
+    cadence: never
+    why: Blocked.
+
+volume:
+  raw_rows: 0
+  graph: {}
+
+coverage:
+  claimed: null
+  obtained: 0
+  pct: 0.0
+  note: >
+    `gst_record` is 0 rows. This is the main reason 36,913 of 45,546 companies sit at
+    trust L0.
+
+blocked_on: A paid provider key (Masters India, Signzy, KarzaSurepass or similar).
+
+defects: []
+
+feeds:
+  nodes: [Company]
+  edges: []
+
+do_not:
+  - >
+    NEVER PUBLISH FILING HISTORY. Verify against it, rank with it, warn a buyer privately.
+    "Hasn't filed in 8 months" on a public profile is a defamation problem. trust.py
+    records the fact, never the period, in public reasons (hard rule 7).
+  - >
+    A proprietorship GSTIN derives from an individual's PAN and is arguably personal data
+    under DPDP. Person-table handling, not spine handling.
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+keys:
+  raw_company: null
+  fetch_manifest: null
+  raw_dir: null

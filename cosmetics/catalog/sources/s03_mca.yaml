@@ -1,0 +1,69 @@
+id: s03
+slug: mca
+name: MCA company master
+tier: 1
+status: blocked
+jurisdiction: IN
+
+what_it_is: >
+  The Registrar of Companies' master list — CIN, incorporation date, registered address,
+  legal form. Specced as the company spine. It is blocked on a data.gov.in key, and 1,609
+  rows landed before the block.
+
+what_it_answers:
+  - "Is this a real registered company, and since when?"
+  - "What is its CIN and registered office?"
+
+publisher:
+  org: Ministry of Corporate Affairs, via data.gov.in
+  url: https://www.data.gov.in/
+  access: key_required
+
+acquisition:
+  adapter: adapters/s03_mca_master.py
+  method: json_api
+  landed_at: raw/s03_mca/
+  payloads: 0
+  bytes: 0
+  first_seen: null
+  last_seen: null
+  refresh:
+    cadence: never
+    why: Blocked. See blocked_on.
+
+volume:
+  raw_rows: 1609
+  graph: {}
+
+coverage:
+  claimed: null
+  obtained: 1609
+  pct: null
+  note: Partial landing before the key block. raw/s03_mca/ is empty; rows are in Postgres.
+
+blocked_on: >
+  A data.gov.in API key with MCA master access. Note the same key already works for S17b
+  (Udyam) — the MCA resource is separately gated.
+
+defects:
+  - >
+    MCA structurally cannot see proprietorships and partnerships. Even unblocked it would
+    not be the spine for this industry — Udyam (S17b) is, because it registers by
+    enterprise rather than legal form. See decisions/0006.
+
+feeds:
+  nodes: [Company]
+  edges: []
+
+do_not:
+  - >
+    Do not treat absence from MCA as evidence a firm is not real. Most of this industry
+    is legally invisible to MCA by construction.
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+# Partial landing before the key block: rows exist in Postgres, nothing under raw/.
+keys:
+  raw_company: s03_mca
+  fetch_manifest: null
+  raw_dir: null

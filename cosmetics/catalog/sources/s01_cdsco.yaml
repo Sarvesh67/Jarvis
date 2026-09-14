@@ -1,0 +1,81 @@
+id: s01
+slug: cdsco
+name: CDSCO approved manufacturing sites register
+tier: 1
+status: live
+jurisdiction: IN
+
+what_it_is: >
+  The central register of manufacturing sites approved by CDSCO, with the licence held at
+  each. It was specced as the cosmetics facility spine. It is not — see defects. What it
+  actually gives the graph is the loan-licence layer: which firms manufacture on someone
+  else's premises, which is the single most load-bearing fact about how Indian cosmetics
+  contract manufacturing works.
+
+what_it_answers:
+  - "Which firms hold a manufacturing licence at this site?"
+  - "Is this a loan licence, and who is the other party?"
+
+publisher:
+  org: Central Drugs Standard Control Organisation
+  url: https://cdsco.gov.in/opencms/opencms/en/Approved-Manufacturing-Sites/
+  access: public
+
+acquisition:
+  adapter: adapters/s01_cdsco_sites.py
+  method: html_crawl
+  landed_at: raw/s01_cdsco/
+  payloads: 10
+  bytes: 516163
+  first_seen: 2026-09-05
+  last_seen: 2026-09-05
+  refresh:
+    cadence: quarterly
+    why: New approvals are appended; the register is not versioned or dated.
+
+volume:
+  raw_rows: 546
+  graph:
+    Facility: 870
+    Licence: 878
+
+coverage:
+  claimed: 911
+  obtained: 911
+  pct: 100.0
+  note: >
+    `num_total_records=911` confirms the crawl is complete, not truncated. Completeness
+    is not the problem here; relevance is.
+
+defects:
+  - >
+    S1 IS NOT THE COSMETICS FACILITY SPINE. Of 911 rows, exactly 3 are cosmetics-regime
+    after dropping a junk row; 907 are drug licences and a fourth "cosmetics" row was a
+    portal test entry (`Testing123`, Haryana). Of the 491 firms on the register, 7 appear
+    in any cosmetics source. See decisions/0001.
+  - >
+    A loan licence names two firms but not which one owns the plant. States fill
+    `Premise Name` / `Loan Premises Name` in opposite conventions — Pure&Cure → Dr
+    Reddy's puts the factory first, GSK → Encube puts it second, and P&G Health appears
+    on both sides in different rows. See decisions/0002.
+
+feeds:
+  nodes: [Facility, Licence]
+  edges: [LICENSED_UNDER, LOAN_LICENCE_WITH]
+
+do_not:
+  - >
+    Do not read LOAN_LICENCE_WITH as "manufactures for". It is written both ways with
+    `direction_known:false`. Anything asserting who manufactures for whom must use
+    THIRD_PARTY_MANUFACTURED_BY.
+  - >
+    Do not answer a cosmetics licence question from the pharma rows. They are held in
+    Postgres but kept out of the answerable graph unless in a loan relationship
+    (`COSMETICS_KEEP_PHARMA=1` loads them all — for analysis, never for answers).
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+keys:
+  raw_company: s01_cdsco
+  fetch_manifest: s01_cdsco
+  raw_dir: s01_cdsco

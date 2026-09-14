@@ -1,0 +1,71 @@
+id: s05
+slug: rules
+name: Cosmetics Rules 2020 — Fourth and Ninth Schedules
+tier: 1
+status: live
+jurisdiction: IN
+
+what_it_is: >
+  The Indian regulation itself. The Fourth Schedule is CDSCO's own 80-entry vocabulary of
+  cosmetic product categories — the official answer to "what counts as a lipstick". The
+  Ninth Schedule lists the 37 BIS standards that a product in a given category must meet.
+  Together they are the category spine of the graph and the only tier-1 source of Indian
+  ingredient limits.
+
+what_it_answers:
+  - "What product categories does Indian law recognise, and how do they nest?"
+  - "Which BIS standard governs this category?"
+  - "What is the Indian limit on this ingredient?"
+
+publisher:
+  org: CDSCO / Ministry of Health and Family Welfare
+  url: https://cdsco.gov.in/
+  access: public
+
+acquisition:
+  adapter: adapters/s05_ninth_schedule.py
+  method: pdf
+  landed_at: raw/s05_rules/
+  payloads: 1
+  bytes: 791563
+  first_seen: 2026-09-05
+  last_seen: 2026-09-05
+  refresh:
+    cadence: annual
+    why: Amended by gazette notification; rare, but authoritative when it happens.
+
+volume:
+  raw_rows: 117
+  graph:
+    ProductCategory: 96
+    RegulatoryRule: 2445
+
+coverage:
+  claimed: 117
+  obtained: 117
+  pct: 100.0
+  note: 80 Fourth Schedule categories + 37 Ninth Schedule standards, all parsed.
+
+defects:
+  - >
+    Two OCR defects in the source PDF are documented inline in
+    adapters/s05_ninth_schedule.py. They are corrected in the adapter, not in raw/ —
+    raw/ is append-only and holds the PDF as published.
+
+feeds:
+  nodes: [ProductCategory, RegulatoryRule]
+  edges: [GOVERNED_BY, CHILD_OF]
+
+do_not:
+  - >
+    Do not substitute retail category strings (from IndiaMART, exhibitor lists, company
+    sites) for this spine. Those are tags, mapped in ontology/category_map.yaml. The
+    regulator's vocabulary is the only one that may answer a compliance question
+    (hard rule 9).
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+keys:
+  raw_company: null
+  fetch_manifest: null
+  raw_dir: s05_rules

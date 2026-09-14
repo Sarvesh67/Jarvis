@@ -1,0 +1,60 @@
+id: s17
+slug: udyam_gujarat
+name: Udyam MSME registry — Gujarat slice (portal)
+tier: 1
+status: live
+jurisdiction: IN
+
+what_it_is: >
+  The first Udyam pass, cut from the public portal and limited to Gujarat. Superseded in
+  reach by S17b (the national data.gov.in API) but kept: it landed 2,849 rows including
+  proprietorships and was the source that proved Udyam answers the spec's stated
+  MCA blind spot.
+
+what_it_answers:
+  - "Which MSMEs are registered in the Gujarat cosmetics clusters?"
+
+publisher:
+  org: Ministry of MSME
+  url: https://udyamregistration.gov.in/
+  access: public
+
+acquisition:
+  adapter: adapters/s17_udyam.py
+  method: html_crawl
+  landed_at: raw/s17_udyam/
+  payloads: 0
+  bytes: 0
+  first_seen: 2026-09-06
+  last_seen: 2026-09-06
+  refresh:
+    cadence: never
+    why: Superseded by S17b for national coverage. Refresh that instead.
+
+volume:
+  raw_rows: 2849
+  graph: {}
+
+coverage:
+  claimed: null
+  obtained: 2849
+  pct: null
+  note: Gujarat only. Overlaps S17b; dedup happens in resolve.
+
+defects:
+  - Gujarat only. Do not extrapolate national figures from it.
+
+feeds:
+  nodes: [Company]
+  edges: [LOCATED_IN]
+
+do_not:
+  - Same DPDP handling as S17b — see s17b_udyam.yaml.
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+# Superseded by s17b. Note raw_company key is `s17_udyam`, NOT a prefix of `s17b_udyam_api`.
+keys:
+  raw_company: s17_udyam
+  fetch_manifest: null
+  raw_dir: null

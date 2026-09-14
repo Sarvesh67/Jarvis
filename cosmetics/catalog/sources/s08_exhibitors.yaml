@@ -1,0 +1,66 @@
+id: s08
+slug: exhibitors
+name: Trade-fair exhibitor lists
+tier: 2
+status: live
+jurisdiction: IN
+
+what_it_is: >
+  Who paid for a stand at a cosmetics trade fair. A small source with a sharp signal:
+  exhibiting is expensive and discretionary, so it is decent evidence a firm is actively
+  selling into cosmetics right now — which a registry entry is not.
+
+what_it_answers:
+  - "Is this firm actively trading in cosmetics, or just registered?"
+  - "Who showed up at this event?"
+
+publisher:
+  org: event organisers
+  url: null
+  access: public
+
+acquisition:
+  adapter: adapters/s08_exhibitors.py
+  method: html_crawl
+  landed_at: raw/s08_exhibitors/
+  payloads: 8
+  bytes: 752116
+  first_seen: 2026-09-05
+  last_seen: 2026-09-05
+  refresh:
+    cadence: annual
+    why: One list per edition. Append a new edition rather than refreshing an old one.
+
+volume:
+  raw_rows: 208
+  graph:
+    Event: 2
+
+coverage:
+  claimed: 208
+  obtained: 208
+  pct: 100.0
+  note: Complete for the two editions landed.
+
+defects:
+  - >
+    Two events only. Not a census of the industry and must never be read as one.
+
+feeds:
+  nodes: [Event, Company]
+  edges: [EXHIBITED_AT]
+
+do_not:
+  - >
+    Absence from an exhibitor list is not evidence of inactivity. Do not rank on it.
+  - >
+    `roles_claimed` from this source is never scored as a resolution discriminator —
+    every source stamps its own role vocabulary, so disjoint role sets are the norm, not
+    a signal of difference. See decisions/0005.
+
+# Store keys this card is measured against by `make catalog-check`.
+# null = this source has no row there, and that field is not checked.
+keys:
+  raw_company: s08_exhibitors
+  fetch_manifest: s08_exhibitors
+  raw_dir: s08_exhibitors
