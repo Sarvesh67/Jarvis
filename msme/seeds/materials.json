@@ -1,0 +1,38 @@
+{
+  "version": 2,
+  "_note": "Controlled material vocabulary = the JOIN KEY. A seller's output slug must equal a buyer's input slug for an edge to form. Enrichment maps free text -> these slugs via `synonyms`; unmapped terms go to cache/materials_pending.json (never dropped). `kind` groups the textile value chain: raw -> intermediate -> trim -> finished. Finished products are first-class :Material nodes so the Surat web is navigable through products.",
+  "materials": {
+    "raw_cotton":        {"kind": "raw", "label": "Raw cotton / cotton fibre", "synonyms": ["cotton fibre", "cotton lint", "ginned cotton", "kapas"]},
+    "raw_silk":          {"kind": "raw", "label": "Raw silk yarn", "synonyms": ["silk yarn", "mulberry silk", "raw silk"]},
+    "polyester_chips":   {"kind": "raw", "label": "Polyester chips / PET", "synonyms": ["pet chips", "polyester granules", "pta", "meg"]},
+    "viscose_fibre":     {"kind": "raw", "label": "Viscose / rayon staple fibre", "synonyms": ["viscose", "rayon fibre", "vsf"]},
+
+    "cotton_yarn":       {"kind": "intermediate", "label": "Cotton yarn", "synonyms": ["cotton thread", "cotton sewing thread", "spun cotton yarn"]},
+    "polyester_yarn":    {"kind": "intermediate", "label": "Polyester / synthetic yarn", "synonyms": ["polyester yarn", "synthetic yarn", "filament yarn", "poy", "fdy", "texturised yarn", "crimp yarn"]},
+    "viscose_yarn":      {"kind": "intermediate", "label": "Viscose / rayon yarn", "synonyms": ["viscose yarn", "rayon yarn"]},
+    "blended_yarn":      {"kind": "intermediate", "label": "Blended yarn (poly-cotton etc.)", "synonyms": ["pc yarn", "blended yarn", "mixed yarn"]},
+    "greige_fabric":     {"kind": "intermediate", "label": "Greige (grey / unfinished) fabric", "synonyms": ["grey fabric", "greige", "raw fabric", "unfinished fabric", "loom-state fabric", "grey cloth"]},
+    "knitted_fabric":    {"kind": "intermediate", "label": "Knitted fabric", "synonyms": ["knit fabric", "hosiery fabric"]},
+    "dyed_fabric":       {"kind": "intermediate", "label": "Dyed / finished / printed fabric", "synonyms": ["finished fabric", "processed fabric", "printed fabric", "coloured fabric", "dyed cloth", "mill-made fabric"]},
+    "embroidered_fabric":{"kind": "intermediate", "label": "Embroidered fabric", "synonyms": ["embroidery fabric", "worked fabric", "schiffli fabric"]},
+
+    "dyes":              {"kind": "input", "label": "Dyes and textile chemicals", "synonyms": ["dye", "colourant", "textile chemicals", "pigments", "reactive dyes"]},
+    "zari_thread":       {"kind": "trim", "label": "Zari / metallic thread", "synonyms": ["zari", "metallic thread", "gold thread", "kasab", "jari"]},
+    "lace":              {"kind": "trim", "label": "Lace", "synonyms": ["laces", "lace trim", "fancy lace"]},
+    "fringe":            {"kind": "trim", "label": "Fringe / trimming", "synonyms": ["fringes", "trimmings", "borders", "gota"]},
+    "beads":             {"kind": "trim", "label": "Beads / sequins / stones", "synonyms": ["sequins", "moti", "stones", "kundan", "diamond stones"]},
+    "zipper":            {"kind": "trim", "label": "Zipper", "synonyms": ["zippers", "zip fastener"]},
+    "button":            {"kind": "trim", "label": "Button", "synonyms": ["buttons"]},
+    "sewing_thread":     {"kind": "trim", "label": "Sewing thread", "synonyms": ["stitching thread", "overlock thread"]},
+    "packaging":         {"kind": "input", "label": "Packaging material", "synonyms": ["poly bag", "carton", "corrugated box", "packing material", "label", "hanger"]},
+
+    "saree":             {"kind": "finished", "label": "Saree", "synonyms": ["sarees", "saris", "silk saree", "georgette saree", "printed saree"]},
+    "dress_material":    {"kind": "finished", "label": "Dress material / unstitched suit", "synonyms": ["dress material", "suit material", "unstitched suit", "salwar suit", "punjabi dress"]},
+    "kurti":             {"kind": "finished", "label": "Kurti / kurta", "synonyms": ["kurti", "kurta", "tunic"]},
+    "dupatta":           {"kind": "finished", "label": "Dupatta / stole / scarf", "synonyms": ["dupatta", "odhani", "stole", "scarf", "chunni"]},
+    "lehenga":           {"kind": "finished", "label": "Lehenga / ghagra", "synonyms": ["lehenga", "ghagra", "chaniya choli"]},
+    "readymade_garment": {"kind": "finished", "label": "Readymade garment (shirts, trousers, ethnic)", "synonyms": ["readymade garment", "apparel", "clothing", "shirt", "trouser", "ethnic wear", "leggings"]},
+    "home_textile":      {"kind": "finished", "label": "Home textile (bedsheet, curtain, furnishing)", "synonyms": ["home textile", "bedsheet", "curtain", "furnishing fabric", "cushion cover", "table cloth"]},
+    "made_ups":          {"kind": "finished", "label": "Textile made-ups (towels, napkins)", "synonyms": ["made-ups", "towel", "napkin", "handkerchief"]}
+  }
+}

@@ -1,0 +1,7 @@
+pandas
+duckdb
+pyarrow
+httpx
+falkordb
+pdfplumber
+pytest

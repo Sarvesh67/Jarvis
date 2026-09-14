@@ -1,0 +1,66 @@
+{
+  "version": 2,
+  "_note": "Curated NIC-2008 5-digit -> {outputs, inputs} in canonical material slugs (see materials.json). The human-verified core of the supply-chain brain; codes not here are LLM-filled by enrich.py (once per code, cached). NIC numbers are illustrative Surat textile-cluster seeds — replace/extend with data/nic2008.csv parsed from the official master. outputs = what a firm PRODUCES; inputs = what it CONSUMES.",
+  "nic": {
+    "13111": {
+      "label": "Preparation and spinning of cotton fibre",
+      "outputs": ["cotton_yarn", "blended_yarn"],
+      "inputs": ["raw_cotton", "viscose_fibre"],
+      "keywords": ["spinning", "cotton", "yarn", "fibre"]
+    },
+    "13114": {
+      "label": "Texturising and twisting of filament yarn (polyester)",
+      "outputs": ["polyester_yarn"],
+      "inputs": ["polyester_chips"],
+      "keywords": ["texturising", "twisting", "poy", "filament", "polyester"]
+    },
+    "13121": {
+      "label": "Weaving of cotton and man-made fibre fabrics",
+      "outputs": ["greige_fabric"],
+      "inputs": ["cotton_yarn", "polyester_yarn", "viscose_yarn", "blended_yarn"],
+      "keywords": ["weaving", "loom", "fabric", "powerloom"]
+    },
+    "13131": {
+      "label": "Finishing / dyeing / printing of textiles",
+      "outputs": ["dyed_fabric"],
+      "inputs": ["greige_fabric", "knitted_fabric", "dyes"],
+      "keywords": ["dyeing", "printing", "finishing", "processing"]
+    },
+    "13911": {
+      "label": "Manufacture of knitted and crocheted fabrics",
+      "outputs": ["knitted_fabric"],
+      "inputs": ["cotton_yarn", "polyester_yarn"],
+      "keywords": ["knitting", "hosiery", "knitted"]
+    },
+    "13991": {
+      "label": "Embroidery work and making of laces and fringes",
+      "outputs": ["embroidered_fabric", "lace", "fringe", "saree", "dress_material", "dupatta"],
+      "inputs": ["greige_fabric", "dyed_fabric", "knitted_fabric", "zari_thread", "beads", "sewing_thread"],
+      "keywords": ["embroidery", "laces", "fringes", "zari", "schiffli", "work"]
+    },
+    "14101": {
+      "label": "Manufacture of readymade garments and made-up textile articles",
+      "outputs": ["readymade_garment", "kurti", "dress_material", "lehenga", "saree", "home_textile", "made_ups"],
+      "inputs": ["dyed_fabric", "embroidered_fabric", "knitted_fabric", "lace", "fringe", "zipper", "button", "sewing_thread", "packaging"],
+      "keywords": ["garment", "apparel", "stitching", "readymade", "tailoring", "made-up"]
+    },
+    "46411": {
+      "label": "Wholesale of textiles, fabrics and garments",
+      "outputs": [],
+      "inputs": ["saree", "dress_material", "readymade_garment", "dyed_fabric", "embroidered_fabric", "home_textile"],
+      "keywords": ["wholesale", "trading", "textile market", "distributor", "agent"]
+    },
+    "47711": {
+      "label": "Retail sale of textiles, garments and clothing in stores",
+      "outputs": [],
+      "inputs": ["saree", "dress_material", "readymade_garment", "kurti", "dupatta", "lehenga"],
+      "keywords": ["retail", "showroom", "shop", "boutique"]
+    },
+    "17091": {
+      "label": "Manufacture of packaging paper / corrugated boxes",
+      "outputs": ["packaging"],
+      "inputs": [],
+      "keywords": ["packaging", "carton", "box", "label"]
+    }
+  }
+}
