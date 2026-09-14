@@ -982,10 +982,15 @@ function renderKGraph(){
     <span class="chip">nodes <b>${sc.nodes||0}</b></span><span class="chip">edges <b>${sc.edges||0}</b></span>
     <span class="chip">types <b>${(sc.labels||[]).length}</b></span><span class="chip">relations <b>${(sc.rel_types||[]).length}</b></span>
     <span class="spacer"></span>
+    <input id="gfocus" placeholder="focus a firm (name or udyam)…" style="max-width:230px"
+           onkeydown="if(event.key==='Enter')loadKGraph()">
+    <button class="ghost" onclick="loadKGraph()"><i class="ti ti-crosshair"></i> Focus</button>
+    <button class="ghost" onclick="gClearFocus()">Clear</button>
     <label class="note">show <select id="glim"><option>40</option><option selected>80</option><option>150</option><option>300</option></select> relations</label>
     <button class="ghost" onclick="loadKGraph()">↻ Reload</button></div>
     <div style="height:420px"><div id="cy"></div></div>
     <div class="note" id="gcount" style="margin:10px 0 4px"></div>
+    <div class="note" id="glegend" style="margin:0 0 4px"></div>
 
     <div class="panel" style="margin-top:18px">
       <h3><i class="ti ti-list-search"></i>Manage data</h3>
@@ -1010,17 +1015,41 @@ function renderKGraph(){
   loadKGraph();
   if(GBROWSE.label||GBROWSE.search) gLoadNodes();
 }
+// Node colours by group. Focus mode renders a firm's supply neighbourhood, so distinguishing the
+// focal firm / its industry class / materials / counterparties is what makes the picture readable.
+const GCOLORS={Enterprise:'#b15a31',NICClass:'#7c6a52',Material:'#3f7d68',Counterparty:'#c08a4a'};
+function gClearFocus(){ const f=$('#gfocus'); if(f) f.value=''; loadKGraph(); }
 async function loadKGraph(){
-  const a=state.alias, lim=$('#glim')?.value||80;
-  let d; try{ d=await (await apiFetch(`/api/graph/${a}?limit=${lim}`)).json(); }catch(e){ return; }
+  const a=state.alias, lim=$('#glim')?.value||80, focus=($('#gfocus')?.value||'').trim();
+  const qs=`limit=${lim}`+(focus?`&focus=${encodeURIComponent(focus)}`:'');
+  let d; try{ d=await (await apiFetch(`/api/graph/${a}?${qs}`)).json(); }catch(e){ return; }
   if(state.tab!=='knowledge'||state.alias!==a||state.ktab!=='graph') return;
-  if($('#gcount')) $('#gcount').textContent=`${d.nodes.length} nodes · ${d.edges.length} edges rendered`;
+  if($('#gcount')) $('#gcount').textContent =
+    (focus? `focused on “${focus}” — ` : '') + `${d.nodes.length} nodes · ${d.edges.length} edges rendered`
+    + (focus && !d.nodes.length ? ' (no match — try a different name)' : '');
+  const groups=[...new Set(d.nodes.map(n=>n.data.group).filter(Boolean))];
+  if($('#glegend')) $('#glegend').innerHTML = groups.map(g=>
+    `<span class="chip" style="border-color:${GCOLORS[g]||'#b15a31'}"><b style="color:${GCOLORS[g]||'#b15a31'}">■</b> ${esc(g)}</span>`).join(' ');
   $('#glim')?.addEventListener('change',loadKGraph,{once:true});
   state.cy=cytoscape({ container:$('#cy'), elements:[...d.nodes,...d.edges],
     style:[
       {selector:'node',style:{'background-color':'#fbf3ea','border-color':'#b15a31','border-width':1.5,'label':'data(label)','color':'#5a4736','font-size':'9px','width':21,'height':21,'text-wrap':'wrap','text-max-width':'82px','text-valign':'bottom','text-margin-y':3}},
+      ...Object.entries(GCOLORS).map(([g,c])=>({selector:`node[group="${g}"]`,style:{'border-color':c,'border-width':2}})),
+      {selector:'node[group="Enterprise"]',style:{'width':30,'height':30,'font-size':'11px','background-color':'#f6e3d3'}},
       {selector:'edge',style:{'width':1.1,'line-color':'#d8ccb8','target-arrow-color':'#c4a988','target-arrow-shape':'triangle','curve-style':'bezier','label':'data(label)','font-size':'7px','color':'#9b9183'}}
-    ], layout:{name:'cose',animate:false,padding:24,nodeRepulsion:9000} });
+    ], layout: focus
+        // focus mode is a small, deliberately legible picture: concentric rings outward from the
+        // focal firm (firm -> its NIC class -> materials -> counterparties) so it reads as a supply
+        // neighbourhood instead of a hairball.
+        ? {name:'concentric',animate:false,padding:44,minNodeSpacing:52,avoidOverlap:true,
+           concentric:n=>({Enterprise:4,NICClass:3,Material:2,Counterparty:1})[n.data('group')]||1,
+           levelWidth:()=>1}
+        : {name:'cose',animate:false,padding:24,nodeRepulsion:9000} });
+  // Fit after the layout AND the container have settled. `animate:false` layouts finish during
+  // construction (so a 'layoutstop' handler here never fires), and a bare rAF still runs before
+  // cytoscape has its final container size — both leave the neighbourhood at zoom 1.0, spilling
+  // outside the 420px viewport. resize()+fit() on a short timeout is what actually sticks.
+  if(focus) setTimeout(()=>{ try{ state.cy.resize(); state.cy.fit(undefined,44); }catch(e){} }, 120);
 }
 function gPickLabel(l){ GBROWSE.label=(GBROWSE.label===l?'':l); renderKGraph(); }
 function gSearch(){ GBROWSE.search=($('#gsearch')?.value||'').trim(); gLoadNodes(); }
