@@ -51,8 +51,33 @@ def entity_id(prefix: str, seed: str) -> str:
     return prefix + hashlib.blake2b(seed.encode(), digest_size=8).hexdigest()[:12]
 
 
+class UnnormalisedRows(RuntimeError):
+    """Raised when Stage 3 is asked to resolve rows Stage 2 has not touched yet."""
+
+
 def canonical_seed(cin, gstin, pan, norm, pincode) -> str:
-    return cin or gstin or pan or f"{norm or ''}|{pincode or ''}"
+    """The natural key an entity id is derived from.
+
+    `norm` is NOT optional here, and the empty string is not an acceptable stand-in for
+    it. `norm_name` is written by Stage 2, and adapters insert NULL — so running Stage 3
+    before Stage 2 seeds every unnamed row with `"|<pincode>"`, which hashes to ONE
+    entity per pincode and silently collapses every firm in that pincode into a single
+    company. The crosswalk is append-only, so the collapse then survives every later run:
+    the rows are already assigned, and re-resolution skips them.
+
+    That happened here — 91,392 raw rows frozen inside 4,446 pincode-shaped entities,
+    two thirds of the corpus, discovered only because a NABL query attributed a cosmetics
+    accreditation to an entity holding 124 unrelated laboratories. See
+    decisions/0016-an-entity-seed-may-never-be-empty.md.
+    """
+    ident = cin or gstin or pan
+    if ident:
+        return ident
+    if not norm:
+        raise UnnormalisedRows(
+            "cannot seed an entity from an empty norm_name — run `make normalize` "
+            "(Stage 2) before `make resolve` (Stage 3)")
+    return f"{norm}|{pincode or ''}"
 
 
 # Business-form and sector words that survive §7.1 suffix stripping. They carry no
@@ -192,6 +217,29 @@ def resolve_companies(dry: bool) -> dict[tuple[str, str], str]:
     known = existing_crosswalk("company")
     print(f"  {len(rows)} raw_company rows, {len(known)} already crosswalked")
 
+    # Two different things produce a row with no norm_name, and they need opposite
+    # handling. A registry that publishes a firm called "-" is junk in one row; Stage 2
+    # never having run is every row in the source. Tell them apart by the share, and
+    # only the second is an error — the first is skipped, because a row with no name and
+    # no identifier is not an entity and seeding one collapses a whole pincode.
+    named_by_src: dict[str, int] = defaultdict(int)
+    blank_by_src: dict[str, int] = defaultdict(int)
+    for r in rows:
+        (named_by_src if r["norm_name"] else blank_by_src)[r["source_id"]] += 1
+    unnormalised = {src: n for src, n in blank_by_src.items()
+                    if n > 20 and n > 0.01 * (n + named_by_src[src])}
+    if unnormalised:
+        raise UnnormalisedRows(
+            "these sources have not been through Stage 2: "
+            + ", ".join(f"{k} ({v} rows with no norm_name)"
+                        for k, v in sorted(unnormalised.items()))
+            + ". Run `make normalize` first — seeding them would collapse every firm "
+              "in a pincode into one entity.")
+    unnameable = sum(blank_by_src.values())
+    if unnameable:
+        print(f"  {unnameable} rows have no usable name and no identifier — not entities, "
+              f"skipped")
+
     by_cin: dict[str, str] = {}
     by_gstin: dict[str, str] = {}
     by_pan: dict[str, str] = {}
@@ -217,6 +265,8 @@ def resolve_companies(dry: bool) -> dict[tuple[str, str], str]:
 
     for row in order:
         key = (row["source_id"], row["source_key"])
+        if not row["norm_name"] and not (row["cin"] or row["gstin"] or row["pan"]):
+            continue      # nothing to identify it by; see the note above
         if key in known:
             assigned[key] = known[key]
             members[known[key]].append(row)
@@ -335,7 +385,26 @@ def resolve_companies(dry: bool) -> dict[tuple[str, str], str]:
         for eid, cins in bad[:10]:
             print(f"  !! FALSE MERGE {eid}: {sorted(cins)}")
         raise SystemExit(f"false-merge check FAILED for {len(bad)} entities")
-    print("  false-merge check: PASS")
+
+    # A CIN conflict is the only false merge this check could see, and most of the
+    # corpus has no CIN — which is why 4,446 pincode buckets holding 91,392 rows passed
+    # it for months. An entity is also demonstrably wrong when it carries more distinct
+    # normalised names than a company plausibly has: a firm may legitimately appear under
+    # a handful of spellings across sources, but not under fifty.
+    NAME_FANOUT_MAX = 12
+    fanout = sorted(
+        ((eid, {m["norm_name"] for m in ms if m["norm_name"]}) for eid, ms in members.items()),
+        key=lambda t: -len(t[1]))
+    wide = [(eid, ns) for eid, ns in fanout if len(ns) > NAME_FANOUT_MAX]
+    if wide:
+        for eid, ns in wide[:10]:
+            print(f"  !! NAME COLLAPSE {eid}: {len(ns)} distinct names, "
+                  f"e.g. {sorted(ns)[:3]}")
+        raise SystemExit(
+            f"false-merge check FAILED: {len(wide)} entities carry more than "
+            f"{NAME_FANOUT_MAX} distinct normalised names")
+    print(f"  false-merge check: PASS (widest entity carries "
+          f"{len(fanout[0][1]) if fanout else 0} distinct names)")
     return assigned
 
 
@@ -431,11 +500,84 @@ def infer_operates(company_map: dict, facility_map: dict, dry: bool) -> None:
           f"{len(reviews)} queued for review")
 
 
+def empty_seed_ids() -> dict[str, str | None]:
+    """Entity ids that can only have come from a row with no name and no identifier.
+
+    Reconstructed rather than guessed: for every pincode in the corpus, the id that
+    `canonical_seed(None, None, None, "", pincode)` used to produce. An id in this set is
+    a pincode bucket, not a company.
+    """
+    with lib.pg() as c, c.cursor() as cur:
+        cur.execute("SELECT DISTINCT pincode FROM raw_company WHERE pincode IS NOT NULL")
+        pins = [r[0] for r in cur.fetchall()]
+    out = {entity_id("c_", f"|{p}"): p for p in pins}
+    out[entity_id("c_", "|")] = None
+    return out
+
+
+def retire_bucketed(dry: bool) -> list[tuple[int, str, str]]:
+    """Take every crosswalk row assigned to a pincode bucket out of the live set.
+
+    The crosswalk is append-only (hard rule 6), so a wrong assignment is never deleted —
+    it is superseded, and the chain stays readable. But a supersede must point at the row
+    that replaced it, and that row does not exist yet: it is written by the resolution
+    pass that follows. So this marks the row retired (pointing at itself, which is the
+    only value that keeps the foreign key valid and the row out of every
+    `superseded_by IS NULL` query) and returns the keys, and `relink_retired` below
+    repairs the pointer once the replacement exists. Both halves run inside one
+    `--reseed-empty`, so the self-pointer is never a state the pipeline ends in.
+    """
+    buckets = empty_seed_ids()
+    with lib.pg() as c, c.cursor() as cur:
+        cur.execute("SELECT id, entity_id, source_id, source_key FROM crosswalk "
+                    "WHERE entity_type='company' AND superseded_by IS NULL")
+        live = cur.fetchall()
+        stale = [(cid, src, key) for cid, eid, src, key in live if eid in buckets]
+        n_buckets = len({eid for _, eid, _, _ in live if eid in buckets})
+        print(f"  {len(stale)} crosswalk rows sit in {n_buckets} pincode buckets")
+        if dry or not stale:
+            return []
+        cur.executemany("UPDATE crosswalk SET superseded_by=id WHERE id=%s",
+                        [(cid,) for cid, _, _ in stale])
+    print(f"  retired {len(stale)} rows — re-resolved below")
+    return stale
+
+
+def relink_retired(stale: list[tuple[int, str, str]]) -> None:
+    """Point each retired row at the row that replaced it, so the chain reads correctly."""
+    if not stale:
+        return
+    with lib.pg() as c, c.cursor() as cur:
+        cur.execute("SELECT source_id, source_key, id FROM crosswalk "
+                    "WHERE entity_type='company' AND superseded_by IS NULL")
+        live = {(r[0], r[1]): r[2] for r in cur.fetchall()}
+        pairs = [(live[(src, key)], cid) for cid, src, key in stale
+                 if (src, key) in live and live[(src, key)] > cid]
+        cur.executemany("UPDATE crosswalk SET superseded_by=%s WHERE id=%s", pairs)
+        # A row the resolver skipped as unnameable gets no replacement, so there is
+        # nothing for its pointer to reference. Put it back the way it was rather than
+        # leaving it pointing at itself: a supersede that names no successor is not a
+        # state this table has, and the append-only invariant test rightly rejects it.
+        # Its old id was a pincode bucket, but it is now that bucket's only member — an
+        # ordinary singleton entity, which is exactly what an unresolvable row deserves.
+        cur.execute("UPDATE crosswalk SET superseded_by=NULL "
+                    "WHERE entity_type='company' AND superseded_by = id")
+        orphans = cur.rowcount
+    print(f"  relinked {len(pairs)} supersede pointers"
+          + (f"; {orphans} unnameable rows kept their own entity" if orphans else ""))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--reseed-empty", action="store_true",
+                    help="retire entity ids seeded from an empty norm_name, then "
+                         "re-resolve those rows (see decisions/0016)")
     a = ap.parse_args()
+    stale = retire_bucketed(a.dry_run) if a.reseed_empty else []
     cmap = resolve_companies(a.dry_run)
+    if not a.dry_run:
+        relink_retired(stale)
     fmap = resolve_facilities(cmap, a.dry_run)
     infer_operates(cmap, fmap, a.dry_run)
     return 0

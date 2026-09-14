@@ -1,0 +1,127 @@
+# The demo set: questions that are safe to put in front of someone who has not read
+# this repo, each with the paraphrases a real person would actually type.
+#
+# A demo question earns its place by being STABLE, not by being impressive. Every
+# `asks` entry must land on the same template and return at least `expect_min` rows,
+# so a question does not fall apart because someone said "firms" instead of
+# "manufacturers". `tests/test_demo.py` runs all of them.
+#
+# `caveat` is what to say out loud while the answer is on screen. It is part of the
+# demo, not a disclaimer bolted on: the product's claim is that it knows what it does
+# not know, and a caveat left unsaid makes that claim untrue.
+
+- id: mercury_india
+  template: ingredient_restriction_india
+  expect_min: 2
+  asks:
+    - "is mercury allowed in cosmetics in India"
+    - "can I use mercury in a face cream in India"
+    - "Indian rules on mercury in cosmetics"
+    - "is mercury banned in cosmetics here"
+  caveat: >
+    The India substance list is the Cosmetics Rules 2020 entries only — 5 substances.
+    Ask about a sixth and the answer says so in the reply rather than returning a
+    blank, which is the behaviour worth demonstrating.
+
+- id: india_says_what_it_does_not_know
+  template: ingredient_restriction_india
+  expect_min: 0
+  expect_empty_reason: true
+  asks:
+    - "can I use hydroquinone in a face cream in India"
+    - "is hydroquinone allowed in cosmetics in India"
+  caveat: >
+    Deliberately a question the graph cannot answer. It returns no rows AND names the
+    five substances it does hold, so the reader can tell "not on the list" from
+    "permitted". Show this one immediately after mercury.
+
+- id: salicylic_acid_eu
+  template: ingredient_restriction_eu
+  expect_min: 1
+  asks:
+    - "EU restrictions on salicylic acid"
+    - "is salicylic acid restricted in Europe"
+    - "what does the EU allow for salicylic acid"
+  caveat: >
+    The answer carries `jurisdiction_warning` — EC 1223/2009 has no force in India.
+    The restriction reaches this substance through the Annex V/3 family entry
+    ("salicylic acid and its salts"); before that link existed this returned nothing.
+
+- id: standard_for_category
+  template: standard_for_category
+  expect_min: 2
+  asks:
+    - "what standard applies to skin creams"
+    - "which BIS standard covers shampoo"
+    - "IS standard for toothpaste"
+    - "what standard do I need for a face cream"
+  caveat: >
+    Ninth Schedule standards, from the regulator's own table. `applies_at` says whether
+    the standard was written for the category asked about or for its parent — toothpaste
+    is answered by the oral-care standards, because that is the level the Schedule
+    writes at.
+
+- id: testing_labs
+  template: testing_labs_for_cosmetics
+  expect_min: 10
+  asks:
+    - "where can I test my face cream"
+    - "NABL labs for cosmetics testing in Maharashtra"
+    - "accredited cosmetics testing laboratory near Ahmedabad"
+    - "who can test a cosmetic product in Gujarat"
+  caveat: >
+    `cosmetics_scope` names the accreditation the answer rests on. Labs holding
+    "Cosmetics & Essential Oils" rank above the 56 that qualify only through the
+    adjacent AYUSH or Soap-Detergent-Toiletries scope.
+
+- id: firms_in_cluster
+  template: cosmetics_firms_in_cluster
+  expect_min: 20
+  asks:
+    - "cosmetics manufacturers in Baddi"
+    - "who makes cosmetics in Surat"
+    - "cosmetics firms in Ahmedabad"
+    - "list cosmetics companies in Navsari"
+  caveat: >
+    Registry activity, never a licence — `evidence_basis` says which. Some rows are
+    firms whose NAME suggests another trade: they declared a cosmetics NIC code in
+    Udyam, and the graph reports what the registry says rather than second-guessing it
+    from the name. Say this before someone spots it.
+
+- id: packaging_converters
+  template: packaging_converters_in_cluster
+  expect_min: 10
+  asks:
+    - "who makes cosmetic bottles in Palghar"
+    - "packaging converters in Ahmedabad"
+    - "who supplies jars and closures in Gujarat"
+  caveat: Packaging comes from Udyam, so coverage follows the registry, not the trade.
+
+- id: loan_licence
+  template: loan_licence_partners
+  expect_min: 1
+  asks:
+    - "who is Encube Ethicals linked to by a loan licence"
+    - "loan licence partners of Encube Ethicals"
+  caveat: >
+    The best thing in the demo. The register names two firms and does NOT say which one
+    owns the plant, so the edge is written both ways with `direction_known: false`.
+    The graph declines to say who manufactures for whom.
+
+- id: eu_restricted_on_indian_shelves
+  template: eu_restricted_in_indian_products
+  expect_min: 5
+  asks:
+    - "EU banned ingredients still sold in India"
+    - "products on Indian shelves with EU restricted ingredients"
+  caveat: >
+    Two jurisdictions joined through a product's ingredient list. Not a compliance
+    finding: it says the EU restricts it, not that India does.
+
+- id: company_profile
+  template: company_profile
+  expect_min: 1
+  asks:
+    - "tell me about Galaxy Surfactants"
+    - "what do you know about Galaxy Surfactants"
+  caveat: Every field carries its source.

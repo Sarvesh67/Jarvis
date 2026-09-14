@@ -181,11 +181,78 @@ def route_with_model(question: str) -> dict | None:
 ROUTE_FLOOR = 0.58
 
 
-def route_by_keyword(question: str) -> dict:
+# A question that asks whether something is ALLOWED is a compliance question, whatever
+# else it mentions. "Can I use mercury in a face cream in India" scored highest against
+# `third_party_manufacturers` on the keyword path — "can I", "face cream", "make my
+# product" — and a regulatory question was answered with a list of contract manufacturers.
+# The model does not make this mistake; the fallback did, silently, and the fallback is
+# what runs when the gateway is down mid-demo.
+#
+# So the flow is decided before the template is. These markers only ever NARROW the
+# candidate set, and a question with no marker considers everything as before.
+PERMISSION_MARKERS = re.compile(
+    r"\b(allowed|permitted|prohibit\w*|banned?|restrict\w*|legal|illegal|"
+    r"comply|complian\w*|limit|max(?:imum)?\s+concentration|"
+    r"standard|regulation|rules?)\b"
+    # "can I use X" carries no permission WORD and is the commonest way the question is
+    # actually typed — it is what sent mercury to the contract-manufacturer template.
+    r"|\b(can|may|am\s+i\s+allowed\s+to|is\s+it\s+(?:ok|okay|safe))\b[^.?]{0,40}"
+    r"\b(use|add|put|include|formulate)\b", re.I)
+
+
+def _named_ingredient(question: str, session) -> str | None:
+    """An INCI name that appears verbatim in the question, longest match first.
+
+    Looked up in the graph rather than guessed, for the same reason every other
+    parameter is: the vocabulary is the graph's, not the model's.
+    """
+    if session is None:
+        return None
+    # "CREAM", "MILK", "TALC" and "SOAP" are real INCI names and also ordinary English —
+    # decision 0011 already refuses to read them as ingredient mentions in a document,
+    # and the same list applies here. Without it "what standard do I need for a face
+    # CREAM" reads as a question about an ingredient.
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "adapters"))
+    from s14b_supplies import AMBIGUOUS
+    words = re.findall(r"[A-Za-z][A-Za-z'-]*", question.upper())
+    grams = [" ".join(words[i:i + n])
+             for n in (3, 2, 1) for i in range(len(words) - n + 1)]
+    if not grams:
+        return None
+    grams = [g for g in grams if g not in AMBIGUOUS]
+    if not grams:
+        return None
+    rec = session.run(
+        "MATCH (i:Ingredient) WHERE i.inci_name IN $g "
+        "RETURN i.inci_name AS n ORDER BY size(i.inci_name) DESC LIMIT 1", g=grams).single()
+    return rec["n"] if rec else None
+
+
+def route_by_keyword(question: str, session=None) -> dict:
     """Deterministic fallback so the router still works with no model available."""
     q = question.lower()
+    candidates = list(TEMPLATES.values())
+    if PERMISSION_MARKERS.search(question):
+        compliance = [t for t in candidates if t.get("flow") == "compliance"]
+        if compliance:
+            candidates = compliance
+        # Narrowing to compliance is not enough on its own: "can I use mercury in a FACE
+        # CREAM" still scored highest against "where can I test my face cream", because
+        # token overlap cannot tell a question about a substance from a question about a
+        # product. If the question names an ingredient the graph knows, the question is
+        # about that ingredient, and the only remaining choice is which jurisdiction.
+        # "which standard applies to X" asks about a CATEGORY even when X is also an
+        # ingredient name, so the standard template keeps that question.
+        asks_standard = re.search(r"\b(standard|bis|\bis\s*\d|specification)\b",
+                                  question, re.I)
+        ing = None if asks_standard else _named_ingredient(question, session)
+        if ing:
+            eu = re.search(r"\b(eu|european|europe|ec\s*1223)\b", question, re.I)
+            tid = "ingredient_restriction_eu" if eu else "ingredient_restriction_india"
+            return {"template": tid, "params": {"ingredient": ing}, "confidence": 0.9}
     best, score = None, 0
-    for t in TEMPLATES.values():
+    for t in candidates:
         hay = " ".join([t["intent"]] + t.get("examples", [])).lower()
         sc = fuzz.token_set_ratio(q, hay)
         if sc > score:
@@ -236,7 +303,7 @@ def answer(question: str, *, explain: bool = False, use_model: bool = True,
             decision = {"template": template, "params": params or {}, "confidence": 1.0}
         else:
             decision = (route_with_model(question) if use_model else None) or \
-                route_by_keyword(question)
+                route_by_keyword(question, s)
             # respect a model that says it is unsure, rather than running a template it
             # only half-believes in
             if (decision.get("confidence") or 0) < ROUTE_FLOOR and decision.get("template"):
@@ -278,7 +345,7 @@ def answer(question: str, *, explain: bool = False, use_model: bool = True,
             result["warning"] = ("Tier 4 — derived, not observed. Ranks and suggests; "
                                  "it is not a compliance answer (hard rule 3).")
         if not rows:
-            result["empty_reason"] = coverage_note(tid)
+            result["empty_reason"] = coverage_note(tid, s)
         if explain:
             result["cypher"] = t["cypher"].strip()
     drv.close()
@@ -305,7 +372,23 @@ def doc_fallback(s, question: str) -> dict:
                     "not a graph answer. Read the citation before relying on it."}
 
 
-def coverage_note(tid: str) -> str:
+def coverage_note(tid: str, session=None) -> str:
+    # The India ingredient layer is the Cosmetics Rules 2020 substance list and nothing
+    # else — five substances. An empty answer there means "not on that list", which is a
+    # very different statement from "not restricted in India", and the difference is the
+    # whole product. Read the list from the graph rather than restating it here: a note
+    # that names substances is exactly the kind of text that goes stale silently.
+    if tid == "ingredient_restriction_india" and session is not None:
+        subs = sorted({r["n"] for r in session.run(
+            "MATCH (i:Ingredient)-[:RESTRICTED_BY]->(:RegulatoryRule {jurisdiction:'IN'}) "
+            "RETURN DISTINCT i.inci_name AS n")})
+        if subs:
+            return (f"India's substance-level rules here are the Cosmetics Rules 2020 "
+                    f"list only — {len(subs)} substances: {', '.join(subs)}. This "
+                    f"ingredient is not on that list, which is NOT the same as it being "
+                    f"permitted: the Rules also work through the Fourth Schedule "
+                    f"categories and the BIS standards under the Ninth, and those are "
+                    f"not substance-indexed. Check with CDSCO before relying on silence.")
     return {
         "manufacturers_for_category_in_cluster":
             "No COS-8/COS-9 licence data is loaded — state licensing registers are not "

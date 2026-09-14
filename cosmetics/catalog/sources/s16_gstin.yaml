@@ -41,7 +41,7 @@ coverage:
   obtained: 0
   pct: 0.0
   note: >
-    `gst_record` is 0 rows. This is the main reason 36,913 of 45,546 companies sit at
+    `gst_record` is 0 rows. This is the main reason 127,180 of 131,662 companies sit at
     trust L0.
 
 blocked_on: A paid provider key (Masters India, Signzy, KarzaSurepass or similar).

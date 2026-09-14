@@ -13,6 +13,7 @@ import os
 import argparse
 import hashlib
 import json
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -217,6 +218,28 @@ def load_rules_and_ingredients(s) -> None:
         MERGE (i)-[e:RESTRICTED_BY]->(r)
         SET e += row.prov
     """, ing_edges, "RESTRICTED_BY (retry after minting)")
+
+    # An annex entry names a FAMILY: "SALICYLIC ACID AND ITS SALTS" (Annex V/3),
+    # "1-NAPHTHOL AND ITS SALTS" (Annex III/16). CosIng also publishes the bare substance
+    # as its own INCI ingredient, so the graph holds two nodes and the restriction lands
+    # only on the family one. Asking about salicylic acid — one of the most-asked
+    # ingredients in cosmetics — therefore returned NOTHING, which in a compliance answer
+    # reads as "not restricted". A false negative here is the worst error this product
+    # can make, and it is silent.
+    #
+    # The family entry covers the bare substance by its own wording, so the edge is a
+    # restatement of the rule, not an inference: `covers_family` records that the rule was
+    # written about the family and this ingredient is a member, so an answer can say so.
+    # Only the head of the phrase is matched — never a suffix — so "SODIUM SALICYLATE"
+    # does not pick up salicylic acid's entry by resembling it.
+    run(s, """
+        UNWIND $rows AS row
+        MATCH (fam:Ingredient {inci_name: row.subject})-[:RESTRICTED_BY]->(r:RegulatoryRule)
+        MATCH (base:Ingredient {inci_name: row.base})
+        WHERE base <> fam
+        MERGE (base)-[e:RESTRICTED_BY]->(r)
+        SET e += row.prov, e.covers_family = row.subject
+    """, _family_members(ing_edges), "RESTRICTED_BY (annex family -> named substance)")
 
 
 KEEP_PHARMA = os.environ.get("COSMETICS_KEEP_PHARMA") == "1"
@@ -642,6 +665,25 @@ def load_packaging(s) -> None:
     """, edges, "SUPPLIES_PACKAGING")
 
 
+_FAMILY_HEAD = re.compile(
+    r"^(?P<base>.+?)\s+AND\s+ITS\s+(SALTS|ESTERS|SALTS\s+AND\s+ESTERS)\b", re.I)
+
+
+def _family_members(ing_edges: list[dict]) -> list[dict]:
+    """The bare substance each `X and its salts/esters` annex entry names explicitly."""
+    out, seen = [], set()
+    for e in ing_edges:
+        m = _FAMILY_HEAD.match(e["subject"] or "")
+        if not m:
+            continue
+        base = m.group("base").strip().rstrip(",")
+        if not base or (e["rule_id"], base) in seen:
+            continue
+        seen.add((e["rule_id"], base))
+        out.append({**e, "base": base})
+    return out
+
+
 def load_labs(s) -> None:
     """NABL accredited testing laboratories (S11), tier 1.
 
@@ -655,22 +697,67 @@ def load_labs(s) -> None:
                 JOIN crosswalk x ON x.source_id=r.source_id AND x.source_key=r.source_key
                  AND x.entity_type='company' AND x.superseded_by IS NULL
                 WHERE r.source_id='s11_nabl'""")
-    certs, edges = {}, []
+    # The register has one row per accredited LABORATORY SITE, and resolution merges a
+    # multi-site lab into one Company — so SGS India arrives as 8 rows against the same
+    # ISO/IEC 17025 standard, of which one carries the cosmetics scope. A per-row SET on
+    # a MERGEd (company, certificate) edge therefore let the last row written decide the
+    # scope, and the non-cosmetics rows outnumber the cosmetics ones 33:1: 159 labs with
+    # a cosmetics scope collapsed to 52, losing SGS, Vimta, Spectro and Equinox — the
+    # labs a buyer is most likely to have heard of.
+    #
+    # Scope is ADDITIVE across a lab's rows for the same reason roles[] is additive
+    # across sources (hard rule 1): another site's accreditation is not evidence that
+    # this one lapsed. So the rows are folded per (company, certificate) BEFORE the
+    # write — flag OR-ed, groups and disciplines unioned — and the certificate number
+    # reported is the one that actually carries the cosmetics scope, so the answer cites
+    # the accreditation it is relying on rather than an arbitrary sibling site's.
+    certs: dict[str, dict] = {}
+    agg: dict[tuple[str, str], dict] = {}
     for r in rows:
         p = r["payload"] or {}
         std = (p.get("standard") or "").strip()
         cert_id = f"NABL ISO/IEC 17025:{std}" if std else "NABL ISO/IEC 17025"
         certs[cert_id] = {"cert_id": cert_id,
                           "props": {"name": cert_id, "body": "NABL"}}
-        edges.append({
-            "company_id": r["entity_id"], "cert_id": cert_id,
-            "certificate_number": p.get("certificate_number"),
-            "valid_till": p.get("certificate_valid_till"),
-            "groups": (p.get("groups") or [])[:12],
-            "disciplines": p.get("disciplines") or [],
-            "tests_cosmetics": bool(p.get("tests_cosmetics")),
-            "prov": pv("s11_nabl", 1, 1.0, basis="nabl_accreditation_register"),
-        })
+        cos = bool(p.get("tests_cosmetics"))
+        key = (r["entity_id"], cert_id)
+        e = agg.get(key)
+        if e is None:
+            e = agg[key] = {
+                "company_id": r["entity_id"], "cert_id": cert_id,
+                "certificate_number": None, "valid_till": None,
+                "groups": [], "disciplines": [], "groups_matched": [],
+                "tests_cosmetics": False, "accredited_sites": 0,
+                "prov": pv("s11_nabl", 1, 1.0, basis="nabl_accreditation_register"),
+            }
+        e["accredited_sites"] += 1
+        e["tests_cosmetics"] = e["tests_cosmetics"] or cos
+        for fld, vals in (("groups", p.get("groups") or []),
+                          ("disciplines", p.get("disciplines") or []),
+                          ("groups_matched", p.get("groups_matched") or [])):
+            for v in vals:
+                if v not in e[fld]:
+                    e[fld].append(v)
+        # Prefer the cosmetics-scoped site's certificate; otherwise take the first seen.
+        if cos and not e.get("_cos_cert"):
+            e["certificate_number"] = p.get("certificate_number")
+            e["valid_till"] = p.get("certificate_valid_till")
+            e["_cos_cert"] = True
+        elif e["certificate_number"] is None:
+            e["certificate_number"] = p.get("certificate_number")
+            e["valid_till"] = p.get("certificate_valid_till")
+    edges = []
+    for e in agg.values():
+        e.pop("_cos_cert", None)
+        # `groups` is the audit trail for `tests_cosmetics`. The adapter deliberately
+        # keeps 40 of them because truncating hid the matching scope for 166 labs; the
+        # loader was then re-truncating to 12 and hiding it again. Cap generously, and
+        # put the scopes that actually matched at the front so the evidence for the flag
+        # is the first thing an answer shows.
+        e["groups"] = e["groups_matched"] + [g for g in e["groups"]
+                                             if g not in e["groups_matched"]]
+        e["groups"] = e["groups"][:40]
+        edges.append(e)
     run(s, """
         UNWIND $rows AS row
         MERGE (c:Certification {cert_id: row.cert_id}) SET c += row.props
@@ -682,7 +769,9 @@ def load_labs(s) -> None:
         MERGE (co)-[e:ACCREDITED_AS]->(ce)
         SET e += row.prov, e.certificate_number = row.certificate_number,
             e.valid_till = row.valid_till, e.groups = row.groups,
-            e.disciplines = row.disciplines, e.tests_cosmetics = row.tests_cosmetics
+            e.disciplines = row.disciplines, e.tests_cosmetics = row.tests_cosmetics,
+            e.groups_matched = row.groups_matched,
+            e.accredited_sites = row.accredited_sites
     """, edges, "ACCREDITED_AS")
 
 

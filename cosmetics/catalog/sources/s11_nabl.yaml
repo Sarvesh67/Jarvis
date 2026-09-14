@@ -36,15 +36,29 @@ volume:
   raw_rows: 6682
   graph:
     Certification: 13
-    Company: 45546
+    Company: 131662
 
 coverage:
-  claimed: 184
-  obtained: 184
+  claimed: 201
+  obtained: 201
   pct: 100.0
-  note: 184 labs with a genuine cosmetics scope, from 6,682 register rows.
+  note: >
+    201 labs with a genuine cosmetics scope, from 6,682 register rows — 145 accredited
+    for Cosmetics & Essential Oils itself, 56 qualifying only via the adjacent AYUSH or
+    Soap-Detergent-Toiletries scope. The register publishes one row per accredited SITE,
+    so the count is labs, not rows. It read 184 while resolution was collapsing labs into
+    pincode buckets (decisions/0016) and 52 while the loader let one site's scope
+    overwrite another's (defect below).
 
 defects:
+  - >
+    Accreditation scope is ADDITIVE across a lab's register rows. The register lists one
+    row per accredited site, so SGS India arrives as eight rows against one standard, of
+    which one carries the cosmetics scope — and a per-row write to a merged
+    (company, certificate) edge let the last row seen decide. Non-cosmetics rows outnumber
+    cosmetics ones 33:1, so 159 labs read as 52, losing SGS, Vimta, Spectro and Equinox.
+    Folded before the write since; `accredited_sites` says how many rows were folded, and
+    `groups_matched` names the scope the flag actually rests on.
   - >
     Scope must be read from the register, not inferred from keywords. "Accredited for
     cosmetics" means the Cosmetics & Essential Oils / AYUSH / Soap-Detergent-Toiletries

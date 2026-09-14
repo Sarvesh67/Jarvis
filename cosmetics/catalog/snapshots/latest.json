@@ -2,13 +2,13 @@
   "taken_on": "2026-09-14",
   "graph": {
     "nodes": {
-      "Company": 45546,
+      "Company": 131663,
       "Ingredient": 35864,
       "RegulatoryRule": 2445,
       "Product": 1751,
       "Licence": 878,
       "Facility": 870,
-      "DocChunk": 686,
+      "DocChunk": 826,
       "ProductCategory": 96,
       "Cluster": 17,
       "Certification": 13,
@@ -18,17 +18,17 @@
       "Association": 1
     },
     "edges": {
-      "LOCATED_IN": 41104,
-      "SUPPLIES_PACKAGING": 28657,
-      "SUBJECT_TO_GENERAL_RULE": 12403,
+      "LOCATED_IN": 125835,
+      "SUPPLIES_PACKAGING": 60087,
+      "SUBJECT_TO_GENERAL_RULE": 12405,
+      "ACCREDITED_AS": 6594,
       "SERVES_CATEGORY": 4434,
       "MEMBER_OF": 3576,
-      "ACCREDITED_AS": 2848,
       "CONTAINS": 2841,
-      "RESTRICTED_BY": 2392,
-      "MENTIONS": 1879,
+      "RESTRICTED_BY": 2422,
+      "MENTIONS": 2081,
+      "SUBSTITUTE_FOR": 2049,
       "CLAIMS_CAPABILITY": 1796,
-      "SUBSTITUTE_FOR": 1720,
       "LICENSED_UNDER": 878,
       "SUPPLIES": 764,
       "CLAIMS_CERTIFICATION": 512,
@@ -43,31 +43,31 @@
       "HAS_CAPABILITY": 6
     },
     "company_trust_level": {
-      "0": 36913,
-      "1": 3074,
+      "0": 123746,
+      "1": 3073,
       "2": 1,
-      "4": 5558
+      "4": 4843
     }
   },
   "postgres": {
     "tables": {
-      "crosswalk": 137399,
+      "property_claim": 1076468,
+      "crosswalk": 228790,
+      "trust_state": 136783,
       "raw_company": 136518,
-      "trust_state": 52156,
+      "review_queue": 15527,
       "person": 6682,
-      "review_queue": 3759,
       "fetch_manifest": 3650,
       "raw_facility": 881,
-      "operates_edge": 842,
+      "operates_edge": 843,
       "raw_supplies": 804,
-      "property_claim": 0,
-      "raw_ingredient": 0,
-      "unresolved_ingredient": 0,
       "ref_pincode": 0,
       "gst_record": 0,
+      "unresolved_ingredient": 0,
+      "raw_rule": 0,
       "raw_product": 0,
       "adverse_signal": 0,
-      "raw_rule": 0
+      "raw_ingredient": 0
     },
     "raw_company": {
       "s17b_udyam_api": 119120,

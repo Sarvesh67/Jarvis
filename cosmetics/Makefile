@@ -6,7 +6,7 @@ PY := .venv/bin/python
 PG := docker exec -i jarvis-postgres psql -U $(shell grep -m1 '^POSTGRES_USER=' ../platform/.env | cut -d= -f2-) -d cosmetics
 
 .PHONY: bootstrap ingest normalize resolve reconcile constraints load derive trust \
-        validate coverage rebuild pipeline clean-graph help \
+        validate coverage rebuild pipeline clean-graph help demo demo-check \
         catalog catalog-check site site-dev viz-up viz-down
 
 help:
@@ -67,6 +67,12 @@ clean-graph:
 
 test:                   ## pytest: golden queries + hard-rule invariants
 	$(PY) -m pytest tests/ -q
+
+demo-check:             ## every demo question and paraphrase, through the live router
+	$(PY) -m pytest tests/test_demo.py -m demo -q
+
+demo:                   ## print the demo script: questions, in order, with the caveats
+	$(PY) -m pipeline.demo
 
 review:                 ## list the pending resolution decisions
 	$(PY) -m pipeline.review --list

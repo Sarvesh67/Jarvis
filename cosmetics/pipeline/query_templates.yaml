@@ -175,9 +175,15 @@
 
 - id: ingredient_restriction_eu
   flow: compliance
-  intent: Is an ingredient restricted in the EU (explicitly EU-only, no force in India)
+  intent: >
+    What the EU permits, restricts or prohibits for an ingredient (explicitly EU-only,
+    no force in India). Use for both directions of the question — "is X restricted" and
+    "what does the EU allow for X" ask the same thing of the same annexes, and only the
+    first phrasing was being recognised.
   examples:
     - "EU restrictions on salicylic acid"
+    - "what does the EU allow for salicylic acid"
+    - "what is the EU limit on phenoxyethanol"
   params: {ingredient: inci_name}
   tier_floor: 1
   cypher: |
@@ -201,12 +207,30 @@
     - "IS standard for shampoo"
   params: {category: category_code}
   tier_floor: 1
+  note: >
+    The Ninth Schedule attaches a standard to the 16 spine categories; the Fourth
+    Schedule's 80 entries are the leaves beneath them. So a question about a leaf —
+    toothpaste, mouth wash, nail varnish — is answered by its parent's standard, and
+    `applies_at` says which level the standard was actually written for. Matching the
+    leaf alone returned nothing for 80 of the 96 categories.
   cypher: |
-    MATCH (pc:ProductCategory)-[:GOVERNED_BY]->(r:RegulatoryRule {jurisdiction: 'IN'})
-    WHERE $category IS NULL OR pc.code = $category
-    RETURN pc.code AS category, pc.name AS category_name,
+    MATCH (asked:ProductCategory)
+    WHERE $category IS NULL OR asked.code = $category
+    // walk up to the level the Ninth Schedule actually writes standards at
+    OPTIONAL MATCH (asked)-[:CHILD_OF]->(parent:ProductCategory)
+    WITH asked, parent
+    UNWIND [asked, parent] AS pc
+    WITH DISTINCT asked, pc WHERE pc IS NOT NULL
+    MATCH (pc)-[:GOVERNED_BY]->(r:RegulatoryRule {jurisdiction: 'IN'})
+    // The Fourth Schedule rule that DEFINES a category is also a GOVERNED_BY edge and
+    // carries no standard. It is not an answer to "which standard applies".
+    WHERE r.standard_ref IS NOT NULL
+    RETURN asked.name AS asked_about, pc.code AS category, pc.name AS category_name,
+           CASE WHEN pc = asked THEN 'this category'
+                ELSE 'its parent category — the Ninth Schedule writes the standard here'
+           END AS applies_at,
            r.standard_ref AS indian_standard, r.clause AS clause, r.source_doc AS source
-    ORDER BY category LIMIT $limit
+    ORDER BY asked_about, category LIMIT $limit
 
 - id: loan_licence_holders
   flow: buyer
@@ -308,7 +332,10 @@
   note: >
     Accreditation scope comes from NABL's own register, so "accredited for cosmetics"
     means the Cosmetics & Essential Oils / AYUSH / Soap-Detergent-Toiletries scope
-    specifically — not merely that the lab is accredited for something.
+    specifically — not merely that the lab is accredited for something. `cosmetics_scope`
+    names the scope that qualified the lab, so the answer cites the accreditation it is
+    relying on. A multi-site lab holds that scope at ONE of its `accredited_sites`; the
+    register does not say which, so confirm the site before booking a test.
   cypher: |
     MATCH (c:Company)-[a:ACCREDITED_AS]->(ce:Certification)
     WHERE a.tests_cosmetics
@@ -317,7 +344,16 @@
     WHERE ($cluster IS NULL OR cl.cluster_id = $cluster)
       AND ($state IS NULL OR c.state = $state)
       AND ($district IS NULL OR toUpper(c.district) = $district)
+    WITH c, a, ce,
+         // Decision 0009 counts AYUSH and Soap-Detergent-Toiletries as a cosmetics
+         // scope, and that stands — but a lab holding "Cosmetics & Essential Oils"
+         // itself is the better answer to "where do I test my face cream", and
+         // alphabetical order buried all 145 of them among the 56 that qualify only
+         // by an adjacent scope. Rank, do not filter: the definition is unchanged.
+         CASE WHEN any(g IN a.groups_matched WHERE g CONTAINS 'COSMETIC')
+              THEN 0 ELSE 1 END AS scope_rank
     RETURN c.legal_name AS laboratory, c.state AS state, c.district AS district,
            a.certificate_number AS certificate, a.valid_till AS valid_till,
+           a.groups_matched AS cosmetics_scope, a.accredited_sites AS accredited_sites,
            a.disciplines AS disciplines, a.groups AS accredited_scope
-    ORDER BY laboratory LIMIT $limit
+    ORDER BY scope_rank, laboratory LIMIT $limit

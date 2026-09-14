@@ -32,7 +32,7 @@ is a shape, NeoDash.
 `public` holds staging: `crosswalk` is append-only with supersede chains, `raw_company`
 has one row per *(source, company)* rather than per company, and trust lives in a third
 table. Pointed at `public`, Metabase produces plausible and wrong numbers — a
-`COUNT(*) FROM raw_company` is 136,518 and the company count is 45,913.
+`COUNT(*) FROM raw_company` is 136,518 and the company count is 132,030.
 
 `bi` is the resolved, flat, documented projection. Every view and column carries a
 Postgres `COMMENT`, which Metabase syncs into its own data dictionary — so the meaning
@@ -61,7 +61,7 @@ This is enforced, not merely documented: Metabase connects as the `cosmetics_bi`
 which has `USAGE` on `bi` only and no rights on `public`. Verified:
 
 ```
-bi.company          -> 45,913
+bi.company          -> 132,030
 public.person       -> ERROR: permission denied for table person
 public.raw_company  -> ERROR: permission denied for table raw_company
 ```
@@ -130,7 +130,7 @@ into `out/` before rebuilding.
 
 ## Known delta
 
-`bi.company` reports **45,913**; the graph reports **45,546** `Company` nodes. The gap is
+`bi.company` reports **132,030**; the graph reports **131,662** `Company` nodes. The gap is
 the pharma holdout — 484 companies whose only source is `s01_cdsco` are kept in Postgres
 but held out of the answerable graph unless they stand in a loan relationship
 (`catalog/sources/s01_cdsco.yaml`, `catalog/decisions/0001`) — netted against entities the
