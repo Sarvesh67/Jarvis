@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lattix.demo</string>
+
+  <!-- 127.0.0.1 only. The public hostname is served by the Cloudflare tunnel, which
+       connects OUTBOUND from this machine; nothing here listens on the LAN, and no
+       port is forwarded at the router. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/sarvesh/Documents/Jarvis/cosmetics/.venv/bin/python</string>
+    <string>-m</string>
+    <string>serve.app</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/sarvesh/Documents/Jarvis/cosmetics</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DEMO_HOST</key>
+    <string>127.0.0.1</string>
+    <key>DEMO_PORT</key>
+    <string>8099</string>
+    <!-- ~$3.60/day of routing at the measured $0.0018 a question. -->
+    <key>DEMO_DAILY_CAP</key>
+    <string>2000</string>
+    <key>DEMO_BURST_PER_IP</key>
+    <string>20</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>/Users/sarvesh</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/sarvesh/Documents/Jarvis/cosmetics/out/demo.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/sarvesh/Documents/Jarvis/cosmetics/out/demo.log</string>
+</dict>
+</plist>

@@ -12,3 +12,5 @@ pdfplumber
 neo4j
 psycopg[binary]
 pytest
+fastapi
+uvicorn[standard]

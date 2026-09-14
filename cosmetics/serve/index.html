@@ -1,0 +1,240 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lattix — India cosmetics supply chain</title>
+<style>
+  :root{
+    --ink:#1c1917; --muted:#78716c; --faint:#a8a29e;
+    --bg:#fbfaf9; --card:#ffffff; --line:#e7e5e4; --line-soft:#f0efed;
+    --accent:#9a3412; --accent-soft:#fff7ed; --accent-line:#fed7aa;
+    --t1:#166534; --t1bg:#f0fdf4; --t1line:#bbf7d0;
+    --t3:#a16207; --t3bg:#fefce8; --t3line:#fef08a;
+    --t4:#9f1239; --t4bg:#fff1f2; --t4line:#fecdd3;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --ink:#f5f5f4; --muted:#a8a29e; --faint:#78716c;
+      --bg:#1c1917; --card:#292524; --line:#44403c; --line-soft:#353130;
+      --accent:#fdba74; --accent-soft:#2a1c12; --accent-line:#7c2d12;
+      --t1:#86efac; --t1bg:#14261a; --t1line:#166534;
+      --t3:#fde047; --t3bg:#2a2410; --t3line:#854d0e;
+      --t4:#fda4af; --t4bg:#2a1418; --t4line:#9f1239;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",Inter,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 20px 80px}
+  header{padding:38px 0 22px;border-bottom:1px solid var(--line)}
+  h1{margin:0 0 6px;font-size:21px;font-weight:640;letter-spacing:-.015em}
+  .sub{color:var(--muted);font-size:13.5px;max-width:62ch;margin:0}
+  .stats{margin-top:14px;font-size:12px;color:var(--faint);
+    font-variant-numeric:tabular-nums}
+  form{display:flex;gap:8px;margin:24px 0 6px;flex-wrap:wrap}
+  input[type=text]{flex:1 1 320px;min-width:0;padding:12px 14px;font:inherit;
+    color:var(--ink);background:var(--card);
+    border:1px solid var(--line);border-radius:9px;outline:none}
+  input[type=text]:focus{border-color:var(--accent);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}
+  button{padding:12px 20px;font:inherit;font-weight:560;cursor:pointer;
+    background:var(--ink);color:var(--bg);border:1px solid var(--ink);border-radius:9px}
+  button:disabled{opacity:.45;cursor:default}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0 4px}
+  .chip{padding:6px 11px;font-size:12.5px;color:var(--muted);cursor:pointer;
+    background:var(--card);border:1px solid var(--line);border-radius:999px;
+    text-align:left;font-weight:450}
+  .chip:hover{border-color:var(--accent);color:var(--accent)}
+  .presenter{margin:14px 0 0;padding:12px 14px;font-size:12.5px;line-height:1.5;
+    background:var(--accent-soft);border:1px solid var(--accent-line);
+    border-left:3px solid var(--accent);border-radius:0 8px 8px 0;color:var(--ink)}
+  .presenter b{color:var(--accent);font-weight:620;
+    text-transform:uppercase;letter-spacing:.05em;font-size:10.5px}
+  .presenter .alts{margin-top:8px;color:var(--muted);font-size:12px}
+  #out{margin-top:26px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:18px 20px;margin-bottom:14px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+  .tier{font-size:11px;font-weight:640;padding:3px 9px;border-radius:999px;
+    letter-spacing:.02em;border:1px solid}
+  .tier-1{color:var(--t1);background:var(--t1bg);border-color:var(--t1line)}
+  .tier-2{color:var(--t1);background:var(--t1bg);border-color:var(--t1line)}
+  .tier-3{color:var(--t3);background:var(--t3bg);border-color:var(--t3line)}
+  .tier-4{color:var(--t4);background:var(--t4bg);border-color:var(--t4line)}
+  .path{font-size:11.5px;color:var(--faint);font-family:ui-monospace,SFMono-Regular,
+    Menlo,monospace}
+  .intent{color:var(--muted);font-size:13px;margin:0 0 12px}
+  .resolved{font-size:11.5px;color:var(--faint);margin:0 0 12px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.7}
+  .note{font-size:12.5px;color:var(--muted);line-height:1.55;margin:12px 0 0;
+    padding-top:12px;border-top:1px solid var(--line-soft)}
+  .nothing{padding:16px 18px;background:var(--t3bg);border:1px solid var(--t3line);
+    border-radius:9px;font-size:13.5px;line-height:1.6}
+  .nothing b{display:block;margin-bottom:6px;color:var(--t3)}
+  .scroll{overflow-x:auto;margin:0 -20px;padding:0 20px}
+  table{border-collapse:collapse;font-size:12.5px;min-width:100%}
+  th{text-align:left;padding:7px 14px 7px 0;color:var(--faint);font-weight:560;
+    white-space:nowrap;border-bottom:1px solid var(--line);
+    text-transform:uppercase;font-size:10.5px;letter-spacing:.04em}
+  td{padding:8px 14px 8px 0;border-bottom:1px solid var(--line-soft);
+    vertical-align:top;max-width:340px}
+  tr:last-child td{border-bottom:none}
+  .count{font-size:12px;color:var(--faint);margin:12px 0 8px}
+  .err{color:var(--t4);font-size:13.5px}
+  footer{margin-top:42px;padding-top:18px;border-top:1px solid var(--line);
+    font-size:11.5px;color:var(--faint);line-height:1.7}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
+    border-top-color:var(--accent);border-radius:50%;animation:s .7s linear infinite;
+    vertical-align:-2px;margin-right:7px}
+  @keyframes s{to{transform:rotate(360deg)}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>India cosmetics supply chain</h1>
+    <p class="sub">Who can legally make what, where, from which ingredients, under which
+      standard — and how much of that we can actually prove. Every answer carries the
+      evidence it rests on.</p>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <form id="f">
+    <input type="text" id="q" autocomplete="off" spellcheck="false"
+           placeholder="Ask about a manufacturer, an ingredient, a cluster, a standard…">
+    <button id="go" type="submit">Ask</button>
+  </form>
+
+  <div class="chips" id="chips"></div>
+  <div class="presenter" id="presenter" hidden></div>
+
+  <div id="out"></div>
+
+  <footer>
+    Evidence tiers: <b>1</b> regulator · <b>2</b> company-declared · <b>3</b> observed ·
+    <b>4</b> inferred. A tier-4 answer ranks and suggests; it is never a compliance
+    answer. Restrictions shown for the EU are EU law and have no force in India.
+  </footer>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const el = (t, c, x) => { const n = document.createElement(t);
+  if (c) n.className = c; if (x !== undefined) n.textContent = x; return n; };
+let SUGG = [];
+
+fetch("/healthz").then(r => r.json()).then(d => {
+  if (d.ok) $("#stats").textContent =
+    d.companies.toLocaleString("en-IN") + " companies · 35,864 ingredients · "
+    + "2,445 regulatory rules · 201 accredited testing labs";
+}).catch(() => {});
+
+fetch("/api/suggestions").then(r => r.json()).then(list => {
+  SUGG = list;
+  const c = $("#chips");
+  list.forEach(s => {
+    const b = el("button", "chip", s.ask);
+    b.type = "button";
+    b.onclick = () => { $("#q").value = s.ask; showPresenter(s); run(s.ask); };
+    c.appendChild(b);
+  });
+});
+
+function showPresenter(s){
+  const p = $("#presenter");
+  if (!s) { p.hidden = true; return; }
+  p.replaceChildren();
+  p.appendChild(el("b", null, "Say this while the answer is on screen"));
+  p.appendChild(el("div", null, s.caveat));
+  if (s.alts && s.alts.length)
+    p.appendChild(el("div", "alts", "Also tested: " + s.alts.map(a => "“"+a+"”").join("  ·  ")));
+  p.hidden = false;
+}
+
+$("#f").onsubmit = e => {
+  e.preventDefault();
+  const q = $("#q").value.trim();
+  if (!q) return;
+  // A typed question is not necessarily one of the tested ones, so drop the presenter
+  // note rather than leave a caveat sitting under an answer it was not written about.
+  showPresenter(SUGG.find(s => s.ask.toLowerCase() === q.toLowerCase()));
+  run(q);
+};
+
+async function run(question){
+  const out = $("#out"), go = $("#go");
+  go.disabled = true;
+  out.replaceChildren();
+  const load = el("div", "count");
+  load.appendChild(el("span", "spin"));
+  load.appendChild(el("span", null, "asking the graph…"));
+  out.appendChild(load);
+  try {
+    const r = await fetch("/api/ask", {
+      method: "POST", headers: {"content-type": "application/json"},
+      body: JSON.stringify({question})
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "something went wrong");
+    render(d);
+  } catch (err) {
+    out.replaceChildren(el("div", "card err", String(err.message || err)));
+  } finally { go.disabled = false; }
+}
+
+function render(d){
+  const out = $("#out"); out.replaceChildren();
+  const card = el("div", "card");
+
+  const meta = el("div", "meta");
+  if (d.tier) {
+    meta.appendChild(el("span", "tier tier-" + d.tier,
+      "tier " + d.tier + " — " + d.tier_meaning));
+  } else {
+    meta.appendChild(el("span", "tier tier-3", "exploratory — not a reviewed answer"));
+  }
+  meta.appendChild(el("span", "path", d.template || d.answered_by));
+  card.appendChild(meta);
+
+  if (d.intent) card.appendChild(el("p", "intent", d.intent));
+
+  // How free text became a value that exists in the graph. This is the bit that shows
+  // the answer was looked up rather than generated, so it is worth the space.
+  const res = Object.entries(d.param_resolution)
+    .filter(([, v]) => v && !/-> None/.test(v));
+  if (res.length)
+    card.appendChild(el("p", "resolved",
+      res.map(([k, v]) => k + ": " + v).join("\n")));
+
+  if (d.rows.length) {
+    card.appendChild(el("div", "count", d.rows.length + " result"
+      + (d.rows.length === 1 ? "" : "s")));
+    const cols = Object.keys(d.rows[0]);
+    const wrap = el("div", "scroll"), t = el("table");
+    const hr = el("tr");
+    cols.forEach(c => hr.appendChild(el("th", null, c.replace(/_/g, " "))));
+    t.appendChild(el("thead")).appendChild(hr);
+    const tb = el("tbody");
+    d.rows.forEach(row => {
+      const tr = el("tr");
+      cols.forEach(c => {
+        let v = row[c];
+        if (Array.isArray(v)) v = v.join(", ");
+        tr.appendChild(el("td", null, v === null || v === undefined ? "—" : String(v)));
+      });
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb); wrap.appendChild(t); card.appendChild(wrap);
+  } else {
+    const n = el("div", "nothing");
+    n.appendChild(el("b", null, "No rows — and here is why"));
+    n.appendChild(el("div", null, d.empty_reason
+      || d.trust || "Nothing matched. That is a gap in what has been collected, not a "
+         + "statement that none exist."));
+    card.appendChild(n);
+  }
+
+  if (d.warning) card.appendChild(el("p", "note", d.warning));
+  if (d.note) card.appendChild(el("p", "note", d.note));
+  out.appendChild(card);
+}
+</script>

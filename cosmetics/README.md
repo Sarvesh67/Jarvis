@@ -77,6 +77,29 @@ itself, and `make catalog-check` fails when a card has drifted from the live sto
 | **Metabase** | :3001 (`make viz-up`) | Point-and-click over Postgres. Saved questions, dashboards, per-column descriptions. |
 | **Neo4j Browser** | :7474 | Cypher against the graph. Run `make schema` first. |
 | **Catalog snapshots** | `catalog/snapshots/` | Dated measurements, committed, so growth is reviewable over time. |
+| **Public demo** | `serve/` → https://demo.lattix.co.in | One question box, for someone who has not read any of this. `setup/09_demo.sh`. |
+
+### The public demo
+
+`serve/app.py` is a deliberately smaller surface than the dashboard: read-only, no
+Postgres credentials at all (the query path never touches it, and people live there),
+and no generated Cypher — `--mode cypher` assumes a caller that has read the schema card
+and can repair a rejected query, which a public box cannot. Templates and graph context
+only.
+
+Its suggested questions are served from `validate/demo_questions.yaml`, the same file
+`tests/test_demo.py` asserts still works, so a question cannot appear on the page unless
+every tested phrasing of it still reaches the same template and still returns rows.
+
+```bash
+make demo-check      # every demo question and paraphrase, through the live router
+make demo            # print the demo script, with the caveat to say for each question
+setup/09_demo.sh     # tunnel + launch agent (see the header: two steps need your accounts)
+```
+
+Abuse control is a daily question budget and a per-IP burst, not a rate limit — at the
+measured $0.0018 a routed question, the failure mode should be "come back tomorrow",
+not an invoice. Cloudflare Access sits in front and is what actually decides who gets in.
 
 Metabase's first run asks you to create an admin account and add a database. Connect it to
 `jarvis-postgres` / `cosmetics` — host `jarvis-postgres`, port `5432`, user and password
