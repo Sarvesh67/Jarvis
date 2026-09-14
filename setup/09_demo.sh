@@ -97,25 +97,34 @@ ingress:
 YAML
 log "Wrote ~/.cloudflared/config.yml"
 
-# The console agent and the demo must answer under the SAME skill. It lives in the repo;
-# ~/.hermes gets a symlink to it. A real directory there keeps working silently while the
+# The console agent and the demo must answer under the SAME skills. They live in the repo;
+# ~/.hermes gets symlinks to them. A real directory there keeps working silently while the
 # repo moves on, which is how a v2 skill ended up sitting one level below the v1 the
 # console was actually loading.
-SKILL_SRC="$COS_DIR/skills/jarvis-cosmetics-search"
-SKILL_DST="$HOME/.hermes/profiles/cosmetics/skills/jarvis-cosmetics-search"
-if [ -d "$SKILL_SRC" ] && [ -d "$(dirname "$SKILL_DST")" ]; then
-  if [ "$(readlink "$SKILL_DST" 2>/dev/null)" != "$SKILL_SRC" ]; then
-    if [ -e "$SKILL_DST" ] && [ ! -L "$SKILL_DST" ]; then
-      log "Archiving the unversioned skill already in the Hermes profile..."
-      mv "$SKILL_DST" "$SKILL_DST.pre-symlink-$(date +%Y%m%d%H%M%S)"
-    fi
-    rm -f "$SKILL_DST"
-    ln -s "$SKILL_SRC" "$SKILL_DST"
-    log "Linked the Hermes cosmetics skill to the repo copy"
-  else
-    log "Hermes cosmetics skill already linked to the repo"
+#
+# jarvis-knowledge sits at the repo ROOT, not under cosmetics/: four profiles carry it.
+# The msme profile's copy has diverged and is left alone — see skills/jarvis-knowledge/README.md.
+link_skill() {   # link_skill <repo path> <profile skills dir> <name>
+  src="$1"; dst="$2/$3"
+  [ -d "$src" ] || return 0
+  [ -d "$2" ] || return 0
+  if [ "$(readlink "$dst" 2>/dev/null)" = "$src" ]; then
+    log "  $3 already linked"
+    return 0
   fi
-fi
+  if [ -e "$dst" ] && [ ! -L "$dst" ]; then
+    log "  archiving the unversioned $3 in the profile"
+    mv "$dst" "$dst.pre-symlink-$(date +%Y%m%d%H%M%S)"
+  fi
+  rm -f "$dst"
+  ln -s "$src" "$dst"
+  log "  linked $3 -> repo"
+}
+
+log "Linking the Hermes cosmetics skills to the repo..."
+PROFILE_SKILLS="$HOME/.hermes/profiles/cosmetics/skills"
+link_skill "$COS_DIR/skills/jarvis-cosmetics-search" "$PROFILE_SKILLS" jarvis-cosmetics-search
+link_skill "$JARVIS_ROOT/skills/jarvis-knowledge"    "$PROFILE_SKILLS" jarvis-knowledge
 
 log "Installing the app launch agent..."
 mkdir -p "$HOME/Library/LaunchAgents"

@@ -146,10 +146,27 @@ def test_the_console_loads_the_same_skill_as_the_demo(gateway):
     happened — a v2 skill sat one level down from the v1 the console was loading.
     """
     from serve import agent
-    live = (pathlib.Path.home() / ".hermes" / "profiles" / "cosmetics"
-            / "skills" / "jarvis-cosmetics-search")
-    if not live.exists():
+    profile = (pathlib.Path.home() / ".hermes" / "profiles" / "cosmetics" / "skills")
+    if not profile.exists():
         pytest.skip("no Hermes profile on this machine")
+
+    live = profile / "jarvis-cosmetics-search"
     assert live.resolve() == agent.SKILL_DIR.resolve(), (
         f"the console loads {live.resolve()} but the demo loads "
         f"{agent.SKILL_DIR.resolve()} — re-run setup/09_demo.sh")
+
+    # jarvis-knowledge is shared by four profiles, so it lives at the repo root. The
+    # cosmetics profile carries it but must never answer a cosmetics question with it:
+    # that skill's graphs are hedgefund and msme, and cosmetics is deliberately outside
+    # the Cognee layer. Asserting the link keeps the copy under review; asserting the
+    # absence keeps the boundary honest.
+    shared = profile / "jarvis-knowledge"
+    if shared.exists():
+        repo_shared = agent.ROOT.parent / "skills" / "jarvis-knowledge"
+        assert shared.resolve() == repo_shared.resolve(), (
+            f"jarvis-knowledge in the profile is {shared.resolve()}, not the repo copy "
+            f"at {repo_shared} — re-run setup/09_demo.sh")
+        assert "cosmetics" not in shared.joinpath("SKILL.md").read_text().lower(), (
+            "jarvis-knowledge now mentions cosmetics. Its graphs are hedgefund and msme; "
+            "the cosmetics graph is Neo4j and outside Cognee, so a cosmetics question "
+            "must not be routed through it.")
