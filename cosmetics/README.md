@@ -45,7 +45,7 @@ cd cosmetics
 make ingest-all                # every source that needs no credentials
 make pipeline                  # Stages 2-8, ending in validation
 make coverage                  # the honest number
-make test                      # 25 pytest checks: golden queries + invariants
+make test                      # 196 pytest checks: golden queries + invariants
 ```
 
 ### Review queue
@@ -202,6 +202,7 @@ Everything binds to `127.0.0.1`. Nothing is exposed off-box.
 | 8. Every property and edge carries provenance | `lib.prov()` / `load_neo4j.pv()`; `every_edge_has_provenance` query |
 | 9. Category spine comes from the regulator | `s05_ninth_schedule.py`; retail strings are tags in `category_map.yaml` |
 | 10. `OPERATES` needs score ≥ 0.92 or shared GSTIN/pincode | `resolve.py`; everything else → `review_queue` |
+| 11. A person's PAN never reaches the graph (personal-PAN GSTINs masked) | `pipeline/gstin.py`; `no_personal_pan_in_graph` query |
 
 ## Notes on judgement calls
 

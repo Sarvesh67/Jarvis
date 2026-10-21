@@ -42,12 +42,14 @@ Also: `WHERE` after `OPTIONAL MATCH` filters nothing. This has produced wrong an
 | `raw/` is append-only | `lib.land()`, content-addressed |
 | `crosswalk` is append-only — supersede, never delete | `pipeline/resolve.py` |
 | GST filing history is never displayed | `pipeline/trust.py` |
+| A person's PAN never reaches the graph — personal-PAN GSTINs (holder type P/H) are masked in `gstins` and `trust_reasons`, `pan` unset | `no_personal_pan_in_graph` golden query; `pipeline/gstin.py` |
 
 Two that no test can catch, so they are on you:
 
-- **DPDP.** A proprietorship GSTIN derives from an individual's PAN. Where
-  `is_proprietorship`, it gets `person`-table handling — consent basis recorded,
-  deletable — not industrial-spine handling.
+- **DPDP.** A proprietorship GSTIN derives from an individual's PAN. The graph side is
+  now tested (above). The Postgres side is not: where `is_proprietorship`, the full value
+  needs `person`-table handling — consent basis recorded, deletable — not
+  industrial-spine handling. Use `pipeline.gstin.public_gstin()` for anything shown.
 - **Never publish filing history.** Verify against it, rank with it, warn privately.
   "Hasn't filed in 8 months" on a public profile is a defamation problem.
 
@@ -68,7 +70,7 @@ out/          built artifacts, gitignored
 ```bash
 make ingest-all        # every source needing no credentials
 make pipeline          # Stages 2-8, ending in validation
-make test              # 178 checks: golden queries + hard-rule invariants
+make test              # 196 checks: golden queries + hard-rule invariants + rung-0 GSTIN
 make schema            # live schema — read before writing Cypher
 make coverage          # the honest number
 make catalog           # write today's snapshot of the live stores

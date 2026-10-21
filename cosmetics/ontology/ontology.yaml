@@ -20,8 +20,9 @@ nodes:
       legal_name: str
       norm_name: str
       cin: str
-      gstins: list
-      pan: str
+      gstins: list             # PUBLIC form: a personal-PAN GSTIN is masked, 24••••••••••1ZZ
+      pan: str                 # never set for a personal PAN (proprietorship, HUF) — DPDP
+      is_proprietorship: bool  # from GSTIN char 6 = P; set only where a GSTIN is held
       udyam_no: str
       iec: str
       constitution: str        # proprietorship | partnership | llp | pvt_ltd | public_ltd

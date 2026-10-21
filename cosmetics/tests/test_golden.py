@@ -93,6 +93,18 @@ def test_no_person_data_leaked_into_company_rows():
         assert cur.fetchone()[0] == 0
 
 
+def test_every_udyam_row_carries_registry_membership():
+    """Both Udyam adapters stamp `udyam_registered`, which trust.py reads for rung 1.
+    s17b once never set it and 119,120 registered firms sat at L0."""
+    with lib.pg() as c, c.cursor() as cur:
+        cur.execute("""SELECT source_id, count(*) FROM raw_company
+                       WHERE source_id IN ('s17_udyam', 's17b_udyam_api')
+                         AND (payload->>'udyam_registered') IS DISTINCT FROM 'true'
+                       GROUP BY source_id""")
+        bad = cur.fetchall()
+    assert not bad, f"Udyam rows without the registry flag: {bad}"
+
+
 def test_normalization_is_idempotent():
     """norm_name(norm_name(x)) == norm_name(x) — suffix stripping repeats until stable."""
     from pipeline.normalize import norm_name

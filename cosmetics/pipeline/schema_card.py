@@ -19,7 +19,8 @@ import lib  # noqa: E402
 # Properties worth naming per label. The graph carries more; these are the ones a query
 # actually filters or returns on, so the card stays readable.
 KEY_PROPS = {
-    "Company": ["company_id", "legal_name", "norm_name", "cin", "gstins", "district",
+    "Company": ["company_id", "legal_name", "norm_name", "cin", "gstins",
+                "is_proprietorship", "district",
                 "state", "cluster_id", "website", "email", "phone", "roles",
                 "trust_level", "trust_rungs", "trust_reasons"],
     "Facility": ["facility_id", "firm_name", "address_raw", "pincode", "district",
@@ -59,6 +60,10 @@ GOTCHAS = [
     "evidence of anything. `*_at_incorporation` roles come from the NIC inside a CIN, which "
     "is never updated after registration and is often stale.",
     "Every query must be bounded. Traversals from a hub node can touch the whole graph.",
+    "A GSTIN shown as `24••••••••••1ZZ` belongs to a proprietorship or HUF: the ten masked "
+    "characters are a person's PAN, withheld under DPDP. Report it masked, never try to "
+    "reconstruct it, and do not filter or join on the masked string. The full value is "
+    "deliberately not in the graph.",
     "Licence.regime separates 'cosmetics' from 'drugs'. The CDSCO register is 907 DRUG "
     "licences (Form 25/28 family) and only 3 cosmetics ones (COS-8/COS-9), so ANY question "
     "about who may manufacture COSMETICS must filter `l.regime = 'cosmetics'`. Without it a "

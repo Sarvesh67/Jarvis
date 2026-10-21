@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import lib  # noqa: E402
 from pipeline import reconcile as rec  # noqa: E402
+from pipeline.gstin import is_personal, is_personal_pan, is_proprietorship, public_gstin  # noqa: E402
 
 BATCH = 1000
 
@@ -293,8 +294,17 @@ def load_companies(s) -> dict[str, dict]:
     rows = []
     for eid, w in winners.items():
         props = {k: v for k, v in w.items() if k != "company_id" and v is not None}
-        props["gstins"] = [w["gstin"]] if w.get("gstin") else []
+        g = w.get("gstin")
+        # Neo4j is readable by the agent's own Cypher, so it holds only what may be shown.
+        # A GSTIN on a personal PAN (proprietorship, HUF) is masked and the PAN dropped;
+        # the full values stay in Postgres, where person-grade data lives. A null in the
+        # map REMOVES the property, which clears values loaded before this rule existed.
+        props["gstins"] = [public_gstin(g)] if g else []
         props.pop("gstin", None)
+        if is_personal(g) or is_personal_pan(w.get("pan")):
+            props["pan"] = None
+        if g:
+            props["is_proprietorship"] = is_proprietorship(g)
         if eid in udyam_members:
             props["udyam_registered"] = True
         rows.append({"company_id": eid, "props": props})

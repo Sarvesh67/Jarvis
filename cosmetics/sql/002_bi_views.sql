@@ -239,7 +239,7 @@ FROM public.trust_state t
 GROUP BY t.trust_level;
 
 COMMENT ON VIEW bi.trust_distribution IS
-  'How many entities reached each trust rung. A large L0 population is expected, not a defect: it is the Udyam long tail, which is registered and real but corroborated by nothing else.';
+  'How many entities reached each trust rung, as a MAXIMUM. Most sit at L1: the Udyam long tail, registered and real but corroborated by nothing else. L0 is the remainder with no identifier or registry membership at all.';
 
 CREATE OR REPLACE VIEW bi.review_queue_open AS
 SELECT

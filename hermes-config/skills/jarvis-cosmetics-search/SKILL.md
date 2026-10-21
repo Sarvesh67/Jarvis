@@ -136,6 +136,8 @@ The executed query comes back with the results. Quote it when the answer matters
   number, GSTIN or certificate.
 - Do not report contact people, emails or phones — that data is held outside the graph on
   purpose (DPDP).
+- A GSTIN with its middle masked (`24••••••••••1ZZ`) is a proprietorship or HUF. The masked
+  part is a person's PAN. Show it masked, and never guess, reconstruct or ask for it.
 
 ## Two facts about this data you must not get wrong
 

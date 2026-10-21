@@ -34,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import lib  # noqa: E402
+from pipeline.gstin import is_proprietorship, public_gstin  # noqa: E402
 from pipeline.load_neo4j import run  # noqa: E402
 
 COSMETIC_FORMS = {"COS-8", "COS-9"}
@@ -80,6 +81,12 @@ def gather() -> dict[str, dict]:
         e["last_gstr3b"] = r["last_gstr3b_period"]
         e["is_proprietorship"] = r["is_proprietorship"]
 
+    # Without a verification record, the GSTIN still says whose PAN it carries (char 6).
+    # Leaving this unset is how 12 proprietors' PANs reached the public reasons.
+    for e in ent.values():
+        if e["is_proprietorship"] is None and e["gstin"]:
+            e["is_proprietorship"] = is_proprietorship(e["gstin"])
+
     for r in _q("SELECT entity_id, signal_type, detail FROM adverse_signal"):
         ent[r["entity_id"]]["adverse"].append(r["signal_type"])
     return ent
@@ -115,7 +122,10 @@ def level_for(e: dict) -> tuple[int, list[str], list[str], list[int]]:
     if e["cin"]:
         ids.append(f"CIN {e['cin']}")
     if e["gstin"]:
-        ids.append(f"GSTIN {e['gstin']}")
+        # reasons are public: a GSTIN on a personal PAN shows with the PAN part masked
+        shown = public_gstin(e["gstin"])
+        ids.append(f"GSTIN {shown}" + (" (PAN withheld as personal data)"
+                                       if shown != e["gstin"] else ""))
     if e["udyam"]:
         # never print the derived local key as if it were a registration number
         ids.append("registered on the Udyam MSME registry")
@@ -183,6 +193,13 @@ def main() -> int:
                 "reasons=EXCLUDED.reasons, computed_at=EXCLUDED.computed_at",
                 [(r["entity_id"], r["trust_level"], r["trust_rungs"], r["reasons"])
                  for r in rows])
+            # trust_state is derived, so an entity superseded by re-resolution must leave
+            # it. Upsert-only once kept 4,753 dead entities here, and bi.trust_distribution
+            # counted them: 992 phantom L4s.
+            cur.execute("DELETE FROM trust_state WHERE NOT (entity_id = ANY(%s))",
+                        ([r["entity_id"] for r in rows],))
+            if cur.rowcount:
+                print(f"  pruned {cur.rowcount} trust rows for entities that no longer exist")
         drv = lib.neo4j_driver()
         with drv.session() as s:
             run(s, """

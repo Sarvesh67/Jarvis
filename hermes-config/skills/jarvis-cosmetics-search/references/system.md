@@ -42,7 +42,7 @@ result feels short, raise the limit — do not conclude the tool is lossy.
 | Gap | Consequence |
 |---|---|
 | **State COS-8/COS-9 licence registers are not published in bulk** | Licence queries return almost nothing. Registry presence is NOT permission to manufacture. This is the single biggest gap. |
-| No GSTIN verification provider | Trust level L3 is unreachable; most registry-only firms sit at trust 0. |
+| No GSTIN verification provider | Trust level L3 is unreachable; most firms are registry-only and sit at trust 1 (Udyam membership). Only 54 companies carry a GSTIN at all. |
 | Contract-manufacturing claims come from company websites | Most cluster MSMEs have no website, so absence is missing evidence, not absence of the capability. |
 | Udyam self-declaration is noisy | A firm registers several activities; its name may reflect a different one. `evidence_basis` exposes this. |
 | MCA NIC codes are incorporation-time | Never updated afterwards; roles derived from them are suffixed `_at_incorporation` and rank last. |

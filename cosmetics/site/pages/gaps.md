@@ -84,7 +84,7 @@ zero above is that answer.
 It was also specced wrong: S1 (CDSCO approved sites) was named as the cosmetics facility
 spine. Of its 911 rows, **3** are cosmetics-regime. See `catalog/decisions/0001`.
 
-## Why so many companies sit at trust L0
+## Why so many companies stop at trust L1
 
 ```sql trust
 select trust_level, companies from catalog.trust order by trust_level
@@ -92,10 +92,16 @@ select trust_level, companies from catalog.trust order by trust_level
 
 <BarChart data={trust} x=trust_level y=companies title="Companies by trust level" yFmt='#,##0'/>
 
+Most companies are Udyam-registered and nothing more: registry membership proves they
+exist (L1) and says nothing about permission or activity. Until 2026-10-18 the national
+Udyam rows never carried their registration flag and sat at L0; the bar moved when that
+was fixed, not because anything new was learned about the firms.
+
 **S16 — GSTIN verification** is blocked on a paid provider key. It is what would lift a
 company from L2 to L3: the difference between a number that passes a checksum and a number
-that is currently active and belongs to this firm. `gst_record` holds 0 rows, and that is
-most of the reason the L0 bar dominates.
+that is currently active and belongs to this firm. `gst_record` holds 0 rows. We hold a
+GSTIN at all for only 54 companies, so finding GSTINs is the binding problem before
+verifying them is (see `TRUST_PLAN.md`).
 
 Two rules constrain what may ever be done with it:
 

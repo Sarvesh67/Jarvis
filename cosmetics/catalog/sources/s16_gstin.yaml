@@ -41,8 +41,10 @@ coverage:
   obtained: 0
   pct: 0.0
   note: >
-    `gst_record` is 0 rows. This is the main reason 127,180 of 131,662 companies sit at
-    trust L0.
+    `gst_record` is 0 rows, so no company reaches L3. The deeper gap is upstream: only 54
+    of 132,030 companies have a GSTIN at all (website harvest, S14), so GSTIN discovery
+    comes before verification. Every held GSTIN gets the free rung-0 checks in
+    `gstin_check` (pipeline/gstin.py). See TRUST_PLAN.md §3-4.
 
 blocked_on: A paid provider key (Masters India, Signzy, KarzaSurepass or similar).
 

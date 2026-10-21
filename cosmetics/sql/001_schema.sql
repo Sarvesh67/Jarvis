@@ -178,3 +178,18 @@ CREATE TABLE IF NOT EXISTS raw_supplies (
 );
 CREATE INDEX IF NOT EXISTS raw_supplies_inci ON raw_supplies (inci_name);
 ALTER TABLE trust_state ADD COLUMN IF NOT EXISTS trust_rungs SMALLINT[];  -- every rung whose evidence is present
+
+-- Rung 0 (TRUST_PLAN §3): what each GSTIN says about itself, before any paid check.
+-- Recomputed by pipeline/gstin.py. A state mismatch is evidence for a reviewer, not a
+-- demotion; state_match NULL means no resolvable state, which is not a mismatch.
+CREATE TABLE IF NOT EXISTS gstin_check (
+  gstin TEXT NOT NULL, entity_id TEXT NOT NULL,
+  well_formed BOOLEAN NOT NULL, checksum_ok BOOLEAN NOT NULL,
+  state_code TEXT, gst_state TEXT, record_states TEXT[], state_match BOOLEAN,
+  pan_type CHAR(1),               -- PAN char 4: C company, F firm/LLP, P individual, H HUF ...
+  is_personal BOOLEAN NOT NULL,   -- P or H: the PAN is a person's; masked on every public surface
+  is_proprietorship BOOLEAN NOT NULL,
+  registration_no CHAR(1),        -- GSTIN char 13: the holder's nth registration in the state
+  checked_at TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (gstin, entity_id)
+);

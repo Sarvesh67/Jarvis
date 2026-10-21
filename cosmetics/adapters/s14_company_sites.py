@@ -89,23 +89,11 @@ CAPABILITIES = {
     "export": ["EXPORT", "WE EXPORT", "EXPORTING TO"],
 }
 
-B36 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
-
-def gstin_valid(g: str) -> bool:
-    """GSTIN check digit (base-36, alternating weights 1/2).
-
-    Cheap, and it is what separates a real GSTIN from a PAN-shaped string that happens
-    to sit next to two digits. An unvalidated GSTIN entering the resolution spine merges
-    two unrelated companies.
-    """
-    if len(g) != 15 or any(c not in B36 for c in g):
-        return False
-    total = 0
-    for i, c in enumerate(g[:14]):
-        v = B36.index(c) * (1 if i % 2 == 0 else 2)
-        total += v // 36 + v % 36
-    return B36[(36 - total % 36) % 36] == g[14]
+# GSTIN check digit (base-36, alternating weights 1/2). Cheap, and it is what separates a
+# real GSTIN from a PAN-shaped string that happens to sit next to two digits. An
+# unvalidated GSTIN entering the resolution spine merges two unrelated companies.
+# One implementation, shared with the rung-0 checks in pipeline/gstin.py.
+from pipeline.gstin import checksum_ok as gstin_valid  # noqa: E402
 
 
 def sentences(text: str) -> list[str]:

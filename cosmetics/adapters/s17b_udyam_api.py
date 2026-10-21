@@ -122,9 +122,28 @@ def to_row(rec: dict) -> dict | None:
             "packaging_types": sorted({PACKAGING[c][0] for c in codes if c in PACKAGING}),
             "registration_date": rec.get("RegistrationDate"),
             "district_lgd": rec.get("District"),
+            # Registry MEMBERSHIP is the fact, as in s17_udyam — trust.py reads this flag
+            # for rung 1. Without it 119,120 registered firms sat at L0.
+            "udyam_registered": True,
             "udyam_no_published": False,   # this dataset omits it (see module docstring)
         }),
     }
+
+
+def mark_registered() -> int:
+    """Stamp `udyam_registered` on rows written before to_row() set it.
+
+    The sweep never landed its API responses under raw/ (raw_path is ""), so the rows
+    cannot be rebuilt from disk, and re-sweeping 119k rows to set one constant is waste.
+    This writes exactly what the corrected to_row() writes, and nothing else. Idempotent.
+    """
+    with lib.pg() as c, c.cursor() as cur:
+        cur.execute("""UPDATE raw_company
+                       SET payload = payload || '{"udyam_registered": true}'::jsonb
+                       WHERE source_id = %s
+                         AND (payload->>'udyam_registered') IS DISTINCT FROM 'true'""",
+                    (SOURCE,))
+        return cur.rowcount
 
 
 def sweep(f: lib.Fetcher, pins: list[dict], page: int, budget: dict) -> dict:
@@ -200,8 +219,13 @@ def main() -> int:
     ap.add_argument("--max-requests", type=int, default=3000)
     ap.add_argument("--delay", type=float, default=1.2)
     ap.add_argument("--restart", action="store_true")
+    ap.add_argument("--mark-registered", action="store_true",
+                    help="only stamp udyam_registered on rows already landed, then exit")
     a = ap.parse_args()
 
+    if a.mark_registered:
+        print(f"  udyam_registered stamped on {mark_registered()} existing row(s)")
+        return 0
     if a.restart and CKPT.exists():
         CKPT.unlink()
     if lib.DATA_GOV_KEY_IS_SHARED:
