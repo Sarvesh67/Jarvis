@@ -7,7 +7,8 @@ PG := docker exec -i jarvis-postgres psql -U $(shell grep -m1 '^POSTGRES_USER=' 
 
 .PHONY: bootstrap ingest normalize resolve reconcile constraints load derive trust \
         validate coverage rebuild pipeline clean-graph help demo demo-check \
-        catalog catalog-check site site-dev viz-up viz-down
+        catalog catalog-check site site-dev viz-up viz-down \
+        backup backup-verify backup-verify-offsite backup-passphrase
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -62,11 +63,18 @@ rebuild:                ## drop the graph and replay Stages 2-8 from Postgres
 	$(PY) -m pipeline.load_neo4j --wipe
 	$(MAKE) derive trust validate
 
-backup:                 ## snapshot Postgres + mirror raw/ + msme inputs to ~/Backups/lattix-cosmetics (DATA.md)
+backup:                 ## snapshot Postgres + mirror raw/ + msme inputs to ~/Backups/lattix-cosmetics, then an encrypted copy to iCloud Drive (DATA.md)
 	$(PY) -m pipeline.backup
 
 backup-verify:          ## restore the newest snapshot into a scratch db and check it against its manifest
 	$(PY) -m pipeline.backup verify
+
+backup-verify-offsite:  ## decrypt the iCloud copy into a scratch root and run the same check on it
+	$(PY) -m pipeline.backup verify-offsite
+	$(PY) -m pipeline.backup offsite-status
+
+backup-passphrase:      ## once per Mac: store the backup passphrase in the login keychain (prompts twice)
+	security add-generic-password -s lattix-cosmetics-backup -a "$$USER" -l "Lattix cosmetics backup" -w
 
 clean-graph:
 	$(PY) -c "import lib; d=lib.neo4j_driver(); s=d.session(); s.run('MATCH (n) CALL (n) { DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS'); d.close(); print('wiped')"

@@ -20,10 +20,30 @@ Layout under BACKUP_DIR (default ~/Backups/lattix-cosmetics):
                             raw.sha256, MANIFEST.json (git commit, row counts, graph
                             counts, checksums)
 
-  python -m pipeline.backup                 take a snapshot
+Off-machine, under OFFSITE_DIR (default iCloud Drive/Backups/lattix-cosmetics), the same
+root as encrypted tar.gz chunks, readable on any machine with openssl and the passphrase:
+
+  files-<UTC time>.tar.gz.enc       raw/ and msme/ files new or changed since the previous
+                                    files chunk. Append-only like the mirror: restore all,
+                                    oldest first.
+  snapshot-<UTC time>.tar.gz.enc    one snapshots/<UTC time>/ directory. Restore the newest.
+  SHA256SUMS, KEYCHECK.enc, README.txt
+
+The passphrase is read from the login keychain (item KEYCHAIN_ITEM, set once with `make
+backup-passphrase`) or from the file named by COSMETICS_BACKUP_PASSFILE. It reaches
+openssl through a pipe, never argv or the environment. Its other copy belongs in the
+owner's password manager: the keychain is lost with the Mac.
+
+  python -m pipeline.backup                 take a snapshot, then copy it off-machine
   python -m pipeline.backup verify [DIR]    restore the newest (or DIR) snapshot into a
                                             scratch database and check it against the
                                             manifest; re-hash the raw mirror
+  python -m pipeline.backup offsite         copy the newest snapshot off-machine
+  python -m pipeline.backup verify-offsite  decrypt the off-machine copy into a scratch
+                                            root and run verify on it
+  python -m pipeline.backup restore-offsite DIR   decrypt the off-machine copy into DIR,
+                                            a new backup root (DATA.md, "Restore")
+  python -m pipeline.backup offsite-status  which chunks iCloud has finished uploading
 
 Secrets (.env files) are deliberately not copied. DATA.md lists the names they need.
 """
@@ -32,8 +52,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -46,6 +71,14 @@ DATABASES = ("cosmetics", "jarvis")      # jarvis is the platform's, and small
 SCRATCH_DB = "cosmetics_restore_check"
 DEFAULT_DIR = Path(lib.ENV.get("COSMETICS_BACKUP_DIR", "~/Backups/lattix-cosmetics")).expanduser()
 MSME = lib.JARVIS_ROOT / "msme"
+
+ICLOUD = Path("~/Library/Mobile Documents/com~apple~CloudDocs").expanduser()
+OFFSITE_DIR = Path(lib.ENV.get("COSMETICS_OFFSITE_DIR",
+                               ICLOUD / "Backups" / "lattix-cosmetics")).expanduser()
+KEYCHAIN_ITEM = "lattix-cosmetics-backup"
+# OpenSSL's own salted format, so a restore needs no code from this repo
+CIPHER = ["-aes-256-cbc", "-pbkdf2", "-iter", "600000", "-md", "sha256"]
+KEYCHECK = b"lattix-cosmetics backup key check\n"
 
 
 def sha256(path: Path) -> str:
@@ -211,17 +244,255 @@ def verify(base: Path, snap: Path | None) -> int:
     return len(problems)
 
 
+README = """\
+Lattix cosmetics: encrypted off-machine backup
+==============================================
+Written by cosmetics/pipeline/backup.py (`make backup`). Nothing here can be read without
+the passphrase. It is kept in the owner's password manager, and on the Mac in the login
+keychain as "lattix-cosmetics-backup".
+
+  files-<UTC>.tar.gz.enc     raw/ payloads and msme/ inputs, new or changed since the
+                             previous files chunk. Restore every one, oldest first.
+  snapshot-<UTC>.tar.gz.enc  one database snapshot: pg_dump of cosmetics and jarvis,
+                             MANIFEST.json, raw.sha256. Restore the newest.
+  SHA256SUMS                 checksums of the encrypted files (shasum -a 256 -c SHA256SUMS)
+  KEYCHECK.enc               lets the script refuse a passphrase that differs from this copy's
+
+Format: tar.gz, encrypted with
+  openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -md sha256      (OpenSSL 1.1.1+ or LibreSSL)
+
+Restore with the repo:  cd cosmetics && .venv/bin/python -m pipeline.backup restore-offsite DIR
+Restore without it (openssl asks for the passphrase once per file):
+  mkdir restored && cd restored
+  for f in "<this folder>"/files-*.tar.gz.enc; do
+    openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 -in "$f" | tar -xzf -
+  done
+  openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 \\
+    -in "<this folder>/<the newest snapshot-*.tar.gz.enc>" | tar -xzf -
+The result is a backup root. Then follow cosmetics/DATA.md, "Restore and rebuild".
+"""
+
+
+def passphrase() -> str | None:
+    """From the file COSMETICS_BACKUP_PASSFILE names, else the login keychain. Never printed."""
+    pf = lib.ENV.get("COSMETICS_BACKUP_PASSFILE")
+    if pf:
+        return Path(pf).expanduser().read_text().strip("\n") or None
+    r = subprocess.run(["security", "find-generic-password", "-s", KEYCHAIN_ITEM, "-w"],
+                       capture_output=True, text=True)
+    return (r.stdout.strip("\n") or None) if r.returncode == 0 else None
+
+
+def openssl(args: list[str], secret: str, **kw) -> subprocess.Popen:
+    """openssl enc with the passphrase on a pipe: never in argv, the environment or a file."""
+    r, w = os.pipe()
+    os.write(w, secret.encode())
+    os.close(w)
+    try:
+        return subprocess.Popen(["openssl", "enc", *args, *CIPHER, "-pass", f"fd:{r}"],
+                                pass_fds=(r,), **kw)
+    finally:
+        os.close(r)
+
+
+def seal(base: Path, rels: list[str], out: Path, secret: str) -> None:
+    """tar.gz the files (paths relative to base) through openssl into out."""
+    with out.open("wb") as f:
+        p = openssl(["-salt"], secret, stdin=subprocess.PIPE, stdout=f)
+        with tarfile.open(fileobj=p.stdin, mode="w|gz", compresslevel=6) as tf:
+            for rel in rels:
+                tf.add(base / rel, arcname=rel, recursive=False)
+        p.stdin.close()
+        if p.wait():
+            raise RuntimeError(f"openssl failed writing {out.name}")
+
+
+def unseal(chunk: Path, target: Path, secret: str) -> None:
+    p = openssl(["-d", "-in", str(chunk)], secret, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL)
+    try:
+        with tarfile.open(fileobj=p.stdout, mode="r|gz") as tf:
+            tf.extractall(target, filter="data")     # refuses paths that leave target
+        while p.stdout.read(1 << 16):                # tar padding: let openssl finish
+            pass
+    except (tarfile.TarError, OSError, EOFError) as e:
+        p.kill()
+        p.wait()
+        raise RuntimeError(f"{chunk.name}: wrong passphrase or damaged file ({e})") from None
+    finally:
+        p.stdout.close()
+    if p.wait():
+        raise RuntimeError(f"{chunk.name}: wrong passphrase or damaged file")
+
+
+def check_key(dest: Path, secret: str, create: bool = False) -> bool:
+    """The first copy writes KEYCHECK.enc and later ones must decrypt it, so one
+    off-machine copy never needs two passphrases to restore."""
+    kc = dest / "KEYCHECK.enc"
+    if not kc.exists() and create:
+        p = openssl(["-salt", "-out", str(kc)], secret, stdin=subprocess.PIPE)
+        p.communicate(KEYCHECK)
+        return p.returncode == 0
+    p = openssl(["-d", "-in", str(kc)], secret, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL)
+    out, _ = p.communicate()
+    return p.returncode == 0 and out == KEYCHECK
+
+
+def read_sums(dest: Path) -> dict[str, str]:
+    f = dest / "SHA256SUMS"
+    lines = f.read_text().splitlines() if f.exists() else []
+    return {name: h for h, name in (l.split("  ", 1) for l in lines if l)}
+
+
+def offsite(base: Path, dest: Path) -> int:
+    """Copy the newest snapshot, and every raw/ or msme/ file not copied before, to dest
+    as encrypted chunks. Returns the number of problems."""
+    secret = passphrase()
+    if not secret:
+        print("  ! NOT copied off-machine: no passphrase. Run `make backup-passphrase` once.")
+        return 1
+    if dest.is_relative_to(ICLOUD) and not ICLOUD.exists():
+        print(f"  ! NOT copied off-machine: {ICLOUD} is missing. Is iCloud Drive on?")
+        return 1
+    dest.mkdir(parents=True, exist_ok=True)
+    if not check_key(dest, secret, create=True):
+        print(f"  ! NOT copied off-machine: the passphrase is not the one {dest} was made with")
+        return 1
+    (dest / "README.txt").write_text(README)
+
+    # what has been copied where, so each run sends only what is new
+    state_file = base / "offsite.json"
+    states = json.loads(state_file.read_text()) if state_file.exists() else {}
+    st = states.setdefault(str(dest), {"chunks": {}, "files": {}})
+    gone = {c for c in st["chunks"] if not (dest / c).exists()}   # deleted there: send again
+    st["chunks"] = {c: v for c, v in st["chunks"].items() if c not in gone}
+    st["files"] = {r: v for r, v in st["files"].items() if v[1] not in gone}
+
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
+    while (dest / f"files-{stamp}.tar.gz.enc").exists():   # restore order is name order
+        time.sleep(1)
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
+    sig = {}
+    for top in ("raw", "msme"):
+        for p in (base / top).rglob("*"):
+            if p.is_file():
+                s = p.stat()
+                sig[str(p.relative_to(base))] = f"{s.st_size}:{int(s.st_mtime)}"
+    todo = []
+    new = sorted(r for r, v in sig.items() if st["files"].get(r, [None])[0] != v)
+    if new:
+        todo.append((f"files-{stamp}.tar.gz.enc", new))
+    snap = sorted((base / "snapshots").iterdir())[-1]
+    if f"snapshot-{snap.name}.tar.gz.enc" not in st["chunks"]:
+        todo.append((f"snapshot-{snap.name}.tar.gz.enc",
+                     sorted(str(p.relative_to(base)) for p in snap.iterdir())))
+
+    staging = base / "offsite-staging"
+    staging.mkdir(exist_ok=True)
+    for name, rels in todo:
+        tmp = staging / name
+        seal(base, rels, tmp, secret)
+        h, size = sha256(tmp), tmp.stat().st_size
+        shutil.move(tmp, dest / name)     # a rename on one volume: never seen half-written
+        sums = {**{k: v for k, v in read_sums(dest).items() if (dest / k).exists()}, name: h}
+        (dest / "SHA256SUMS").write_text("".join(f"{v}  {k}\n" for k, v in sorted(sums.items())))
+        st["chunks"][name] = {"sha256": h, "bytes": size, "files": len(rels), "made_at": stamp}
+        if name.startswith("files-"):
+            st["files"].update({r: [sig[r], name] for r in rels})
+        state_file.write_text(json.dumps(states, indent=1))
+        print(f"    {name}  {len(rels):,} files, {size / 1e6:,.0f} MB")
+    if not todo:
+        print("    nothing new to copy")
+    total = sum(c["bytes"] for c in st["chunks"].values())
+    print(f"  off-machine: {len(st['chunks'])} chunks, {total / 1e9:.2f} GB in {dest}")
+    return 0
+
+
+def restore_offsite(dest: Path, target: Path, secret: str) -> None:
+    """Decrypt every files chunk, oldest first, then the newest snapshot chunk, into
+    target, which becomes a backup root."""
+    sums = read_sums(dest)
+    files = sorted(dest.glob("files-*.tar.gz.enc"))
+    snaps = sorted(dest.glob("snapshot-*.tar.gz.enc"))
+    if not snaps:
+        raise RuntimeError(f"no snapshot chunk in {dest}")
+    if not check_key(dest, secret):
+        raise RuntimeError(f"the passphrase is not the one {dest} was made with")
+    for c in files + snaps[-1:]:
+        if sha256(c) != sums.get(c.name):
+            raise RuntimeError(f"{c.name}: checksum differs from SHA256SUMS")
+        unseal(c, target, secret)
+        print(f"    decrypted {c.name}")
+
+
+def verify_offsite(base: Path, dest: Path) -> int:
+    """Decrypt the off-machine copy into a scratch root and run verify on it: proof that it
+    alone rebuilds the graph."""
+    secret = passphrase()
+    if not secret:
+        print("  ! no passphrase. Run `make backup-passphrase` once.")
+        return 1
+    scratch = Path(tempfile.mkdtemp(prefix="offsite-check-", dir=base))
+    print(f"  decrypting {dest} into {scratch}")
+    try:
+        restore_offsite(dest, scratch, secret)
+        return verify(scratch, None)
+    except RuntimeError as e:
+        print(f"  ! {e}\n  verify: 1 problem(s)")
+        return 1
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def offsite_status(dest: Path) -> int:
+    """Which chunks iCloud Drive has finished uploading. Returns how many have not."""
+    pending = 0
+    for c in sorted(dest.glob("*.enc")):
+        r = subprocess.run(["fileproviderctl", "evaluate", str(c)], capture_output=True,
+                           text=True)
+        up = "isUploaded = 1" in r.stdout
+        pending += not up
+        print(f"    {'uploaded' if up else 'NOT YET '}  {c.name}")
+    print(f"  {pending} file(s) still waiting to upload" if pending else "  all uploaded")
+    return pending
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("action", nargs="?", default="snapshot", choices=["snapshot", "verify"])
-    ap.add_argument("snapshot_dir", nargs="?", type=Path)
+    ap.add_argument("action", nargs="?", default="snapshot",
+                    choices=["snapshot", "verify", "offsite", "verify-offsite",
+                             "restore-offsite", "offsite-status"])
+    ap.add_argument("path", nargs="?", type=Path,
+                    help="verify: the snapshot to check; restore-offsite: the new backup root")
     ap.add_argument("--dir", type=Path, default=DEFAULT_DIR, help="backup root")
+    ap.add_argument("--offsite-dir", type=Path, default=OFFSITE_DIR)
     a = ap.parse_args()
-    base = a.dir.expanduser()
+    base, dest = a.dir.expanduser(), a.offsite_dir.expanduser()
     if a.action == "verify":
-        return 1 if verify(base, a.snapshot_dir) else 0
+        return 1 if verify(base, a.path) else 0
+    if a.action == "offsite":
+        return 1 if offsite(base, dest) else 0
+    if a.action == "verify-offsite":
+        return 1 if verify_offsite(base, dest) else 0
+    if a.action == "offsite-status":
+        return 1 if offsite_status(dest) else 0
+    if a.action == "restore-offsite":
+        target, secret = a.path, passphrase()
+        if target is None or (target.exists() and any(target.iterdir())):
+            ap.error("restore-offsite needs a new or empty directory")
+        if not secret:
+            ap.error("no passphrase: run `make backup-passphrase`, or set COSMETICS_BACKUP_PASSFILE")
+        target.mkdir(parents=True, exist_ok=True)
+        try:
+            restore_offsite(dest, target, secret)
+        except RuntimeError as e:
+            print(f"  ! {e}")
+            return 1
+        print(f"  restored. Check it: python -m pipeline.backup verify --dir {target}")
+        return 0
     snapshot(base)
-    return 0
+    return 1 if offsite(base, dest) else 0
 
 
 if __name__ == "__main__":

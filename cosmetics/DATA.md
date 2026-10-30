@@ -35,9 +35,15 @@ Everything else in Postgres is either parsed from `raw/` or computed by the pipe
 ## 2. Backups
 
 ```bash
-make backup          # snapshot to ~/Backups/lattix-cosmetics (COSMETICS_BACKUP_DIR overrides)
-make backup-verify   # restore the newest snapshot into a scratch database and check it
+make backup                 # snapshot to ~/Backups/lattix-cosmetics, then encrypt to iCloud Drive
+make backup-verify          # restore the newest local snapshot into a scratch database and check it
+make backup-verify-offsite  # the same check on the iCloud copy alone, plus its upload state
+make backup-passphrase      # once per Mac: put the passphrase in the login keychain
 ```
+
+`COSMETICS_BACKUP_DIR` and `COSMETICS_OFFSITE_DIR` override the two locations.
+
+### 2a. The local copy
 
 `pipeline/backup.py` writes:
 
@@ -66,19 +72,76 @@ matched. A snapshot takes about 15 seconds; the dump is 47 MB.
 - The msme FalkorDB graph and its 310 MB `documents.jsonl`. They belong to msme/, not to
   this graph.
 
+### 2b. The off-machine copy: iCloud Drive, encrypted
+
+The local copy protects against a dropped database or a bad pipeline run, not against
+losing the Mac. So after the local snapshot, `make backup` writes encrypted chunks to
+`iCloud Drive/Backups/lattix-cosmetics/` (the owner's choice, 2026-10-30):
+
+```
+files-<UTC>.tar.gz.enc       raw/ and msme/ files new or changed since the last files chunk
+snapshot-<UTC>.tar.gz.enc    one snapshots/<UTC>/ directory
+SHA256SUMS                   checksums of the encrypted files
+KEYCHECK.enc                 refuses a passphrase that differs from the one this copy uses
+README.txt                   how to restore with nothing but openssl and tar
+```
+
+- **Encryption.** tar.gz through `openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -md
+  sha256`. That is OpenSSL's own salted format, readable by OpenSSL 1.1.1+ or LibreSSL
+  with no code from this repo. iCloud holds only ciphertext; Apple has no key to it.
+- **Incremental.** `~/Backups/lattix-cosmetics/offsite.json` records which file went
+  into which chunk. A run sends only new pages plus one ~48 MB snapshot. The first full
+  copy is about 390 MB, because the pages compress 4×. If a chunk is deleted from iCloud,
+  the next run sends its files again.
+- **Nothing is deleted automatically**, in iCloud or locally. Each run adds about 50 MB
+  plus new pages, and 81 GB of iCloud quota was free on 2026-10-30. To prune, delete old
+  `snapshot-*` chunks. Never delete a `files-*` chunk: until the next run, the copy
+  would be missing pages.
+- **The passphrase has two copies, both the owner's:**
+  1. The owner's password manager. The keychain is lost with the Mac, and **without the
+     passphrase the iCloud copy cannot be read by anyone.**
+  2. The login keychain item `lattix-cosmetics-backup`, which `make backup` reads.
+     `make backup-passphrase` creates it by prompting. The passphrase never appears on
+     a command line, in a file, or in output. On a machine without a keychain, set
+     `COSMETICS_BACKUP_PASSFILE` to a file that holds it.
+- **`make backup` fails** after taking the local snapshot when it could not copy
+  off-machine: no passphrase, iCloud Drive off, or a different passphrase.
+- **iCloud uploads in the background**, after `make backup` returns.
+  `python -m pipeline.backup offsite-status` shows which chunks have finished uploading.
+  "Optimize Mac Storage" is on for this account, so iCloud may later remove the local
+  copies; reading one downloads it again.
+
+**Tested 2026-10-30** with a throwaway passphrase, into a scratch folder:
+- The copy alone restored 18 tables (1,692,807 rows) and 7,439 of 7,439 raw files.
+- A second run sent nothing. A new or changed file was sent alone. A chunk deleted from
+  the destination had its files sent again.
+- A wrong passphrase and a tampered chunk were both refused.
+- The README's openssl + tar recipe decrypted a snapshot with no repo code.
+
 **Not yet done:**
-- **No off-machine copy.** The backup sits on this Mac's disk, so it protects against a
-  dropped database or a bad pipeline run, not against losing the Mac.
-- **No encryption at rest.** FileVault is off, and the backup holds personal data:
-  proprietors' GSTINs, NABL lab contacts, firm phones. An encrypted copy somewhere else is
-  the next step, and where it goes is the owner's call.
 - **Nothing runs on a schedule.** Run `make backup` after every ingest or pipeline run
   that changes data.
+- **FileVault is off.** The iCloud copy is encrypted. The local backup, `raw/` and the
+  Postgres volume on this disk are not, and they hold personal data: proprietors'
+  GSTINs, NABL lab contacts, firm phones.
 
 ## 3. Restore and rebuild from a backup
 
 On a machine where `setup/00_run_all.sh` has run (Docker, the containers, the venv,
 `.env` files):
+
+If the Mac is gone, first rebuild the backup root from iCloud. Signing in to iCloud Drive
+brings the chunks; the passphrase comes from the password manager:
+
+```bash
+cd ~/Documents/Jarvis/cosmetics
+make backup-passphrase                                            # type it in
+.venv/bin/python -m pipeline.backup restore-offsite ~/Backups/lattix-cosmetics
+make backup-verify                                                # restore check on what came back
+```
+
+`offsite.json` is not part of the copy, so the first `make backup` after this sends one
+full files chunk again (about 390 MB). Then:
 
 ```bash
 B=~/Backups/lattix-cosmetics; S=$B/snapshots/<the snapshot>
@@ -152,3 +215,11 @@ Names only; the values live in `.env` files that are never committed or backed u
   - `COSMETICS_BI_PASSWORD` (the Metabase role).
 - Neo4j uses `lib.py`'s defaults, which match `docker-compose.yml`. Set `NEO4J_USER` and
   `NEO4J_PASSWORD` to override them.
+
+All of these can be issued again:
+- the Postgres, LiteLLM and BI values are chosen at setup;
+- the API keys come from the data.gov.in and OpenRouter accounts.
+
+The one secret that cannot be issued again is the **backup passphrase**. It lives in the
+keychain item `lattix-cosmetics-backup` and in the owner's password manager (§2b).
+Without it, the iCloud copy cannot be read.
