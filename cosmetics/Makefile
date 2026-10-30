@@ -62,6 +62,12 @@ rebuild:                ## drop the graph and replay Stages 2-8 from Postgres
 	$(PY) -m pipeline.load_neo4j --wipe
 	$(MAKE) derive trust validate
 
+backup:                 ## snapshot Postgres + mirror raw/ + msme inputs to ~/Backups/lattix-cosmetics (DATA.md)
+	$(PY) -m pipeline.backup
+
+backup-verify:          ## restore the newest snapshot into a scratch db and check it against its manifest
+	$(PY) -m pipeline.backup verify
+
 clean-graph:
 	$(PY) -c "import lib; d=lib.neo4j_driver(); s=d.session(); s.run('MATCH (n) CALL (n) { DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS'); d.close(); print('wiped')"
 

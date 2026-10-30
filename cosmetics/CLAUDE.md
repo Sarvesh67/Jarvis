@@ -16,6 +16,8 @@ is the build narrative. This file is the operating brief.
 4. **`catalog/decisions/`** — why the build works the way it does. Read the relevant one
    before "fixing" something that looks wrong; several of these document things that look
    like bugs and are not.
+5. **`DATA.md`** — where every byte the graph is built from lives, what exists only in
+   Postgres, how it is backed up, and how to fetch each source again.
 
 ## The four mistakes that produce confidently wrong answers here
 
@@ -70,11 +72,13 @@ out/          built artifacts, gitignored
 ```bash
 make ingest-all        # every source needing no credentials
 make pipeline          # Stages 2-8, ending in validation
-make test              # 196 checks: golden queries + hard-rule invariants + rung-0 GSTIN
+make test              # 217 checks: golden queries + hard-rule invariants + rung-0 GSTIN
 make schema            # live schema — read before writing Cypher
 make coverage          # the honest number
 make catalog           # write today's snapshot of the live stores
 make catalog-check     # fail if a source card disagrees with the stores
+make backup            # snapshot Postgres, mirror raw/ + msme inputs (DATA.md)
+make backup-verify     # restore the newest snapshot into a scratch db and check it
 make ask Q="..."       # natural language -> whitelisted template
 make site              # rebuild the Evidence reading site
 make viz-up            # Metabase :3001, NeoDash :5005, Neo4j Browser :7474
