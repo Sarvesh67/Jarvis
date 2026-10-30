@@ -95,9 +95,12 @@ def build(session) -> dict:
     rels = [{"type": r["t"], "count": r["c"]} for r in session.run(
         "MATCH ()-[r]->() RETURN type(r) AS t, count(*) AS c ORDER BY c DESC")]
     hubs = [{"label": r["lbl"], "id": r["id"], "degree": r["deg"]} for r in session.run(
-        """MATCH (n)-[r]-() WITH n, count(r) AS deg WHERE deg > 1000
+        # COUNT {} on a bare pattern reads each node's stored degree; expanding
+        # (n)-[r]-() materialised ~800k relationship rows to count them, and that was
+        # enough to get Neo4j killed inside its Docker VM.
+        """MATCH (n) WITH n, COUNT { (n)--() } AS deg WHERE deg > 1000
            RETURN labels(n)[0] AS lbl,
-                  coalesce(n.name, n.cluster_id, n.cert_id, n.code, n.inci_name) AS id,
+                  coalesce(n.name, n.cluster_id, n.cert_id, n.code, n.inci_name, n.type) AS id,
                   deg ORDER BY deg DESC LIMIT 6""")]
     vocab = {
         "cluster_id": [r["v"] for r in session.run(

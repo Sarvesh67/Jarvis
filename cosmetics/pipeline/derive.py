@@ -110,13 +110,15 @@ def serves_category_from_nic(s) -> None:
     # first, so that narrowing NIC_TO_CATEGORY (or skipping a struck-off company) actually
     # takes effect instead of silently leaving the old edge in place. Scoped to this
     # rule_id: the tier-1 licence-derived edges are not touched.
-    res = s.run("""
+    # Batched: since national rows feed this rule there are ~68k of these edges, and one
+    # delete transaction that size takes down a Neo4j with ~1.4 GB of real headroom.
+    n = s.run("""
         MATCH ()-[e:SERVES_CATEGORY]->()
         WHERE e._rule_id = 'serves_category_from_nic'
-        DELETE e RETURN count(e) AS n
-    """).single()
-    if res["n"]:
-        print(f"    (retracted {res['n']} SERVES_CATEGORY edges from the previous run)")
+        CALL (e) { DELETE e } IN TRANSACTIONS OF 1000 ROWS
+    """).consume().counters.relationships_deleted
+    if n:
+        print(f"    (retracted {n} SERVES_CATEGORY edges from the previous run)")
     rows = []
     skipped_dead = 0
     for r in q("""SELECT x.entity_id, r.source_id, r.payload FROM raw_company r
@@ -128,7 +130,10 @@ def serves_category_from_nic(s) -> None:
             if (p.get("company_status") or "").strip().lower() in MCA_DEAD_STATUSES:
                 skipped_dead += 1
                 continue
-        codes = p.get("nic_codes_cosmetics") or []
+        # The Gujarat parquet (s17) stores its cosmetics slice as `nic_codes_cosmetics`;
+        # the national API (s17b) stores it as `nic_matched`. Reading only the first
+        # left 20,361 national core-cosmetics firms with no category edge at all.
+        codes = p.get("nic_codes_cosmetics") or p.get("nic_matched") or []
         nic_cin = p.get("nic_from_cin")
         if nic_cin:
             codes = codes + [nic_cin]
