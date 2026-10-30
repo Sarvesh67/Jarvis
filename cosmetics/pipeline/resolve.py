@@ -148,8 +148,10 @@ def score_pair(l: dict, r: dict) -> tuple[float, dict]:
 
     l_phone, r_phone = _digits(l.get("phone")), _digits(r.get("phone"))
     l_mail, r_mail = (l.get("email") or "").lower(), (r.get("email") or "").lower()
-    if (l_phone and r_phone) or (l_mail and r_mail):
-        contact = 1.0 if ((l_phone and l_phone == r_phone) or (l_mail and l_mail == r_mail)) else 0.0
+    l_web, r_web = _domain(l.get("website")), _domain(r.get("website"))
+    if (l_phone and r_phone) or (l_mail and r_mail) or (l_web and r_web):
+        contact = 1.0 if ((l_phone and l_phone == r_phone) or (l_mail and l_mail == r_mail)
+                          or (l_web and l_web == r_web)) else 0.0
         feats.append(("contact", 0.20, contact))
 
     # roles_claimed is an ADDITIVE claim vocabulary and each source stamps its own
@@ -177,6 +179,28 @@ def score_pair(l: dict, r: dict) -> tuple[float, dict]:
                | {"weights_used": round(total_w, 2), "generic_only": generic_only})
 
 
+# A website is contact evidence, at the weight a shared phone or email carries
+# (decisions/0007, amended 2026-10-29). It is never enough on its own: group sites are
+# shared by distinct legal entities (atul.co.in, ariesgroup.in, neogenchem.com each carry
+# 3-4 different names in CHEMEXCIL), and marketplace or directory pages are shared by
+# thousands of unrelated firms, so those hosts are not a key at all.
+PLATFORM_HOSTS = {
+    "indiamart.com", "tradeindia.com", "exportersindia.com", "justdial.com",
+    "zaubacorp.com", "facebook.com", "instagram.com", "linkedin.com", "twitter.com",
+    "x.com", "youtube.com", "google.com", "sites.google.com", "business.site",
+    "blogspot.com", "wordpress.com", "wixsite.com", "weebly.com", "godaddysites.com",
+    "amazon.in", "flipkart.com", "nykaa.com",
+}
+
+
+def _domain(url: str | None) -> str:
+    host = re.sub(r"^https?://", "", (url or "").strip().lower()).split("/")[0]
+    host = host.split(":")[0].removeprefix("www.")
+    if "." not in host or any(host == p or host.endswith("." + p) for p in PLATFORM_HOSTS):
+        return ""
+    return host
+
+
 def _digits(v: str | None) -> str:
     d = re.sub(r"\D", "", v or "")
     return d[-10:] if len(d) >= 10 else ""
@@ -192,6 +216,9 @@ def block_keys(row: dict) -> list[str]:
         keys.append("n:" + " ".join(toks))
     if row.get("phone"):
         keys.append("t:" + re.sub(r"\D", "", row["phone"])[-10:])
+    web = _domain(row.get("website"))
+    if web:
+        keys.append("w:" + web)
     return keys
 
 

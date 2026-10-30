@@ -272,6 +272,19 @@ def test_two_distinct_cins_never_auto_merge_regardless_of_name_similarity():
         f"got {s}, features {feats}")
 
 
+def test_website_is_contact_evidence_never_a_merge_on_its_own():
+    """decisions/0007, amended: a shared domain counts like a shared phone, no more."""
+    from pipeline.resolve import _domain, score_pair, CORROBORATION_FLOOR
+    assert _domain("https://www.Atul.co.in/about") == "atul.co.in"
+    assert _domain("https://www.indiamart.com/acme-chem/") == ""
+    assert _domain("acme.blogspot.com") == ""
+    a = {"norm_name": "ACME AROMATICS", "website": "https://acme.in"}
+    b = {"norm_name": "ACME AROMATICS", "website": "http://www.acme.in/products"}
+    score, feats = score_pair(a, b)
+    assert feats["contact"] == 1.0
+    assert feats["weights_used"] < CORROBORATION_FLOOR   # still too thin to auto-merge
+
+
 def test_token_set_ratio_containment_inflation_is_corrected():
     """"MEGHMANI" vs "MEGHMANI DYES INTERMEDIATES" scores 100 on raw token_set_ratio
     (subset containment) but the two are different companies confirmed by distinct
