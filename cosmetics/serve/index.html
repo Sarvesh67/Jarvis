@@ -3,32 +3,67 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Lattix</title>
+<script>
+  try { const t = localStorage.getItem("lattix.theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; }
+  catch (e) {}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap">
 <style>
-  /* Warm enterprise palette, shared with the Jarvis console. */
+  /* lattix.co.in's palette and type — the demo is the product the site describes. */
   :root{
-    --bg:#f3ede3; --bg2:#ece4d6; --panel:#fffdf9; --panel2:#f8f2e8;
-    --line:#e7ddcc; --line2:#dacdb4;
-    --fg:#2c2823; --mut:#6f6557; --faint:#9b9183;
-    --accent:#b15a31; --accent-soft:#c47a52; --accent-dim:#efdccc;
-    --ok:#4d7c54; --okdim:#e2ecdf; --okline:#c3d8c6;
-    --warn:#b0851d; --warndim:#f2e8cf; --warnline:#e3d199;
-    --bad:#b04a3c; --baddim:#f1ddd8; --badline:#e0bdb4;
-    --shadow:0 1px 2px rgba(74,54,30,.05),0 3px 12px rgba(74,54,30,.05);
-    --radius:13px; --radius-sm:9px;
+    --bg:#fffaf3; --hdr:rgba(255,250,243,.86); --panel:#ffffff; --panel2:#fbf7f0;
+    --line:#ece7df; --line2:#ddd6ca;
+    --fg:#151321; --mut:#686577; --faint:#9a96a6;
+    --ink:#151321; --on-ink:#ffffff;
+    --accent:#7c5cff; --accent-soft:#a18bff; --accent-dim:#f0ecff;
+    --pink:#ff5ca8; --orange:#ff8a3d; --teal:#19c7b2;
+    --grad:linear-gradient(90deg,#7c5cff,#ff5ca8,#ff8a3d);
+    --ok:#0f8a7c; --okdim:#e4f7f3; --okline:#b9e8df;
+    --warn:#b4720f; --warndim:#fff4dc; --warnline:#f5d996;
+    --bad:#d23f78; --baddim:#ffe9f2; --badline:#f7bfd6;
+    --shadow:0 1px 2px rgba(40,28,65,.04);
+    --shadow-md:0 10px 34px rgba(40,28,65,.08);
+    --shadow-lg:0 18px 60px rgba(40,28,65,.16);
+    --scrim:rgba(21,19,33,.32);
+    --radius:22px; --radius-sm:16px;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
-    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+    --sans:"DM Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    --head:"Space Grotesk","DM Sans",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
   }
   @media (prefers-color-scheme:dark){
     :root:not([data-theme="light"]){
-      --bg:#1d1a16; --bg2:#242019; --panel:#272219; --panel2:#2e2820;
-      --line:#3a332a; --line2:#4a4136;
-      --fg:#f2ece1; --mut:#b4a894; --faint:#8b8172;
-      --accent:#d98254; --accent-soft:#e09a72; --accent-dim:#3a2a1f;
-      --ok:#8fc496; --okdim:#1e2a1f; --okline:#37503a;
-      --warn:#dcb455; --warndim:#2c2415; --warnline:#5a4a1d;
-      --bad:#e08e80; --baddim:#2e1c18; --badline:#5e332b;
-      --shadow:0 1px 2px rgba(0,0,0,.2),0 3px 12px rgba(0,0,0,.18);
+      /* The site's dark surfaces: the ink-and-violet product panel in its hero. */
+      --bg:#110f1b; --hdr:rgba(17,15,27,.86); --panel:#1a1728; --panel2:#211d31;
+      --line:#2c2740; --line2:#3a3452;
+      --fg:#f5f2ff; --mut:#aaa5bd; --faint:#7d7894;
+      --ink:#f5f2ff; --on-ink:#151321;
+      --accent:#a18bff; --accent-soft:#8a70ff; --accent-dim:#2a2347;
+      --ok:#4fd6c4; --okdim:#12302d; --okline:#1f5149;
+      --warn:#f3c45a; --warndim:#33280f; --warnline:#5b4618;
+      --bad:#ff86b9; --baddim:#3a1729; --badline:#64284a;
+      --shadow:0 1px 2px rgba(0,0,0,.25);
+      --shadow-md:0 10px 34px rgba(0,0,0,.35);
+      --shadow-lg:0 18px 60px rgba(0,0,0,.55);
+      --scrim:rgba(0,0,0,.55);
     }
+  }
+  :root[data-theme="dark"]{
+    /* The site's dark surfaces: the ink-and-violet product panel in its hero. */
+    --bg:#110f1b; --hdr:rgba(17,15,27,.86); --panel:#1a1728; --panel2:#211d31;
+    --line:#2c2740; --line2:#3a3452;
+    --fg:#f5f2ff; --mut:#aaa5bd; --faint:#7d7894;
+    --ink:#f5f2ff; --on-ink:#151321;
+    --accent:#a18bff; --accent-soft:#8a70ff; --accent-dim:#2a2347;
+    --ok:#4fd6c4; --okdim:#12302d; --okline:#1f5149;
+    --warn:#f3c45a; --warndim:#33280f; --warnline:#5b4618;
+    --bad:#ff86b9; --baddim:#3a1729; --badline:#64284a;
+    --shadow:0 1px 2px rgba(0,0,0,.25);
+    --shadow-md:0 10px 34px rgba(0,0,0,.35);
+    --shadow-lg:0 18px 60px rgba(0,0,0,.55);
+    --scrim:rgba(0,0,0,.55);
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -38,70 +73,85 @@
     -webkit-font-smoothing:antialiased;
     display:flex;flex-direction:column;
   }
-  button,textarea{font:inherit;color:inherit}
+  button,textarea,select{font:inherit;color:inherit}
+  button{cursor:pointer}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  svg.i{width:14px;height:14px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;
+    stroke-linecap:round;stroke-linejoin:round}
 
   /* ---------- masthead ---------- */
   .top{
-    display:flex;align-items:center;gap:11px;flex:none;
-    padding:13px 24px;border-bottom:1px solid var(--line);background:var(--panel);
+    display:flex;align-items:center;gap:12px;flex:none;
+    padding:14px 28px;border-bottom:1px solid var(--line);
+    background:var(--hdr);backdrop-filter:saturate(1.4) blur(14px);
+    -webkit-backdrop-filter:saturate(1.4) blur(14px);
   }
-  .mark{
-    width:27px;height:27px;border-radius:8px;flex:none;
-    background:var(--accent);color:#fff;display:flex;align-items:center;
-    justify-content:center;font-weight:700;font-size:13px;letter-spacing:-.02em;
-  }
-  .wordmark{font-weight:640;letter-spacing:-.01em;font-size:15px}
-  .tagline{color:var(--faint);font-size:12.5px;margin-left:2px}
+  .wordmark{font-family:var(--head);font-weight:700;font-size:23px;line-height:1;
+    letter-spacing:-.045em;color:var(--fg);text-decoration:none}
+  .wordmark .dot{color:var(--accent)}
+  .tagline{color:var(--mut);font-size:13px;padding-left:12px;margin-left:2px;
+    border-left:1px solid var(--line2);line-height:1.2}
+  .tools{margin-left:auto;display:flex;align-items:center;gap:8px}
   .demo-tag{
-    margin-left:auto;font-size:10.5px;font-weight:650;letter-spacing:.08em;
-    text-transform:uppercase;color:var(--accent);background:var(--accent-dim);
-    border:1px solid var(--accent-soft);border-radius:999px;padding:3px 10px;flex:none;
+    display:inline-flex;align-items:center;gap:7px;
+    font-size:12px;font-weight:600;color:var(--mut);background:var(--panel);
+    border:1px solid var(--line);border-radius:999px;padding:6px 12px;flex:none;
   }
-  @media (max-width:620px){ .tagline{display:none} }
+  .theme-btn{width:32px;height:32px;flex:none;border-radius:50%;padding:0;
+    display:inline-flex;align-items:center;justify-content:center;
+    background:var(--panel);border:1px solid var(--line);color:var(--mut)}
+  .theme-btn:hover{color:var(--fg);border-color:var(--line2)}
+  .theme-btn .i{width:16px;height:16px}
+  .demo-tag::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--teal)}
+  @media (max-width:620px){
+    .tagline{display:none}
+    .top{padding:11px 16px}
+  }
 
   /* ---------- transcript ---------- */
   .msgs{
     flex:1;overflow-y:auto;overflow-x:hidden;
-    padding:26px 24px 8px;
+    padding:28px 24px 10px;
     display:flex;flex-direction:column;gap:20px;
   }
-  .inner{width:100%;max-width:780px;margin:0 auto;display:flex;
-    flex-direction:column;gap:20px}
+  .inner{width:100%;max-width:860px;margin:0 auto;display:flex;
+    flex-direction:column;gap:22px}
+  @media (max-width:620px){ .msgs{padding:18px 16px 8px} }
 
   .turn{display:flex;flex-direction:column}
   .turn.user{align-items:flex-end}
   .ubub{
-    background:var(--accent-dim);border:1px solid var(--accent-soft);
-    border-radius:var(--radius);padding:10px 15px;max-width:80%;
-    font-size:14.5px;line-height:1.5;
+    background:var(--ink);color:var(--on-ink);
+    border-radius:20px 20px 6px 20px;padding:11px 17px;max-width:80%;
+    font-size:14.5px;line-height:1.5;font-weight:500;
   }
   .abub{
-    background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);
-    border-radius:var(--radius);padding:15px 17px;
-    display:flex;flex-direction:column;gap:12px;min-width:0;
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);padding:20px 22px;
+    display:flex;flex-direction:column;gap:14px;min-width:0;
   }
+  @media (max-width:620px){ .abub{padding:15px 14px;border-radius:18px} }
 
   .pill{
     display:inline-flex;align-items:center;gap:6px;align-self:flex-start;
-    font-size:11px;font-weight:650;padding:3px 10px;border-radius:999px;
-    border:1px solid;letter-spacing:.01em;
+    font-size:11.5px;font-weight:700;padding:3px 11px;border-radius:999px;
+    border:1px solid;white-space:nowrap;
   }
   .p-ok{color:var(--ok);background:var(--okdim);border-color:var(--okline)}
   .p-warn{color:var(--warn);background:var(--warndim);border-color:var(--warnline)}
   .p-bad{color:var(--bad);background:var(--baddim);border-color:var(--badline)}
 
-  .scroll{overflow-x:auto;margin:0 -17px;padding:0 17px}
+  .scroll{overflow-x:auto;margin:0 -22px;padding:0 22px}
   table{border-collapse:collapse;font-size:13px;min-width:100%}
   th{
-    text-align:left;padding:0 16px 7px 0;color:var(--faint);font-weight:650;
+    text-align:left;padding:0 16px 8px 0;color:var(--faint);font-weight:800;
     white-space:nowrap;border-bottom:1px solid var(--line2);
-    text-transform:uppercase;font-size:10px;letter-spacing:.06em;
+    text-transform:uppercase;font-size:10.5px;letter-spacing:.12em;
   }
   /* One line per cell. A NABL row carries three array columns of accreditation scopes,
      and letting them wrap turned a ten-row answer into a wall four screens tall — which
      reads as raw output rather than as a product. Full value stays in the title. */
-  td{padding:8px 16px 8px 0;border-bottom:1px solid var(--line);
+  td{padding:9px 16px 9px 0;border-bottom:1px solid var(--line);
     vertical-align:top;max-width:260px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   tr:last-child td{border-bottom:none}
@@ -110,10 +160,10 @@
 
   .nothing{
     background:var(--warndim);border:1px solid var(--warnline);
-    border-radius:var(--radius-sm);padding:12px 14px;font-size:14px;line-height:1.55;
+    border-radius:var(--radius-sm);padding:13px 15px;font-size:14px;line-height:1.55;
   }
-  .nothing b{display:block;margin-bottom:4px;color:var(--warn);font-size:12.5px;
-    text-transform:uppercase;letter-spacing:.05em}
+  .nothing b{display:block;margin-bottom:4px;color:var(--warn);font-size:11.5px;
+    text-transform:uppercase;letter-spacing:.12em;font-weight:800}
   .note{font-size:13px;color:var(--mut);line-height:1.55;
     padding-top:11px;border-top:1px solid var(--line)}
 
@@ -129,99 +179,305 @@
   .prov-body{
     margin-top:9px;font-family:var(--mono);font-size:11.5px;line-height:1.75;
     color:var(--mut);background:var(--panel2);border:1px solid var(--line);
-    border-radius:var(--radius-sm);padding:10px 12px;
+    border-radius:12px;padding:11px 13px;
     overflow-x:auto;white-space:pre-wrap;word-break:break-word;
   }
 
   .think{display:flex;gap:6px;align-items:center;color:var(--mut);font-size:13.5px}
   .think .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);
     animation:blink 1.2s infinite}
-  .think .dot:nth-child(2){animation-delay:.2s}
-  .think .dot:nth-child(3){animation-delay:.4s}
+  .think .dot:nth-child(2){animation-delay:.2s;background:var(--pink)}
+  .think .dot:nth-child(3){animation-delay:.4s;background:var(--orange)}
   @keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
 
   .err{color:var(--bad);font-size:14px}
 
-  .reply{font-size:14.5px;line-height:1.65;white-space:pre-wrap}
+  .reply{font-size:15px;line-height:1.7;white-space:pre-wrap}
   .reply p{margin:0 0 10px}
   .reply p:last-child{margin-bottom:0}
   .evid{
-    border-top:1px solid var(--line);padding-top:12px;
-    display:flex;flex-direction:column;gap:9px;
+    border-top:1px solid var(--line);padding-top:14px;
+    display:flex;flex-direction:column;gap:12px;
   }
-  .evid-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .evid-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .evid-name{font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .count{font-family:var(--head);font-size:17px;font-weight:700;letter-spacing:-.02em}
   .stage{color:var(--mut);font-size:13.5px}
 
-  /* ---------- empty state ---------- */
-  .empty{margin:auto;text-align:center;max-width:540px;padding:20px 0 40px}
+  .seg{margin-left:auto;display:inline-flex;border:1px solid var(--line);
+    border-radius:999px;padding:3px;background:var(--panel2);gap:2px}
+  .seg button{border:0;background:none;font-size:12.5px;font-weight:600;padding:4px 13px;
+    color:var(--mut);border-radius:999px}
+  .seg button[aria-pressed="true"]{background:var(--panel);color:var(--fg);
+    box-shadow:0 1px 3px rgba(40,28,65,.12)}
+
+  /* ---------- vendor cards ---------- */
+  .cards{display:grid;gap:12px;
+    grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr))}
+  .vcard{
+    background:var(--panel);border:1px solid var(--line);border-radius:18px;
+    padding:16px 16px 12px;display:flex;flex-direction:column;gap:10px;min-width:0;
+    transition:border-color .15s,box-shadow .15s,transform .15s;
+  }
+  .vcard:hover{border-color:var(--line2);box-shadow:var(--shadow-md)}
+  .vtop{display:flex;gap:12px;align-items:flex-start}
+  .vhead{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+  .vname{
+    background:none;border:0;padding:0;text-align:left;font-family:var(--head);
+    font-weight:700;font-size:16px;line-height:1.25;letter-spacing:-.02em;
+    overflow-wrap:anywhere;
+  }
+  .vname:hover{color:var(--accent)}
+  .vloc{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px;
+    color:var(--mut)}
+  .vloc .i{width:12px;height:12px;color:var(--faint)}
+  .vloc .where{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
+  .vcard .vloc{flex-wrap:nowrap}
+  .chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;
+    background:var(--panel2);border:1px solid var(--line);border-radius:999px;
+    padding:0 9px;line-height:21px;color:var(--mut);white-space:nowrap}
+  .chip.cat{color:var(--accent);background:var(--accent-dim);border-color:transparent}
+
+  .score{flex:none;background:var(--panel2);border:1px solid var(--line);border-radius:14px;
+    padding:7px 10px 6px;display:flex;flex-direction:column;align-items:flex-end;gap:4px;
+    text-align:right;min-width:92px}
+  .score:hover{border-color:var(--line2)}
+  .score .num{font-family:var(--head);font-size:21px;font-weight:700;line-height:1;
+    letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .score .num small{font-size:11.5px;font-weight:600;color:var(--faint);letter-spacing:0}
+  .score .lab{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+  .meter{display:flex;gap:2px;width:100%}
+  .meter i{flex:1;height:4px;border-radius:2px;background:var(--line2)}
+  .t-ok{color:var(--ok)} .t-warn{color:var(--warn)} .t-bad{color:var(--bad)}
+  .t-none{color:var(--faint)}
+  .meter.t-ok i.on{background:var(--teal)} .meter.t-warn i.on{background:var(--warn)}
+  .meter.t-bad i.on{background:var(--bad)}
+
+  .vbadges{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:12.5px}
+  .vb{display:inline-flex;align-items:center;gap:4px;font-weight:500}
+  .vb .i{width:13px;height:13px}
+  .vb.ok{color:var(--ok)} .vb.no{color:var(--faint)}
+  .vmatch{font-size:13px;color:var(--mut);line-height:1.45;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .vmatch b{color:var(--fg);font-weight:700}
+
+  .vact{display:flex;gap:6px;flex-wrap:wrap;padding-top:2px}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    font-size:13px;font-weight:700;min-height:34px;padding:0 14px;
+    background:var(--panel);border:1px solid var(--line);border-radius:999px;
+    color:var(--fg);text-decoration:none;white-space:nowrap;
+  }
+  .btn:hover{border-color:var(--line2);background:var(--panel2)}
+  .btn.pri{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
+  .btn.pri:hover{opacity:.9;background:var(--ink)}
+  .btn.on{background:var(--accent-dim);border-color:var(--accent-soft);color:var(--accent)}
+  .btn:disabled,.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
+  .vfoot{display:flex;align-items:center;gap:12px;border-top:1px solid var(--line);
+    padding-top:9px;font-size:12.5px}
+  .link{background:none;border:0;padding:0;color:var(--mut);font-size:12.5px;font-weight:500;
+    display:inline-flex;align-items:center;gap:4px}
+  .link:hover{color:var(--accent)}
+  .vfoot .icon{margin-left:auto}
+  @media (max-width:620px){
+    .btn{min-height:40px;padding:0 14px}
+    .vact .btn.grow{flex:1}
+  }
+
+  .morebtn{align-self:center}
+
+  /* ---------- empty state: the site's hero, at product scale ---------- */
+  .empty{margin:auto;text-align:center;max-width:640px;padding:24px 0 48px;
+    display:flex;flex-direction:column;align-items:center}
+  .eyebrow-pill{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;
+    color:var(--mut);background:var(--panel);border:1px solid var(--line);
+    border-radius:999px;padding:7px 13px;margin-bottom:22px}
+  .eyebrow-pill::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--teal)}
   .empty h1{
-    font-size:23px;font-weight:640;letter-spacing:-.015em;margin:0 0 8px;
-    color:var(--fg);text-wrap:balance;
+    font-family:var(--head);font-size:clamp(34px,6vw,50px);font-weight:700;
+    letter-spacing:-.055em;line-height:1.02;margin:0 0 16px;color:var(--fg);
+    text-wrap:balance;
   }
-  .empty p{margin:0 auto;color:var(--mut);font-size:14.5px;max-width:46ch}
-  .stats{
-    margin-top:16px;font-size:11.5px;color:var(--faint);font-family:var(--mono);
-    font-variant-numeric:tabular-nums;
+  .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;
+    color:transparent}
+  .empty p{margin:0 auto;color:var(--mut);font-size:16.5px;line-height:1.6;max-width:50ch}
+  .stats{margin-top:26px;display:flex;flex-wrap:wrap;justify-content:center;gap:10px 26px;
+    font-size:13px;color:var(--mut)}
+  .stats b{font-family:var(--head);font-size:19px;font-weight:700;color:var(--fg);
+    letter-spacing:-.03em;margin-right:6px;font-variant-numeric:tabular-nums}
+
+  /* ---------- compare tray ---------- */
+  .tray{flex:none;background:var(--panel);border-top:1px solid var(--line)}
+  .tray[hidden]{display:none}
+  .tray-in{max-width:860px;margin:0 auto;padding:10px 24px;display:flex;
+    align-items:center;gap:8px;flex-wrap:wrap}
+  .tray .lbl,.eyebrow{font-size:11px;font-weight:800;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--accent)}
+  .tchip{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:600;
+    background:var(--panel2);border:1px solid var(--line);border-radius:999px;
+    padding:3px 5px 3px 11px;max-width:220px}
+  .tchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tchip button{background:none;border:0;padding:2px;color:var(--faint);display:flex}
+  .tchip button:hover{color:var(--bad)}
+  .tray .go{margin-left:auto;display:flex;gap:6px}
+  @media (max-width:620px){
+    .tray-in{padding:9px 16px;flex-wrap:nowrap}
+    /* On a phone the Compare button already says how many; the names cost three rows. */
+    .tray .lbl,#tray-items{display:none!important}
   }
-  .chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:24px}
-  .schip{
-    font-size:12.5px;color:var(--mut);background:var(--panel);
-    border:1px solid var(--line2);border-radius:20px;padding:7px 14px;
-    cursor:pointer;transition:.15s;box-shadow:var(--shadow);text-align:left;
-  }
-  .schip:hover{color:var(--accent);border-color:var(--accent-soft)}
 
   /* ---------- composer ---------- */
-  .composer-wrap{flex:none;border-top:1px solid var(--line);background:var(--panel)}
+  .composer-wrap{flex:none;border-top:1px solid var(--line);background:var(--hdr);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
   .composer{
-    width:100%;max-width:780px;margin:0 auto;
+    width:100%;max-width:860px;margin:0 auto;
     display:flex;gap:10px;align-items:flex-end;padding:14px 24px 10px;
   }
   .composer textarea{
-    flex:1;resize:none;min-height:44px;max-height:150px;
-    padding:11px 14px;line-height:1.5;font-size:14.5px;
-    background:var(--bg);border:1px solid var(--line2);border-radius:var(--radius-sm);
-    outline:none;
+    flex:1;resize:none;min-height:50px;max-height:150px;
+    padding:13px 18px;line-height:1.5;font-size:15px;
+    background:var(--panel);border:1px solid var(--line);border-radius:26px;
+    outline:none;box-shadow:var(--shadow);
   }
-  .composer textarea:focus{border-color:var(--accent-soft)}
+  .composer textarea:focus{border-color:var(--accent-soft);box-shadow:0 0 0 4px var(--accent-dim)}
   .send{
-    flex:none;width:44px;height:44px;border-radius:var(--radius-sm);cursor:pointer;
-    background:var(--accent);color:#fff;border:1px solid var(--accent);
-    display:flex;align-items:center;justify-content:center;font-size:17px;
+    flex:none;width:50px;height:50px;border-radius:50%;
+    background:var(--ink);color:var(--on-ink);border:0;
+    display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;
   }
-  .send:disabled{opacity:.4;cursor:default}
+  .send:disabled{opacity:.35;cursor:default}
   .foot{
-    max-width:780px;margin:0 auto;padding:0 24px 12px;
-    font-size:11px;color:var(--faint);line-height:1.5;
+    max-width:860px;margin:0 auto;padding:0 24px 12px;
+    font-size:11.5px;color:var(--faint);line-height:1.5;
   }
-  @media (prefers-reduced-motion:reduce){ *{animation:none!important} }
+  @media (max-width:620px){
+    .composer{padding:12px 16px 8px} .foot{padding:0 16px 10px}
+  }
+
+  /* ---------- drawer / sheet ---------- */
+  .scrim{position:fixed;inset:0;background:var(--scrim);opacity:0;pointer-events:none;
+    transition:opacity .18s;z-index:20}
+  .scrim.on{opacity:1;pointer-events:auto}
+  .drawer{
+    position:fixed;top:10px;right:10px;bottom:10px;width:min(460px,calc(100vw - 20px));z-index:21;
+    background:var(--panel);border:1px solid var(--line);border-radius:24px;
+    box-shadow:var(--shadow-lg);overflow:hidden;
+    transform:translateX(calc(100% + 24px));visibility:hidden;
+    transition:transform .24s ease,visibility 0s linear .24s;
+    display:flex;flex-direction:column;
+  }
+  .drawer.wide{width:min(860px,calc(100vw - 20px))}
+  .drawer.on{transform:none;visibility:visible;transition:transform .24s ease}
+  @media (max-width:620px){
+    .drawer,.drawer.wide{top:auto;left:0;right:0;bottom:0;width:100%;height:90vh;
+      border-radius:24px 24px 0 0;border-bottom:0;transform:translateY(102%)}
+    .drawer.on{transform:none}
+  }
+  .dhead{display:flex;align-items:flex-start;gap:10px;padding:20px 22px 16px;
+    border-bottom:1px solid var(--line);flex:none}
+  .dhead .vhead{gap:6px}
+  .dhead h2{margin:0;font-family:var(--head);font-size:21px;font-weight:700;line-height:1.2;
+    letter-spacing:-.03em;overflow-wrap:anywhere}
+  .x{background:var(--panel2);border:1px solid var(--line);padding:6px;color:var(--mut);
+    display:flex;flex:none;border-radius:50%}
+  .x:hover{color:var(--fg);border-color:var(--line2)}
+  .x .i{width:16px;height:16px}
+  .dbody{flex:1;overflow-y:auto;padding:4px 22px 24px}
+  .sec{padding:18px 0 6px}
+  .sec+.sec{border-top:1px solid var(--line)}
+  .sec h3{margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--accent)}
+  .bigscore{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+  .bigscore .num{font-family:var(--head);font-size:44px;font-weight:700;line-height:1;
+    letter-spacing:-.05em;font-variant-numeric:tabular-nums}
+  .bigscore .num small{font-size:17px;color:var(--faint);font-weight:600;letter-spacing:0}
+  .bigscore .lab{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  .bigmeter{display:flex;gap:3px;margin:4px 0 12px}
+  .bigmeter i{flex:1;height:6px;border-radius:3px;background:var(--line)}
+  .bigmeter i.on{background:var(--grad);background-size:600% 100%}
+  .sub{font-size:13px;color:var(--mut);line-height:1.55;margin:0 0 12px}
+  .ladder{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+  .ladder li{display:grid;grid-template-columns:24px 1fr;gap:2px 10px;padding:10px 12px;
+    border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+  .ladder li.yes{background:var(--okdim);border-color:var(--okline)}
+  .ladder .mk{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;font-size:11px;font-weight:700}
+  .ladder .mk .i{width:12px;height:12px;stroke-width:2.6}
+  .mk.yes{background:var(--ok);color:#fff}
+  .mk.unknown{background:var(--panel2);color:var(--faint);border:1px dashed var(--line2)}
+  .mk.unitemised{background:var(--panel2);color:var(--faint);border:1px solid var(--line2)}
+  .ladder .rn{font-size:13.5px;font-weight:700}
+  .ladder .rn span{color:var(--faint);font-weight:600;font-family:var(--head);
+    font-size:12px;margin-right:7px}
+  .ladder .rd{grid-column:2;font-size:12.5px;color:var(--mut);line-height:1.45}
+  .ladder li.unknown .rn,.ladder li.unitemised .rn{color:var(--mut)}
+  .caveat{font-size:12.5px;color:var(--mut);background:var(--panel2);border:1px solid var(--line);
+    border-radius:14px;padding:10px 13px;margin-top:12px;line-height:1.5}
+  .kv{display:grid;grid-template-columns:max-content 1fr;gap:8px 16px;font-size:13.5px;margin:0}
+  .kv dt{color:var(--faint);font-size:12.5px}
+  .kv dd{margin:0;overflow-wrap:anywhere}
+  .kv .mono{font-family:var(--mono);font-size:12px}
+  .tags{display:flex;flex-wrap:wrap;gap:6px}
+  .tags .chip{font-size:12px;line-height:24px}
+  .quote{font-size:13.5px;color:var(--mut);border-left:3px solid;border-image:var(--grad) 1;
+    padding:2px 0 2px 12px;margin:0;line-height:1.55}
+  .row{display:flex;gap:7px;flex-wrap:wrap}
+  .dfoot{flex:none;border-top:1px solid var(--line);padding:14px 22px;display:flex;
+    gap:8px;flex-wrap:wrap;background:var(--panel)}
+  .dfoot .btn{flex:1;min-height:40px}
+  /* compare */
+  .cmp{border-collapse:collapse;width:100%;font-size:13.5px}
+  .cmp th,.cmp td{white-space:normal;max-width:none;overflow:visible;text-overflow:clip;
+    padding:11px 14px 11px 0;border-bottom:1px solid var(--line);vertical-align:top;
+    text-align:left}
+  .cmp thead th{text-transform:none;letter-spacing:0;font-size:14px;color:var(--fg);
+    border-bottom:1px solid var(--line2)}
+  .cmp thead .vname{font-size:15px}
+  .cmp tbody th{color:var(--faint);font-size:10.5px;font-weight:800;letter-spacing:.12em;
+    text-transform:uppercase;width:116px}
+  .cmp tr:hover td{background:none}
+
+  @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
 </style>
 
 <div class="top">
-  <div class="mark">L</div>
-  <span class="wordmark">Lattix</span>
-  <span class="tagline">India cosmetics supply chain</span>
-  <span class="demo-tag">Demo</span>
+  <span class="wordmark" aria-label="Lattix">lattix<span class="dot">.</span></span>
+  <span class="tagline">Cosmetics supplier intelligence</span>
+  <div class="tools">
+    <span class="demo-tag">Demo</span>
+    <button class="theme-btn" id="theme" type="button"></button>
+  </div>
 </div>
 
 <div class="msgs" id="msgs">
   <div class="inner" id="inner">
     <div class="empty" id="empty">
-      <h1>Ask about the Indian cosmetics supply chain</h1>
-      <p>Manufacturers, ingredients, regulations, testing labs and packaging —
-         every answer carries the source it came from.</p>
+      <span class="eyebrow-pill">AI procurement intelligence for cosmetics brands</span>
+      <h1>Find the right supplier. <span class="grad">Without the guesswork.</span></h1>
+      <p>Describe what you need to source — manufacturers, packaging, ingredients or
+         testing labs — and see who fits, and the evidence behind whether to trust them.</p>
       <div class="stats" id="stats"></div>
-      <div class="chips" id="chips"></div>
+    </div>
+  </div>
+</div>
+
+<div class="tray" id="tray" hidden>
+  <div class="tray-in">
+    <span class="lbl">Compare</span>
+    <span id="tray-items" style="display:contents"></span>
+    <div class="go">
+      <button class="btn" type="button" id="tray-clear">Clear</button>
+      <button class="btn pri" type="button" id="tray-go">Compare</button>
     </div>
   </div>
 </div>
 
 <div class="composer-wrap">
   <div class="composer">
-    <textarea id="q" rows="1" placeholder="Ask a question…"
+    <textarea id="q" rows="1"
+              placeholder="What do you need? e.g. face cream maker in Baddi"
               autocomplete="off" spellcheck="false"></textarea>
-    <button class="send" id="go" aria-label="Send">↑</button>
+    <button class="send" id="go" aria-label="Send">→</button>
   </div>
   <div class="foot">
     Evidence tiers: regulator · company-declared · observed · inferred. EU restrictions
@@ -229,10 +485,64 @@
   </div>
 </div>
 
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-hidden="true"></aside>
+
 <script>
 const $ = s => document.querySelector(s);
 const el = (t, c, x) => { const n = document.createElement(t);
   if (c) n.className = c; if (x !== undefined) n.textContent = x; return n; };
+
+// Icons are static strings defined here; nothing from a response ever reaches innerHTML.
+const ICON = {
+  pin: '<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/>',
+  cmp: '<path d="M7 4v16M17 4v16M3 8h8M13 16h8"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  q: '<path d="M9.2 9a3 3 0 1 1 4 2.8c-.8.4-1.2 1-1.2 1.9V14M12 17.5v.01"/>',
+  dash: '<path d="M7 12h10"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  ask: '<path d="M12 3l1.8 4.6L18.5 9l-4.7 1.6L12 15l-1.8-4.4L5.5 9l4.7-1.4z"/><path d="M18 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/>',
+  ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  back: '<path d="M15 5l-7 7 7 7"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+};
+function icon(name){
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("class", "i");
+  s.setAttribute("aria-hidden", "true");
+  s.innerHTML = ICON[name] || "";
+  return s;
+}
+function btn(cls, label, ic, onclick){
+  const b = el("button", cls); b.type = "button";
+  if (ic) b.appendChild(icon(ic));
+  if (label) b.appendChild(document.createTextNode(label));
+  if (onclick) b.onclick = onclick;
+  return b;
+}
+
+/* ---------- light / dark ----------
+   With no choice made the page follows the OS. A choice is remembered in this browser
+   only — a display preference, nothing sent anywhere. */
+const darkOS = matchMedia("(prefers-color-scheme: dark)");
+const isDark = () => (document.documentElement.dataset.theme || (darkOS.matches ? "dark" : "light")) === "dark";
+function paintTheme(){
+  const b = $("#theme"), dark = isDark();
+  b.replaceChildren(icon(dark ? "sun" : "moon"));
+  const label = dark ? "Switch to light mode" : "Switch to dark mode";
+  b.setAttribute("aria-label", label); b.title = label;
+}
+$("#theme").onclick = () => {
+  const next = isDark() ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("lattix.theme", next); } catch (e) {}
+  paintTheme();
+};
+darkOS.addEventListener("change", paintTheme);
+paintTheme();
 
 const TIER = {
   1: ["p-ok",   "Regulator"],
@@ -242,22 +552,17 @@ const TIER = {
 };
 
 fetch("/healthz").then(r => r.json()).then(d => {
-  if (d.ok) $("#stats").textContent =
-    d.companies.toLocaleString("en-IN") + " companies · 35,864 ingredients · "
-    + "2,445 rules · 201 accredited labs";
-}).catch(() => {});
-
-fetch("/api/suggestions").then(r => r.json()).then(list => {
-  const c = $("#chips");
-  list.slice(0, 6).forEach(s => {
-    const b = el("button", "schip", s.ask);
-    b.type = "button";
-    b.onclick = () => ask(s.ask);
-    c.appendChild(b);
+  if (!d.ok) return;
+  const st = $("#stats");
+  [[d.companies.toLocaleString("en-IN"), "companies"], ["35,864", "ingredients"],
+   ["2,445", "rules"], ["201", "accredited labs"]].forEach(([n, l]) => {
+    const s = el("span"); s.appendChild(el("b", null, n));
+    s.appendChild(document.createTextNode(l)); st.appendChild(s);
   });
 }).catch(() => {});
 
 const ta = $("#q");
+if (matchMedia("(max-width:620px)").matches) ta.placeholder = "What do you need to source?";
 ta.addEventListener("input", () => {
   ta.style.height = "auto";
   ta.style.height = Math.min(ta.scrollHeight, 150) + "px";
@@ -285,6 +590,7 @@ async function ask(question){
   const inner = $("#inner"), go = $("#go");
   const empty = $("#empty");
   if (empty) empty.remove();
+  closeDrawer();
   go.disabled = true;
 
   const uturn = el("div", "turn user");
@@ -345,7 +651,9 @@ async function ask(question){
     bub.replaceChildren(el("div", "err", String(err.message || err)));
   } finally {
     go.disabled = false;
-    scrollDown();
+    // A vendor answer is read from its top, not its bottom: land on the question.
+    if (bub.querySelector(".cards")) uturn.scrollIntoView({block: "start"});
+    else scrollDown();
     ta.focus();
   }
 }
@@ -368,7 +676,13 @@ function render(bub, d){
     bub.appendChild(box);
   }
 
-  (d.evidence || []).forEach(e => bub.appendChild(evidenceBlock(e)));
+  // A context lookup that found nothing adds a "no results" box beside a real answer
+  // from a reviewed query. Show it only when it is the only evidence there is.
+  let ev = d.evidence || [];
+  if (ev.some(e => (e.rows || []).length))
+    ev = ev.filter(e => e.template || (e.rows || []).length);
+  const vendors = [];
+  ev.forEach(e => bub.appendChild(evidenceBlock(e, d, vendors)));
 
   if (d.asked_at) {
     const det = el("details", "prov");
@@ -388,49 +702,567 @@ function render(bub, d){
   }
 }
 
-function evidenceBlock(e){
+/* ======================================================================
+   Vendors. A result is drawn as cards when its rows are companies; anything else
+   (an ingredient rule, a loan-licence pair, a standard) keeps the table, because a
+   card for a regulation is a worse table.
+   ====================================================================== */
+
+const NAME_COLS = ["company", "laboratory", "supplier"];
+// A row naming two firms describes the RELATIONSHIP between them, not a vendor.
+const PAIR_COLS = ["partner"];
+
+function isVendorSet(rows){
+  if (!rows.length) return false;
+  const r = rows[0];
+  return NAME_COLS.some(c => c in r) && !PAIR_COLS.some(c => c in r);
+}
+
+// trust.py's ladder. L3 needs S16 (GSTIN verification), which is blocked — so it is
+// shown as unavailable, never as failed.
+const LADDER = [
+  [0, "Listed", "Appears in at least one source we hold"],
+  [1, "Legally exists", "A CIN, GSTIN or Udyam number resolves"],
+  [2, "Permitted", "An active COS-8 / COS-9 manufacturing licence on file"],
+  [3, "Operating", "GST registration active and current"],
+  [4, "Corroborated", "Two independent sources agree, or trade-council / trade-fair presence"],
+  [5, "Confirmed", "The company has claimed and verified its own profile"],
+  [6, "Vouched", "A buyer has confirmed a completed order"],
+];
+const TOP = 6;
+
+const CATEGORY = {
+  manufacturers_for_category_in_cluster: "Licensed manufacturer",
+  cosmetics_firms_in_cluster: "Cosmetics manufacturer",
+  third_party_manufacturers: "Contract manufacturer",
+  packaging_converters_in_cluster: "Packaging supplier",
+  suppliers_of_ingredient: "Ingredient supplier",
+  testing_labs_for_cosmetics: "Testing lab",
+  loan_licence_holders: "Licence holder",
+};
+const ROLE = {
+  chemexcil_member: "CHEMEXCIL member", exporter: "Exporter",
+  exhibitor: "Trade-fair exhibitor", cosmetics_core: "Cosmetics",
+  cosmetics_active: "Cosmetic actives", packaging_converter: "Packaging",
+  ingredient_supplier: "Ingredients", testing_lab: "Testing lab",
+};
+
+const titleCase = s => String(s).toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
+const pretty = s => String(s).replace(/_/g, " ").replace(/^./, c => c.toUpperCase());
+const arr = v => Array.isArray(v) ? v.filter(x => x !== null && x !== "") : [];
+const keyOf = n => String(n).toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+
+// `company_profile` returns a cluster's id where every other query returns its name.
+// Names as in ontology/cluster_map.yaml; an id not listed here is still made readable.
+const CLUSTERS = {
+  HP_BBN: "Baddi-Barotiwala-Nalagarh", UK_HARIDWAR_SELAQUI: "Haridwar-Roorkee-Selaqui",
+  GJ_AHMEDABAD_VAPI: "Ahmedabad-Vapi-Ankleshwar", MH_PALGHAR_TARAPUR: "Palghar-Tarapur-Navi Mumbai",
+  DL_NCR: "Delhi NCR", RJ_ALWAR_JAIPUR: "Alwar-Bhiwadi-Jaipur", MH_PUNE: "Pune-Sangli-Nashik",
+  TN_CHENNAI: "Chennai-Kancheepuram-Hosur", TG_HYDERABAD: "Hyderabad-Medak",
+  KA_BENGALURU: "Bengaluru-Mysuru", WB_KOLKATA: "Kolkata-Howrah",
+  UP_KANPUR_NOIDA: "Kanpur-Lucknow-Agra", JK_JAMMU: "Jammu-Kathua",
+  PB_HR_NORTH: "Punjab-Haryana north", MP_INDORE: "Indore-Dewas-Bhopal",
+  KL_ERNAKULAM: "Kerala", AS_GUWAHATI: "Guwahati-Kamrup",
+};
+function clusterName(c){
+  if (!c) return null;
+  if (CLUSTERS[c]) return CLUSTERS[c];
+  if (/^[A-Z]{2}_[A-Z0-9_]+$/.test(c))
+    return c.split("_").slice(1).map(titleCase).join("-");
+  return c;
+}
+function siteOf(w){
+  if (!w) return null;
+  const url = /^https?:\/\//i.test(w) ? w : "http://" + w;
+  try { return {url, host: new URL(url).hostname.replace(/^www\./, "")}; }
+  catch (e) { return null; }
+}
+
+function vendorOf(row, e, d){
+  const name = row.company || row.laboratory || row.supplier;
+  const trust = Number.isInteger(row.trust) ? row.trust
+              : Number.isInteger(row.trust_level) ? row.trust_level : null;
+  const roles = arr(row.roles);
+  const v = {
+    key: keyOf(name), name,
+    district: row.district ? titleCase(row.district) : null,
+    state: row.state ? titleCase(row.state) : null,
+    cluster: clusterName(row.cluster),
+    site: siteOf(row.website),
+    trust, rungs: Array.isArray(row.trust_rungs) ? row.trust_rungs : null,
+    why: arr(row.why), roles,
+    category: CATEGORY[e.template]
+      || (roles.includes("cosmetics_core") ? "Cosmetics manufacturer"
+        : roles.includes("cosmetics_active") ? "Cosmetic actives"
+        : roles.includes("packaging_converter") ? "Packaging supplier"
+        : roles.includes("ingredient_supplier") ? "Ingredient supplier"
+        : roles.includes("testing_lab") ? "Testing lab" : "Company"),
+    cin: row.cin || null,
+    gstin: arr(row.gstins).length > 0,
+    licences: arr(row.licences).concat(row.licence_no
+      ? [[row.licence_form, row.licence_no].filter(Boolean).join(" ")] : []),
+    licence: row.has_licence_evidence === true ? true
+           : row.has_licence_evidence === false ? false : null,
+    certificate: row.certificate || null, valid_till: row.valid_till || null,
+    tags: [], match: null, quote: null,
+    tier: e.tier, template: e.template, asked_at: d.asked_at,
+  };
+  if (v.licences.length || (v.rungs && v.rungs.includes(2))) v.licence = true;
+  else if (Array.isArray(row.licences) || v.rungs) v.licence = false;
+  if (row.licence_status) v.licence_status = row.licence_status;
+
+  // What matched the request, in the row's own words.
+  if (row.evidence_basis) v.match = row.evidence_basis.replace(/^./, c => c.toUpperCase());
+  if (row.component) v.match = "Supplies " + pretty(row.component).toLowerCase() + "s";
+  if (row.ingredient && row.supplier)
+    v.match = "Supplies " + row.ingredient + (row.mode ? " · " + row.mode : "");
+  if (row.licence_form) v.match = [row.licence_form, "licence",
+    row.licence_status ? "· " + String(row.licence_status).toLowerCase() : ""].join(" ");
+  if (arr(row.cosmetics_scope).length) v.match = "NABL scope: " + arr(row.cosmetics_scope).join(", ");
+  if (row.claimed_on_their_site) {
+    v.quote = row.claimed_on_their_site;
+    v.match = "Says contract manufacturing on its own website";
+  }
+  if (row.evidence && row.supplier) v.quote = row.evidence;
+
+  roles.forEach(r => { if (ROLE[r]) v.tags.push(ROLE[r]); });
+  arr(row.capabilities).forEach(c => v.tags.push(pretty(c)));
+  arr(row.certifications).forEach(c => v.tags.push(String(c).toUpperCase()));
+  arr(row.associations).forEach(a => { if (!v.tags.includes(a + " member")) v.tags.push(a); });
+  arr(row.cosmetics_scope).forEach(s => v.tags.push(titleCase(s)));
+  if (v.tags.includes("CHEMEXCIL member")) v.tags = v.tags.filter(t => t !== "CHEMEXCIL");
+  v.tags = [...new Set(v.tags)];
+  if (!v.match && v.tags.length) v.match = v.tags.slice(0, 3).join(" · ");
+  return v;
+}
+
+const VENDORS = new Map();
+
+function trustTone(t){
+  if (t === null) return "t-none";
+  return t >= 2 ? "t-ok" : t === 1 ? "t-warn" : "t-bad";
+}
+function rungLabel(t){ return t === null ? "Not rated" : LADDER[t][1]; }
+
+function scoreEl(v, big){
+  const tone = trustTone(v.trust);
+  const wrap = el(big ? "div" : "button", big ? "bigscore" : "score");
+  if (!big) { wrap.type = "button"; wrap.title = "Why this score?";
+    wrap.onclick = () => openVendor(v, "trust"); }
+  const num = el("div", "num " + tone);
+  if (v.trust === null) num.textContent = "—";
+  else { num.textContent = "L" + v.trust; num.appendChild(el("small", null, " / " + TOP)); }
+  const lab = el("div", "lab " + tone, rungLabel(v.trust));
+  if (big) { wrap.appendChild(num); wrap.appendChild(lab); return wrap; }
+  const m = el("div", "meter " + tone);
+  for (let i = 1; i <= TOP; i++) m.appendChild(el("i", v.trust !== null && i <= v.trust ? "on" : ""));
+  wrap.appendChild(num); wrap.appendChild(m); wrap.appendChild(lab);
+  return wrap;
+}
+
+function locEl(v, withCat){
+  const loc = el("div", "vloc");
+  const place = [v.district, v.state && v.state !== v.district ? v.state : null]
+    .filter(Boolean).join(", ");
+  const where = [place, v.cluster && v.cluster !== v.district ? v.cluster + " cluster" : null]
+    .filter(Boolean).join(" · ");
+  if (where) { loc.appendChild(icon("pin")); const w = el("span", "where", where);
+    w.title = where; loc.appendChild(w); }
+  if (withCat) loc.appendChild(el("span", "chip cat", v.category));
+  return loc;
+}
+
+function badges(v){
+  const b = el("div", "vbadges");
+  b.appendChild(el("span", "chip cat", v.category));
+  const add = (ok, text) => {
+    const s = el("span", "vb " + (ok ? "ok" : "no"));
+    s.appendChild(icon(ok ? "check" : "dash")); s.appendChild(document.createTextNode(text));
+    b.appendChild(s);
+  };
+  if (v.certificate) add(true, "NABL accredited");
+  if (v.licence === true) add(true, "Licence on file");
+  else if (v.licence === false) add(false, "No licence on file");
+  if (v.cin || (v.rungs && v.rungs.includes(1))) add(true, "Entity verified");
+  if (v.gstin) add(true, "GSTIN on record");
+  else add(false, "GST evidence unavailable");
+  return b;
+}
+
+function siteBtn(v, grow){
+  if (!v.site) return null;
+  const a = el("a", "btn pri" + (grow ? " grow" : "")); a.href = v.site.url;
+  a.target = "_blank"; a.rel = "noopener nofollow";
+  a.appendChild(icon("globe")); a.appendChild(document.createTextNode("Website"));
+  a.title = v.site.host;
+  return a;
+}
+
+function vendorCard(v){
+  const c = el("article", "vcard"); c.dataset.key = v.key;
+  const top = el("div", "vtop");
+  const head = el("div", "vhead");
+  const nm = el("button", "vname", v.name); nm.type = "button";
+  nm.onclick = () => openVendor(v);
+  head.appendChild(nm);
+  head.appendChild(locEl(v));
+  top.appendChild(head);
+  top.appendChild(scoreEl(v));
+  c.appendChild(top);
+
+  c.appendChild(badges(v));
+  if (v.match) {
+    const m = el("div", "vmatch");
+    m.appendChild(el("b", null, "Match: ")); m.appendChild(document.createTextNode(v.match));
+    if (v.quote) m.title = v.quote;
+    c.appendChild(m);
+  }
+
+  const act = el("div", "vact");
+  const site = siteBtn(v, true); if (site) act.appendChild(site);
+  act.appendChild(cmpBtn(v));
+  c.appendChild(act);
+
+  const foot = el("div", "vfoot");
+  foot.appendChild(btn("link", "Why this score?", "info", () => openVendor(v, "trust")));
+  foot.appendChild(btn("link", "Details", null, () => openVendor(v)));
+  // A new question through the same /api/ask — nothing the server does not already do.
+  const qa = btn("link", "Ask AI", "ask", () => askAbout(v));
+  qa.style.marginLeft = "auto";
+  foot.appendChild(qa);
+  c.appendChild(foot);
+  paintCard(c, v);
+  return c;
+}
+
+function evidenceBlock(e, d, vendors){
   const box = el("div", "evid");
   const head = el("div", "evid-head");
   const [cls, label] = TIER[e.tier] || ["p-warn", "Exploratory"];
+  const rows = e.rows || [];
+  const asCards = isVendorSet(rows);
+
+  if (asCards) head.appendChild(el("span", "count",
+    rows.length + (rows.length === 1 ? " supplier" : " suppliers")));
   head.appendChild(el("span", "pill " + cls, label));
-  if (e.template) head.appendChild(el("span", "evid-name", e.template));
+  if (e.template && !asCards) head.appendChild(el("span", "evid-name", e.template));
   box.appendChild(head);
 
-  const rows = e.rows || [];
-  if (rows.length) {
-    const all = Object.keys(rows[0]);
-    const cols = all.filter(c => rows.some(r =>
-      r[c] !== null && r[c] !== undefined && String(r[c]).length
-      && !(Array.isArray(r[c]) && !r[c].length)));
-    const use = cols.length ? cols : all;
-    const wrap = el("div", "scroll"), t = el("table");
-    const hr = el("tr");
-    use.forEach(c => hr.appendChild(el("th", null, c.replace(/_/g, " "))));
-    t.appendChild(el("thead")).appendChild(hr);
-    const tb = el("tbody");
-    rows.slice(0, 10).forEach(row => {
-      const tr = el("tr");
-      use.forEach(c => {
-        let v = row[c];
-        if (Array.isArray(v)) v = v.join(", ");
-        const text = (v === null || v === undefined || v === "") ? "—" : String(v);
-        const td = el("td", null, text);
-        if (text.length > 28) td.title = text;
-        tr.appendChild(td);
-      });
-      tb.appendChild(tr);
-    });
-    t.appendChild(tb); wrap.appendChild(t); box.appendChild(wrap);
-    if (rows.length > 10)
-      box.appendChild(el("div", "more", `Showing 10 of ${rows.length} results.`));
-  } else {
+  if (!rows.length) {
     const n = el("div", "nothing");
     n.appendChild(el("b", null, "No results — and why"));
     n.appendChild(el("div", null, e.empty_reason
       || "Nothing matched. That is a gap in what has been collected, not a statement "
        + "that none exist."));
     box.appendChild(n);
+    return box;
   }
+  if (!asCards) { box.appendChild(tableView(rows)); return box; }
+
+  const vs = rows.map(r => vendorOf(r, e, d));
+  vs.forEach(v => { VENDORS.set(v.key, v); vendors.push(v); });
+
+  // Cards are the answer; the table stays one click away for anyone who wants rows.
+  const seg = el("div", "seg"); seg.setAttribute("role", "group");
+  const bC = btn("", "Cards"), bT = btn("", "Table");
+  bC.setAttribute("aria-pressed", "true"); bT.setAttribute("aria-pressed", "false");
+  seg.appendChild(bC); seg.appendChild(bT); head.appendChild(seg);
+
+  const SHOW = 6;
+  const grid = el("div", "cards");
+  vs.forEach((v, i) => { const c = vendorCard(v); if (i >= SHOW) c.hidden = true; grid.appendChild(c); });
+  const table = tableView(rows); table.hidden = true;
+  box.appendChild(grid); box.appendChild(table);
+  let moreB = null;
+  if (vs.length > SHOW) {
+    moreB = btn("btn morebtn", `Show all ${vs.length} suppliers`, null, () => {
+      grid.querySelectorAll(".vcard[hidden]").forEach(c => c.hidden = false);
+      moreB.remove();
+    });
+    box.appendChild(moreB);
+  }
+  bC.onclick = () => { bC.setAttribute("aria-pressed", "true"); bT.setAttribute("aria-pressed", "false");
+    grid.hidden = false; table.hidden = true; if (moreB) moreB.hidden = false; };
+  bT.onclick = () => { bT.setAttribute("aria-pressed", "true"); bC.setAttribute("aria-pressed", "false");
+    grid.hidden = true; table.hidden = false; if (moreB) moreB.hidden = true; };
   return box;
 }
+
+function tableView(rows){
+  const frag = el("div");
+  const all = Object.keys(rows[0]);
+  const cols = all.filter(c => rows.some(r =>
+    r[c] !== null && r[c] !== undefined && String(r[c]).length
+    && !(Array.isArray(r[c]) && !r[c].length)));
+  const use = cols.length ? cols : all;
+  const wrap = el("div", "scroll"), t = el("table");
+  const hr = el("tr");
+  use.forEach(c => hr.appendChild(el("th", null, c.replace(/_/g, " "))));
+  t.appendChild(el("thead")).appendChild(hr);
+  const tb = el("tbody");
+  rows.slice(0, 10).forEach(row => {
+    const tr = el("tr");
+    use.forEach(c => {
+      let v = row[c];
+      if (Array.isArray(v)) v = v.join(", ");
+      const text = (v === null || v === undefined || v === "") ? "—" : String(v);
+      const td = el("td", null, text);
+      if (text.length > 28) td.title = text;
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb); wrap.appendChild(t); frag.appendChild(wrap);
+  if (rows.length > 10)
+    frag.appendChild(el("div", "more", `Showing 10 of ${rows.length} results.`));
+  return frag;
+}
+
+function cmpBtn(v){
+  const b = btn("btn", "", null, () => toggleCompare(v));
+  b.dataset.role = "cmp";
+  return b;
+}
+function paintCard(root, v){
+  root.querySelectorAll('[data-role="cmp"]').forEach(b => {
+    const on = COMPARE.some(c => c.key === v.key);
+    b.replaceChildren(icon("cmp"), document.createTextNode(on ? "Comparing" : "Compare"));
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", on);
+    b.disabled = !on && COMPARE.length >= MAX_COMPARE;
+    b.title = b.disabled ? `Compare up to ${MAX_COMPARE} suppliers at a time` : "";
+  });
+}
+function repaint(){
+  document.querySelectorAll(".vcard").forEach(c => {
+    const v = VENDORS.get(c.dataset.key); if (v) paintCard(c, v);
+  });
+  const d = $("#drawer");
+  if (d.dataset.key) { const v = VENDORS.get(d.dataset.key); if (v) paintCard(d, v); }
+  paintTray();
+}
+
+/* ---------- compare tray ----------
+   Held in memory for this page only: nothing is saved, and a reload clears it. */
+const MAX_COMPARE = 3;
+let COMPARE = [];
+function toggleCompare(v){
+  if (COMPARE.some(c => c.key === v.key)) COMPARE = COMPARE.filter(c => c.key !== v.key);
+  else if (COMPARE.length < MAX_COMPARE) COMPARE.push(v);
+  repaint();
+}
+function paintTray(){
+  const t = $("#tray"), items = $("#tray-items");
+  t.hidden = !COMPARE.length;
+  items.replaceChildren();
+  COMPARE.forEach(v => {
+    const c = el("span", "tchip"); c.appendChild(el("span", null, titleCase(v.name)));
+    const x = btn("", null, "x", () => toggleCompare(v)); x.setAttribute("aria-label", "Remove");
+    c.appendChild(x); items.appendChild(c);
+  });
+  const go = $("#tray-go");
+  go.textContent = COMPARE.length < 2 ? "Pick one more" : `Compare ${COMPARE.length}`;
+  go.disabled = COMPARE.length < 2;
+}
+$("#tray-clear").onclick = () => { COMPARE = []; repaint(); };
+$("#tray-go").onclick = () => openCompare();
+
+/* ---------- drawer ---------- */
+const drawer = $("#drawer"), scrim = $("#scrim");
+let lastFocus = null;
+function openDrawer(build, wide){
+  lastFocus = document.activeElement;
+  drawer.replaceChildren(); build(drawer);
+  drawer.classList.toggle("wide", !!wide);
+  drawer.classList.add("on"); scrim.classList.add("on");
+  drawer.setAttribute("aria-hidden", "false");
+  const x = drawer.querySelector(".x"); if (x) x.focus();
+}
+function closeDrawer(){
+  if (!drawer.classList.contains("on")) return;
+  drawer.classList.remove("on"); scrim.classList.remove("on");
+  drawer.setAttribute("aria-hidden", "true"); delete drawer.dataset.key;
+  if (lastFocus && lastFocus.focus) lastFocus.focus();
+}
+scrim.onclick = closeDrawer;
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeDrawer();
+});
+function closeX(){ const x = btn("x", null, "x", closeDrawer); x.setAttribute("aria-label", "Close"); return x; }
+function section(title){ const s = el("section", "sec"); s.appendChild(el("h3", null, title)); return s; }
+
+function rungState(v, n){
+  if (v.rungs) return v.rungs.includes(n) ? "yes" : "unknown";
+  if (n === 0) return "yes";                // it is in a result, so it is listed
+  // No rating in this answer is not the same as no evidence held.
+  if (v.trust === null) return "unitemised";
+  if (n === v.trust) return "yes";
+  // trust_level is a MAXIMUM: reaching L4 says nothing about whether L2 was reached.
+  return n < v.trust ? "unitemised" : "unknown";
+}
+function rungDetail(v, n, state){
+  const [, label, means] = LADDER[n];
+  const reason = v.why.find(w => w.toLowerCase().startsWith(label.toLowerCase())
+    || (n === 0 && /^listed in/i.test(w)));
+  // "Legally exists — CIN …" under a row already titled Legally exists: keep the evidence.
+  if (state === "yes") return reason ? reason.replace(/^[^—]+—\s*/, "").replace(/^./, c => c.toUpperCase()) : means;
+  if (n === 3) return "GST evidence unavailable — live GSTIN verification is not connected yet.";
+  if (state === "unitemised") return "Not itemised in this answer.";
+  if (n === 5) return "Not yet claimed by the company.";
+  if (n === 6) return "No completed order recorded yet.";
+  return "No evidence held — unknown, not failed.";
+}
+
+function openVendor(v, focus){
+  openDrawer(d => {
+    d.dataset.key = v.key;
+    const h = el("div", "dhead");
+    const head = el("div", "vhead");
+    head.appendChild(el("h2", null, v.name));
+    head.appendChild(locEl(v, true));
+    h.appendChild(head); h.appendChild(closeX());
+    d.appendChild(h);
+
+    const body = el("div", "dbody");
+
+    const t = section("Trust score");
+    t.id = "trust-sec";
+    t.appendChild(scoreEl(v, true));
+    if (v.trust !== null) {
+      const bm = el("div", "bigmeter");
+      for (let i = 1; i <= TOP; i++) {
+        const seg = el("i", i <= v.trust ? "on" : "");
+        // One gradient across the whole bar, not one per segment.
+        if (i <= v.trust) seg.style.backgroundPosition = ((i - 1) / (TOP - 1) * 100) + "% 0";
+        bm.appendChild(seg);
+      }
+      t.appendChild(bm);
+    }
+    t.appendChild(el("p", "sub", v.trust === null
+      ? "This answer does not include a trust rating for this supplier."
+      : `The highest rung of evidence we hold for this supplier is L${v.trust} of ${TOP}.`
+        + ((v.why.find(w => /^listed in (\d+)/i.test(w)) || "").replace(/^listed in (\d+) source\(s\).*$/i,
+            (m, n) => ` It appears in ${n} independent source${n === "1" ? "" : "s"}.`))));
+    const ul = el("ul", "ladder");
+    LADDER.slice(1).forEach(([n, label]) => {
+      const st = rungState(v, n);
+      const li = el("li", st);
+      const mk = el("span", "mk " + st);
+      mk.appendChild(icon(st === "yes" ? "check" : st === "unknown" ? "q" : "dash"));
+      li.appendChild(mk);
+      const rn = el("div", "rn"); rn.appendChild(el("span", null, "L" + n));
+      rn.appendChild(document.createTextNode(label)); li.appendChild(rn);
+      li.appendChild(el("div", "rd", rungDetail(v, n, st)));
+      ul.appendChild(li);
+    });
+    t.appendChild(ul);
+    if (LADDER.some(([n]) => rungState(v, n) === "unitemised")) {
+      const full = btn("link", "Load the full trust record", "ask", () => askAbout(v));
+      full.style.marginTop = "6px"; t.appendChild(full);
+    }
+    t.appendChild(el("div", "caveat",
+      "Trust measures how well this supplier's identity and permissions are evidenced. "
+      + "It is not a rating of product quality or delivery."));
+    body.appendChild(t);
+
+    const ct = section("Contact");
+    const row = el("div", "row");
+    const site = siteBtn(v);
+    if (site) { row.appendChild(site); ct.appendChild(row); }
+    const why = el("p", "sub", v.site
+      ? `No phone or WhatsApp number is on file in the sources we hold. ${v.site.host} is the contact route.`
+      : "No phone, WhatsApp or website is on file in the sources we hold.");
+    if (site) why.style.marginTop = "10px";
+    ct.appendChild(why);
+    body.appendChild(ct);
+
+    if (v.match || v.quote) {
+      const m = section("What matched");
+      if (v.match) m.appendChild(el("p", "sub", v.match));
+      if (v.quote) m.appendChild(el("blockquote", "quote",
+        "“" + (v.quote.length > 320 ? v.quote.slice(0, 320) + "…" : v.quote) + "”"));
+      body.appendChild(m);
+    }
+
+    if (v.tags.length) {
+      const cap = section("Capabilities & memberships");
+      const tg = el("div", "tags");
+      v.tags.forEach(x => tg.appendChild(el("span", "chip", x)));
+      cap.appendChild(tg); body.appendChild(cap);
+    }
+
+    const id = section("Identity & source");
+    const kv = el("dl", "kv");
+    const put = (k, val, mono) => { if (!val) return; kv.appendChild(el("dt", null, k));
+      kv.appendChild(el("dd", mono ? "mono" : "", val)); };
+    put("CIN", v.cin, true);
+    put("Licence", v.licences.join(", ") || (v.licence === false ? "None on file" : null), true);
+    put("NABL cert.", v.certificate ? v.certificate + (v.valid_till ? " · valid till " + v.valid_till : "") : null, true);
+    put("GST", v.gstin ? "GSTIN on record" : "GST evidence unavailable");
+    put("Website", v.site ? v.site.host : "Not on file");
+    put("Evidence", (TIER[v.tier] || [null, "Exploratory"])[1]);
+    put("Checked", v.asked_at ? "Today " + v.asked_at + " — live" : null);
+    id.appendChild(kv); body.appendChild(id);
+
+    d.appendChild(body);
+
+    const foot = el("div", "dfoot");
+    foot.appendChild(cmpBtn(v));
+    foot.appendChild(btn("btn pri", "Ask AI about this vendor", "ask", () => askAbout(v)));
+    d.appendChild(foot);
+    paintCard(d, v);
+    if (focus === "trust") requestAnimationFrame(() => t.scrollIntoView({block: "start"}));
+  });
+}
+
+function askAbout(v){
+  closeDrawer();
+  // Many firms are registered under a proprietor's name ("ANIL KUMAR"); asked as
+  // "tell me about Anil Kumar", the agent reads a person and declines. Say it is a
+  // company, and keep the registered name exactly as the register holds it.
+  ask(`Tell me about the company ${v.name}`);
+}
+
+function openCompare(){
+  if (COMPARE.length < 2) return;
+  openDrawer(d => {
+    const h = el("div", "dhead");
+    const head = el("div", "vhead"); head.appendChild(el("h2", null, "Compare suppliers"));
+    head.appendChild(el("div", "vloc", "Side by side, from the evidence we hold"));
+    h.appendChild(head); h.appendChild(closeX()); d.appendChild(h);
+    const body = el("div", "dbody");
+    const wrap = el("div", "scroll"); wrap.style.margin = "12px 0 0"; wrap.style.padding = "0";
+    const t = el("table", "cmp");
+    const hr = el("tr"); hr.appendChild(el("th"));
+    COMPARE.forEach(v => {
+      const th = el("th"); const b = el("button", "vname", v.name); b.type = "button";
+      b.onclick = () => openVendor(v); th.appendChild(b); hr.appendChild(th);
+    });
+    t.appendChild(el("thead")).appendChild(hr);
+    const tb = el("tbody");
+    const line = (k, f) => { const tr = el("tr"); tr.appendChild(el("th", null, k));
+      COMPARE.forEach(v => { const td = el("td"); const x = f(v);
+        if (x instanceof Node) td.appendChild(x); else td.textContent = x || "—"; tr.appendChild(td); });
+      tb.appendChild(tr); };
+    line("Trust", v => { const s = el("span", trustTone(v.trust));
+      s.textContent = v.trust === null ? "Not rated" : `L${v.trust} · ${LADDER[v.trust][1]}`; return s; });
+    line("Location", v => [v.district, v.cluster].filter(Boolean).join(" · "));
+    line("Category", v => v.category);
+    line("Licence", v => v.licence === true ? (v.licences.join(", ") || "On file")
+      : v.licence === false ? "None on file" : "Unknown");
+    line("Entity", v => v.cin ? "CIN " + v.cin : (v.rungs && v.rungs.includes(1)) ? "Verified" : "Unknown");
+    line("GST", v => v.gstin ? "GSTIN on record" : "Evidence unavailable");
+    line("Match", v => v.match);
+    line("Memberships", v => v.tags.join(", "));
+    line("Website", v => { if (!v.site) return "Not on file";
+      const a = el("a", null, v.site.host); a.href = v.site.url; a.target = "_blank";
+      a.rel = "noopener nofollow"; a.style.color = "var(--accent)"; return a; });
+    line("Evidence", v => (TIER[v.tier] || [null, "Exploratory"])[1]);
+    line("", v => btn("btn", "Ask AI", "ask", () => askAbout(v)));
+    t.appendChild(tb); wrap.appendChild(t); body.appendChild(wrap);
+    d.appendChild(body);
+  }, true);
+}
+
+repaint();
 </script>
