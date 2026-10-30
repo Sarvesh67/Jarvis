@@ -105,6 +105,16 @@ def test_every_udyam_row_carries_registry_membership():
     assert not bad, f"Udyam rows without the registry flag: {bad}"
 
 
+def test_packaging_codes_follow_the_registrys_own_text():
+    """decisions/0027: 23109 is construction and optical glass; 23103 is bottles and jars."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "adapters"))
+    from s17_udyam import PACKAGING
+    for not_packaging in ("23101", "23109", "25910", "25920"):
+        assert not_packaging not in PACKAGING, not_packaging
+    assert PACKAGING["23103"][0] == "glass_container"
+    assert PACKAGING["25992"][0] == "metal_container"
+
+
 def test_normalization_is_idempotent():
     """norm_name(norm_name(x)) == norm_name(x) — suffix stripping repeats until stable."""
     from pipeline.normalize import norm_name

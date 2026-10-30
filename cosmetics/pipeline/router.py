@@ -91,18 +91,23 @@ def _vocab(session) -> dict[str, dict[str, str]]:
     for r in session.run("MATCH (p:PackagingComponent) RETURN p.type AS t"):
         v["packaging_type"][r["t"].replace("_", " ").upper()] = r["t"]
     # buyers ask for the object, not the NIC-derived type name
+    # (decisions/0027: tubes are plastic or lami — 22203; cans are 25992; glass bottles
+    # are 23103 only; labels are printing — 18115)
     for word, t in {"BOTTLE": "plastic_container", "BOTTLES": "plastic_container",
                     "JAR": "plastic_container", "JARS": "plastic_container",
                     "CONTAINER": "plastic_container", "CLOSURE": "plastic_container",
                     "CAP": "plastic_container", "PUMP": "plastic_container",
-                    "TUBE": "metal_formed", "TUBES": "metal_formed",
-                    "AEROSOL": "metal_formed", "CAN": "metal_formed",
+                    "TUBE": "plastic_container", "TUBES": "plastic_container",
+                    "AEROSOL": "metal_container", "CAN": "metal_container",
+                    "CANS": "metal_container", "TIN": "metal_container",
                     "GLASS": "glass_container", "GLASS BOTTLE": "glass_container",
+                    "GLASS BOTTLES": "glass_container", "GLASS JAR": "glass_container",
                     "CARTON": "carton", "BOX": "carton", "BOXES": "carton",
                     "CORRUGATED": "corrugated_box",
                     "LAMINATE": "plastic_film", "FILM": "plastic_film",
                     "POUCH": "plastic_film", "FOIL": "plastic_film",
-                    "LABEL": "paper_container"}.items():
+                    "LABEL": "printed_packaging", "LABELS": "printed_packaging",
+                    "PRINTING": "printed_packaging"}.items():
         v["packaging_type"].setdefault(word, t)
     return v
 
@@ -141,6 +146,12 @@ def resolve(kind: str, raw: str | None, vocab: dict, session) -> tuple[str | Non
             return table[q], "exact"
         m = process.extractOne(q, list(table), scorer=fuzz.ratio) if table else None
         return (table[m[0]], f"fuzzy {m[1]:.0f}") if m and m[1] >= 88 else (None, "unresolved")
+    # "packaging suppliers" asks for every component; partial_ratio would otherwise match
+    # the word inside `printed_packaging` and quietly answer with label printers only
+    if kind == "packaging_type" and re.sub(r"\b(COSMETIC|SUPPLIERS?|MAKERS?)\b", "",
+                                           q).strip() in {"PACKAGING", "PACKING",
+                                                          "PACKAGE", "PACKAGES", ""}:
+        return None, "generic — all components"
     table = vocab.get(kind, {})
     if q in table:
         return table[q], "exact"
@@ -411,10 +422,11 @@ def coverage_note(tid: str, session=None) -> str:
             "Substitutes are derived from shared CosIng functions; the ingredient may "
             "have no declared function.",
         "packaging_converters_in_cluster":
-            "Packaging converters come from the Udyam registry, and the extract loaded "
-            "covers GUJARAT ONLY. There is no coverage in Himachal, Uttarakhand or "
-            "Maharashtra until a Udyam extract for those states is loaded — this is a "
-            "missing-data gap, not an absence of converters.",
+            "Packaging converters come from Udyam registry activity codes, swept by "
+            "pincode over the cluster districts (3,264 of 4,842 pincodes so far; Kerala, "
+            "West Bengal and Assam not yet). Only codes whose registry text names "
+            "packaging count (decisions/0027). Absence here is a coverage gap, not an "
+            "absence of converters.",
         "third_party_manufacturers":
             "Contract-manufacturing claims are read from company websites, and most "
             "cluster MSMEs have no website — so absence here is missing evidence, not "

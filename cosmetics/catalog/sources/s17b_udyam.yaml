@@ -47,8 +47,9 @@ coverage:
   pct: null
   note: >
     Coverage is genuinely unknown and should not be guessed. The registry has no activity
-    index, so the cosmetics slice is cut locally at ~5% yield. Pincode-partitioned, not
-    district — see defects.
+    index, so the cosmetics slice is cut locally. Measured yield is 1.6% (119,120 kept of
+    ~7.3M scanned over 12,271 requests), not the ~5% first estimated. 3,264 of 4,842
+    cluster pincodes swept. Pincode-partitioned, not district — see defects.
 
 defects:
   - >
@@ -58,8 +59,17 @@ defects:
     district filter is needed alongside. See decisions/0006.
   - >
     There is no server-side activity filter. `filters[Activities]` matches the whole JSON
-    blob and `q=` is ignored. The NIC slice is cut client-side; the ~5% yield is the cost
-    of the registry having no activity index.
+    blob and `q=` is ignored. The NIC slice is cut client-side; the 1.6% yield is the cost
+    of the registry having no activity index. The first sweep landed no raw page, so a
+    wider slice needs a re-sweep that lands every page (decisions/0006, amended).
+  - >
+    Packaging types follow each code's own registry text (decisions/0027). Until
+    2026-10-29, 23101 (sheet glass), 23109 (construction and optical glass), 25910
+    (forging) and 25920 (machining) were typed as packaging. They are no longer, so
+    SUPPLIES_PACKAGING fell from 60,087 to 40,962 edges and glass_container from 3,110 to
+    164 firms. About 18,000 firms were in the slice only for those codes. They remain
+    Company nodes, with no packaging role, until the decisions/0017 promotion rule moves
+    them to staging.
   - >
     A district name match must agree on state. Raigarh (CG) is not Raigad (MH); treating
     them as variants put nine Chhattisgarh firms in the Palghar-Tarapur wedge. Same trap:

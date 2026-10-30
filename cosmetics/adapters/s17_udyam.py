@@ -43,19 +43,27 @@ RETAIL = {"47722"}
 # The "n.e.c." catch-alls 22209 (1,940 firms), 25999 (1,807) and 32909 (11,229) are
 # DELIBERATELY EXCLUDED: they are residual buckets whose members are mostly not packaging
 # at all, and including them would triple the count while destroying precision.
+#
+# Each code is typed by the registry's OWN description of it, which Udyam returns with
+# every record (decisions/0027), not by the class name. Read that way, four codes this map
+# used to carry are not packaging: 23101 is sheet and plate glass, 23109 is construction,
+# optical and watch glass (it was feeding every `glass_container` edge), 25910 is generic
+# forging and stamping, 25920 is machining and coating. 23103, 25992 and 18115 are the
+# codes that say bottles and jars, tins and cans, and printing on plastic, glass or metal.
 PACKAGING = {
     "22203": ("plastic_container", "Plastic articles for packing of goods — bottles, "
                                    "jars, containers, closures"),
     "22201": ("plastic_film", "Semi-finished plastics — film, foil, sheet (laminates)"),
     "22202": ("plastic_toiletware", "Plastic tableware, household and toilet articles"),
-    "23101": ("glass_primary", "Glass in primary or semi-manufactured form"),
-    "23109": ("glass_container", "Other glassware and glass products"),
+    "23103": ("glass_container", "Hollow glassware (bottles, jars etc.) for the "
+                                 "conveyance or packing of goods"),
     "17022": ("corrugated_box", "Corrugated paperboard containers"),
     "17023": ("carton", "Card board boxes"),
     "17029": ("paper_container", "Other paper and paperboard containers"),
-    "25910": ("metal_formed", "Forged, pressed, stamped and roll-formed metal "
-                              "(closures, collapsible tubes, aerosol cans)"),
-    "25920": ("metal_coated", "Machining, treatment and coating of metals"),
+    "25992": ("metal_container", "Containers such as tins and cans for food products "
+                                 "and boxes"),
+    "18115": ("printed_packaging", "Printing directly onto flexographic plastic, glass, "
+                                   "metal, wood and ceramics"),
 }
 
 WANTED = MANUFACTURE | WHOLESALE | RETAIL | set(PACKAGING)

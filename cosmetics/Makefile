@@ -17,8 +17,8 @@ bootstrap:              ## docker up, create db, apply SQL + Neo4j constraints
 	$(PG) -v ON_ERROR_STOP=1 < sql/001_schema.sql
 	$(PY) pipeline/gen_constraints.py --apply
 
-ingest:                 ## Stage 0+1 for one source: make ingest SOURCE=s06
-	$(PY) adapters/$(shell ls adapters | grep '^$(SOURCE)').py $(ARGS)
+ingest:                 ## Stage 0+1 for one source: make ingest SOURCE=s06 (s17 and s17b differ)
+	$(PY) adapters/$(shell ls adapters | grep '^$(SOURCE)_.*\.py$$') $(ARGS)
 
 ingest-all:             ## every source that needs no credentials
 	$(PY) adapters/s15_reference.py

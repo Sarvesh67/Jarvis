@@ -146,6 +146,36 @@ def mark_registered() -> int:
         return cur.rowcount
 
 
+def retype() -> int:
+    """Re-apply the CURRENT code maps to rows already landed, from the codes they carry.
+
+    Every row stores all the NIC codes it was registered with, not just the ones that
+    matched, so a corrected map (decisions/0027) needs no re-sweep — the same move as
+    --mark-registered. Recomputes roles, the matched slice, labels and packaging types for
+    the national rows and for the Gujarat parquet rows (s17), which share these maps.
+    """
+    with lib.pg() as c, c.cursor() as cur:
+        cur.execute("SELECT id, source_id, payload FROM raw_company "
+                    "WHERE source_id IN ('s17_udyam', 's17b_udyam_api')")
+        rows = cur.fetchall()
+        changed = 0
+        for rid, sid, p in rows:
+            codes = (p.get("nic_codes") if sid == SOURCE else p.get("nic_codes_all")) or []
+            keep = [x for x in codes if x in WANTED]
+            patch = {"packaging_types": sorted({PACKAGING[x][0] for x in codes
+                                                if x in PACKAGING}),
+                     "nic_labels": [NIC_LABEL[x] for x in keep if x in NIC_LABEL]}
+            patch["nic_matched" if sid == SOURCE else "nic_codes_cosmetics"] = keep
+            if all(p.get(k) == v for k, v in patch.items()):
+                continue
+            cur.execute("UPDATE raw_company SET roles_claimed = %s, "
+                        "payload = payload || %s::jsonb WHERE id = %s",
+                        (roles_for(codes), lib.jsonb(patch), rid))
+            changed += 1
+    print(f"  retyped {changed} of {len(rows)} landed Udyam rows against the current maps")
+    return changed
+
+
 def sweep(f: lib.Fetcher, pins: list[dict], page: int, budget: dict) -> dict:
     done = json.loads(CKPT.read_text()) if CKPT.exists() else {}
     stats = {"pincodes": 0, "scanned": 0, "kept": 0, "truncated": 0, "skipped": 0}
@@ -221,10 +251,16 @@ def main() -> int:
     ap.add_argument("--restart", action="store_true")
     ap.add_argument("--mark-registered", action="store_true",
                     help="only stamp udyam_registered on rows already landed, then exit")
+    ap.add_argument("--retype", action="store_true",
+                    help="only re-apply the current NIC maps to rows already landed, "
+                         "then exit (decisions/0027)")
     a = ap.parse_args()
 
     if a.mark_registered:
         print(f"  udyam_registered stamped on {mark_registered()} existing row(s)")
+        return 0
+    if a.retype:
+        retype()
         return 0
     if a.restart and CKPT.exists():
         CKPT.unlink()

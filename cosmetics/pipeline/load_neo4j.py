@@ -654,6 +654,13 @@ def load_packaging(s) -> None:
     Co-location is answered by traversing the shared Cluster rather than materialised:
     1,136 manufacturers x 969 converters in one cluster is a clique, not information.
     """
+    # Each run is the whole truth for this edge. When a code stops being packaging
+    # (decisions/0027) its edges and its now-unused component node must go, and MERGE
+    # alone cannot retract them.
+    # batched small: Neo4j runs with ~1.4 GB of real headroom in a 3.8 GB Docker VM shared
+    # with Metabase, LiteLLM and FalkorDB, and a 60k-edge delete took it down
+    s.run("MATCH ()-[e:SUPPLIES_PACKAGING]->() "
+          "CALL (e) { DELETE e } IN TRANSACTIONS OF 1000 ROWS").consume()
     rows = q("""SELECT DISTINCT x.entity_id, r.source_id, r.payload FROM raw_company r
                 JOIN crosswalk x ON x.source_id=r.source_id AND x.source_key=r.source_key
                  AND x.entity_type='company' AND x.superseded_by IS NULL
@@ -679,6 +686,10 @@ def load_packaging(s) -> None:
         MERGE (c)-[e:SUPPLIES_PACKAGING]->(p)
         SET e += row.prov
     """, edges, "SUPPLIES_PACKAGING")
+    gone = s.run("""MATCH (p:PackagingComponent) WHERE NOT (p)<-[:SUPPLIES_PACKAGING]-()
+                    DETACH DELETE p RETURN count(p) AS n""").single()["n"]
+    if gone:
+        print(f"    (removed {gone} PackagingComponent type(s) no source now supports)")
 
 
 _FAMILY_HEAD = re.compile(

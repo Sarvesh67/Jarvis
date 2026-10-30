@@ -274,6 +274,19 @@
     Was Gujarat-only while Udyam came from a local parquet extract; the national
     data.gov.in registry (S17b) sweeps every wedge-cluster pincode.
 
+- id: packaging_never_typed_from_construction_or_sheet_glass
+  q: "No packaging edge may rest on a NIC code whose registry text is not packaging"
+  shape: invariant
+  cypher: |
+    MATCH ()-[e:SUPPLIES_PACKAGING]->(p:PackagingComponent)
+    WHERE p.type IN ['glass_primary', 'metal_formed', 'metal_coated']
+    RETURN count(e) AS violations
+  expect_zero: violations
+  note: >
+    23101 (sheet glass), 25910 (forging) and 25920 (machining) were typed as packaging,
+    and 23109 (construction and optical glass) fed every glass_container edge.
+    decisions/0027.
+
 - id: cosmetics_firms_outside_gujarat
   q: "Cosmetics manufacturers in the Himachal and Uttarakhand wedge clusters"
   shape: Company->Cluster
