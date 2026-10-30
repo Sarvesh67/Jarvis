@@ -38,7 +38,14 @@ feeds: {nodes: [], edges: []}
 
 do_not:
   - >
-    Tier 3-4. If built, its category strings are tags mapped through
+    Do not build it. IndiaMART's terms of use (indiamart.com/terms-of-use, read
+    2026-10-25) forbid systematic retrieval "through robots, spiders…" without written
+    permission, and robots.txt blocks ClaudeBot. The only API is the seller-side Lead
+    Manager, which returns a paid seller's own leads. The build spec's "PoC only" is
+    withdrawn. MOQ and price come from supplier claims and RFQ responses instead. See
+    decisions/0022.
+  - >
+    Tier 3-4. If it is ever licensed, its category strings are tags mapped through
     ontology/category_map.yaml — never a substitute for the Fourth Schedule spine
     (hard rule 9).
 
