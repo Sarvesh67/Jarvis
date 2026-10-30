@@ -43,6 +43,19 @@ PATHS = ["", "/about", "/about-us", "/contact", "/contact-us", "/products",
          "/infrastructure", "/manufacturing", "/facilities", "/capabilities",
          "/quality", "/certifications"]
 
+# The fixed paths above find a home page and an about page; they almost never find the
+# catalogue. Across 1,498 sites only 20 `/products` URLs were ever landed, which is why
+# S14b had 53 suppliers to show. So the crawl also follows same-site links whose path or
+# anchor text says "product list" — up to --follow pages per site, nothing else.
+PRODUCT_HINTS = ("product", "catalog", "catalogue", "range", "portfolio", "ingredient",
+                 "raw-material", "raw_material", "rawmaterial", "chemical", "specialit",
+                 "specialt", "aroma", "fragrance", "essential-oil", "essential_oil",
+                 "oleo", "surfactant", "excipient", "emollient", "active", "extract",
+                 "packaging", "bottle", "jar", "tube", "pump", "closure", "carton",
+                 "label", "container")
+SKIP_EXT = (".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".zip", ".doc",
+            ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".mp4", ".css", ".js", ".xml")
+
 GSTIN_RE = re.compile(r"\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]\b")
 CIN_RE = re.compile(r"\b[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}\b")
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
@@ -193,30 +206,93 @@ def name_on_site(legal_name: str | None, text_upper: str) -> bool:
     return hits >= max(1, min(2, len(toks)))
 
 
-def scrape(company: dict, f: lib.Fetcher, robots: Robots, max_pages: int) -> dict | None:
+def _host(url: str) -> str:
+    return (urlparse(url).netloc or "").lower().removeprefix("www.")
+
+
+def _page_key(url: str) -> str:
+    """One key per page whatever the www. prefix, scheme or trailing slash."""
+    return _host(url) + urlparse(url).path.rstrip("/")
+
+
+def product_links(html: str, page_url: str, seen: set[str], limit: int) -> list[str]:
+    """Same-site links that look like a product or catalogue page, best first.
+
+    A link scores on its PATH and on its anchor TEXT ("Our Products", "Range"). Query
+    strings are dropped, so one listing paged ten ways is fetched once.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    host = _host(page_url)
+    seen_keys = {_page_key(u) for u in seen}
+    scored: dict[str, tuple[str, int]] = {}
+    for a in soup.find_all("a", href=True):
+        href = a["href"].strip()
+        if not href or href.startswith(("#", "mailto:", "tel:", "javascript:", "whatsapp:")):
+            continue
+        u = urlparse(urljoin(page_url, href))
+        if u.scheme not in ("http", "https") or _host(u.geturl()) != host:
+            continue
+        path = u.path.rstrip("/")
+        if not path or path.lower().endswith(SKIP_EXT):
+            continue
+        url = f"{u.scheme}://{u.netloc}{path}"
+        if _page_key(url) in seen_keys:
+            continue
+        low_path, low_text = path.lower(), a.get_text(" ", strip=True).lower()[:80]
+        score = 2 * sum(h in low_path for h in PRODUCT_HINTS) + \
+            sum(h in low_text for h in PRODUCT_HINTS)
+        if score:
+            k = _page_key(url)
+            if k not in scored or score > scored[k][1]:
+                scored[k] = (url, score)
+    best = sorted(scored.values(), key=lambda us: (-us[1], us[0]))
+    return [u for u, _ in best][:limit]
+
+
+def land_page(url: str, r) -> None:
+    path = urlparse(url).path.rstrip("/")
+    lib.land(SOURCE, url, r.content,
+             key=f"{urlparse(url).netloc}{path.replace('/', '_') or '_home'}")
+
+
+def scrape(company: dict, f: lib.Fetcher, robots: Robots, max_pages: int,
+           follow: int = 0) -> dict | None:
     base = normalize_site(company["website"])
     if not base:
         return None
-    text_parts, fetched = [], []
-    for i, path in enumerate(PATHS[:max_pages]):
-        url = base + path
+    text_parts, fetched, html_seen = [], [], []
+    queue = [base + path for path in PATHS[:max_pages]]
+    followed = 0
+    i = 0
+    while i < len(queue):
+        url = queue[i]
+        i += 1
         try:
             if not robots.allowed(url, f):
                 continue
             r = f.get(url)
         except Exception:
-            if i == 0:
+            if i == 1:
                 return None      # home page unreachable -> the host is dead, stop here
             continue
         if "text/html" not in r.headers.get("content-type", ""):
             continue
-        lib.land(SOURCE, url, r.content,
-                 key=f"{urlparse(base).netloc}{path.replace('/', '_') or '_home'}")
+        land_page(url, r)
+        html_seen.append(r.text)
         soup = BeautifulSoup(r.text, "lxml")
         for tag in soup(["script", "style", "noscript"]):
             tag.decompose()
         text_parts.append(soup.get_text(" ", strip=True))
         fetched.append(url)
+        # once the fixed paths are done, queue the catalogue links they pointed at
+        if i == min(max_pages, len(PATHS)) and follow:
+            seen = {u.rstrip("/") for u in queue}
+            links: list[str] = []
+            for h in html_seen:
+                for u in product_links(h, base + "/", seen | set(links), follow):
+                    links.append(u)
+            queue.extend(links[:follow])
+            followed = len(links[:follow])
     if not text_parts:
         return None
 
@@ -246,7 +322,7 @@ def scrape(company: dict, f: lib.Fetcher, robots: Robots, max_pages: int) -> dic
     moq = MOQ_RE.search(text)
 
     return {
-        "base": base, "pages_fetched": fetched,
+        "base": base, "pages_fetched": fetched, "pages_followed": followed,
         "name_on_site": name_on_site(company.get("legal_name"), upper),
         "gstins": gstins, "cins": cins, "emails": emails[:5], "phones": phones[:5],
         "pincode": pins[-1] if pins else None,
@@ -254,6 +330,65 @@ def scrape(company: dict, f: lib.Fetcher, robots: Robots, max_pages: int) -> dic
         "fill_volumes": volumes,
         "moq": moq.group(0)[:80] if moq else None,
     }
+
+
+def follow_landed(f: lib.Fetcher, robots: Robots, follow: int, max_hosts: int) -> int:
+    """Revisit sites already landed and fetch ONLY the catalogue pages they link to.
+
+    Re-crawling 1,498 sites to pick up their product pages would refetch 4,308 pages
+    already held. This reads the landed HTML instead, finds the catalogue links, and
+    fetches those alone. It lands pages for S14b and writes no raw_company row: contact
+    and identifier extraction already ran on these sites.
+
+    Only sites S14b could use are revisited: one that reads as a supplier catalogue, or
+    one that is unclear but already names at least one ingredient.
+    """
+    from s14b_supplies import classify, page_text   # noqa: E402  (sibling adapter)
+    from pipeline import materials                   # noqa: E402
+    keys = set(materials.matching_keys())
+    pages: dict[str, list[Path]] = defaultdict(list)
+    for pth in sorted((lib.RAW / SOURCE).glob("*.html")):
+        pages[pth.name.split("_")[0].lower()].append(pth)
+    with lib.pg() as c, c.cursor() as cur:
+        cur.execute("SELECT url FROM fetch_manifest WHERE source_id = %s", (SOURCE,))
+        landed = {u.rstrip("/") for (u,) in cur.fetchall()}
+
+    targets = []
+    for host, paths in pages.items():
+        verdict, hits = "unclear", 0
+        for pth in paths:
+            text = page_text(pth)
+            v = classify(text.upper())[0]
+            if v == "supplier":
+                verdict = "supplier"
+            hits += len(lib.ngrams(lib.tokens_of(text), keys))
+        if verdict == "supplier" or (verdict == "unclear" and hits):
+            targets.append((host, paths))
+    targets = targets[:max_hosts]
+    print(f"  {len(targets)} landed sites read as a catalogue or name an ingredient")
+
+    n_pages = 0
+    for k, (host, paths) in enumerate(targets, 1):
+        links: list[str] = []
+        for pth in paths:
+            html = pth.read_text(encoding="utf-8", errors="ignore")
+            for u in product_links(html, f"https://{host}/", landed | set(links), follow):
+                links.append(u)
+        for url in links[:follow]:
+            try:
+                if not robots.allowed(url, f):
+                    continue
+                r = f.get(url)
+            except Exception:
+                continue
+            if "text/html" in r.headers.get("content-type", ""):
+                land_page(url, r)
+                n_pages += 1
+        if k % 25 == 0:
+            print(f"    [{k}/{len(targets)}] {n_pages} catalogue pages landed", flush=True)
+    print(f"S14 follow-landed done: {n_pages} catalogue pages landed from "
+          f"{len(targets)} sites")
+    return 0
 
 
 def main() -> int:
@@ -266,7 +401,21 @@ def main() -> int:
                     help="revisit sites already landed in raw/")
     ap.add_argument("--all-roles", action="store_true",
                     help="do not restrict to cosmetics-relevant companies")
+    ap.add_argument("--follow", type=int, default=6,
+                    help="catalogue links followed per site, after the fixed paths")
+    ap.add_argument("--follow-landed", action="store_true",
+                    help="fetch only the catalogue pages that already-landed sites "
+                         "link to; no re-crawl, no raw_company rows")
+    ap.add_argument("--max-hosts", type=int, default=10_000)
     a = ap.parse_args()
+
+    if a.follow_landed:
+        f = lib.Fetcher(SOURCE, delay=a.delay, timeout=a.timeout,
+                        max_attempts=2, backoff_base=2.0, backoff_max=8.0)
+        try:
+            return follow_landed(f, Robots(), a.follow, a.max_hosts)
+        finally:
+            f.close()
 
     cands = targets(a.limit, not a.all_roles)
     if not a.refetch:
@@ -289,7 +438,7 @@ def main() -> int:
     try:
         for i, co in enumerate(cands, 1):
             try:
-                res = scrape(co, f, robots, a.max_pages)
+                res = scrape(co, f, robots, a.max_pages, a.follow)
             except Exception as exc:
                 print(f"    [{i}/{len(cands)}] {co['legal_name'][:40]}: {exc}")
                 res = None
