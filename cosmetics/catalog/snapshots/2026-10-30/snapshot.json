@@ -1,0 +1,130 @@
+{
+  "taken_on": "2026-10-30",
+  "graph": {
+    "nodes": {
+      "Company": 131663,
+      "Ingredient": 35864,
+      "RegulatoryRule": 2445,
+      "Product": 1751,
+      "Licence": 878,
+      "Facility": 870,
+      "DocChunk": 826,
+      "ProductCategory": 96,
+      "Cluster": 17,
+      "Certification": 13,
+      "ProcessCapability": 13,
+      "PackagingComponent": 9,
+      "Event": 2,
+      "Association": 1
+    },
+    "edges": {
+      "LOCATED_IN": 125835,
+      "SERVES_CATEGORY": 67893,
+      "SUPPLIES_PACKAGING": 40962,
+      "SUBJECT_TO_GENERAL_RULE": 12405,
+      "SUPPLIES": 8868,
+      "ACCREDITED_AS": 6594,
+      "MEMBER_OF": 3576,
+      "CONTAINS": 2841,
+      "RESTRICTED_BY": 2422,
+      "MENTIONS": 2081,
+      "SUBSTITUTE_FOR": 2049,
+      "CLAIMS_CAPABILITY": 1796,
+      "LICENSED_UNDER": 878,
+      "CLAIMS_CERTIFICATION": 512,
+      "LIKELY_MAKES": 434,
+      "SUPPORTED_BY": 430,
+      "OPERATES": 305,
+      "LOAN_LICENCE_WITH": 210,
+      "EXHIBITED_AT": 208,
+      "IN_CATEGORY": 147,
+      "CHILD_OF": 84,
+      "GOVERNED_BY": 51,
+      "HAS_CAPABILITY": 6
+    },
+    "company_trust_level": {
+      "0": 6794,
+      "1": 120025,
+      "2": 1,
+      "4": 4843
+    }
+  },
+  "postgres": {
+    "tables": {
+      "property_claim": 1076475,
+      "crosswalk": 228790,
+      "raw_company": 136518,
+      "trust_state": 132030,
+      "ref_pincode": 19238,
+      "review_queue": 15603,
+      "raw_supplies": 8868,
+      "person": 6682,
+      "fetch_manifest": 6645,
+      "raw_facility": 881,
+      "operates_edge": 847,
+      "gstin_check": 54,
+      "raw_ingredient": 0,
+      "unresolved_ingredient": 0,
+      "gst_record": 0,
+      "adverse_signal": 0,
+      "raw_rule": 0,
+      "raw_product": 0
+    },
+    "raw_company": {
+      "s17b_udyam_api": 119120,
+      "s11_nabl": 6682,
+      "s09_chemexcil": 4005,
+      "s17_udyam": 2849,
+      "s03_mca": 1609,
+      "s14_sites": 1499,
+      "s01_cdsco": 546,
+      "s08_exhibitors": 208
+    },
+    "fetch_manifest": {
+      "s14_sites": {
+        "payloads": 6549,
+        "first_seen": "2026-09-05",
+        "last_seen": "2026-10-29"
+      },
+      "s09_chemexcil": {
+        "payloads": 74,
+        "first_seen": "2026-09-05",
+        "last_seen": "2026-09-05"
+      },
+      "s01_cdsco": {
+        "payloads": 10,
+        "first_seen": "2026-09-05",
+        "last_seen": "2026-09-05"
+      },
+      "s08_exhibitors": {
+        "payloads": 8,
+        "first_seen": "2026-09-05",
+        "last_seen": "2026-09-05"
+      },
+      "s06_cosing": {
+        "payloads": 2,
+        "first_seen": "2026-09-05",
+        "last_seen": "2026-09-05"
+      },
+      "s15_ref": {
+        "payloads": 2,
+        "first_seen": "2026-09-05",
+        "last_seen": "2026-10-29"
+      }
+    }
+  },
+  "raw_bytes": {
+    "s01_cdsco": 516163,
+    "s02_state_fda": 0,
+    "s03_mca": 0,
+    "s05_rules": 791563,
+    "s06_cosing": 73167160,
+    "s07_obf": 97512406,
+    "s08_exhibitors": 752116,
+    "s09_chemexcil": 9035690,
+    "s10_indiamart": 0,
+    "s11_nabl": 184435,
+    "s14_sites": 1165968028,
+    "s15_ref": 3485781
+  }
+}

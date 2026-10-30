@@ -1,7 +1,7 @@
 id,name,tier,status,jurisdiction,raw_rows,payloads,bytes,coverage_pct,defects,guardrails,last_seen,card
-s17b,Udyam MSME registry — national slice (data.gov.in),1,live,IN,119120,0,0,,3,2,2026-09-06,s17b_udyam
+s17b,Udyam MSME registry — national slice (data.gov.in),1,live,IN,119120,0,0,,4,2,2026-09-06,s17b_udyam
 s06,EU CosIng — Cosmetic Ingredient Database,1,live,EU,33638,2,73167160,99.95,2,2,2026-09-05,s06_cosing
-s15,GeoNames pincode reference,1,live,IN,19238,1,1742997,100.0,1,1,2026-09-05,s15_ref
+s15,GeoNames pincode reference,1,live,IN,19238,2,3485781,100.0,2,1,2026-10-29,s15_ref
 s11,NABL accredited testing laboratories,1,live,IN,6682,1,184435,100.0,2,2,2026-09-05,s11_nabl
 s17,Udyam MSME registry — Gujarat slice (portal),1,live,IN,2849,0,0,,1,1,2026-09-06,s17_udyam_gujarat
 s03,MCA company master,1,blocked,IN,1609,0,0,,1,1,never,s03_mca
@@ -10,9 +10,9 @@ s05,Cosmetics Rules 2020 — Fourth and Ninth Schedules,1,live,IN,117,1,791563,1
 s02,State FDA / ONDLS cosmetics licences (COS-8 / COS-9),1,no_bulk_source,IN,0,0,0,0.0,0,1,never,s02_state_fda
 s16,GSTIN verification,1,blocked,IN,0,0,0,0.0,0,2,never,s16_gstin
 s09,CHEMEXCIL member directory,2,live,IN,4005,74,9035690,100.0,3,1,2026-09-05,s09_chemexcil
-s14,"Company websites — contact, identifiers, capabilities",2,live,IN,1499,3555,688218468,63.0,2,2,2026-09-06,s14_sites
+s14,"Company websites — contact, identifiers, capabilities",2,live,IN,1499,6549,1165968028,63.0,2,2,2026-10-29,s14_sites
 s08,Trade-fair exhibitor lists,2,live,IN,208,8,752116,100.0,1,2,2026-09-05,s08_exhibitors
 s19,SEBI public-issue filings (DRHP / RHP / prospectus),2,not_built,IN,0,0,0,0.0,4,1,never,s19_filings
+s14b,Ingredient supply claims from company pages,3,live,IN,8868,0,0,,3,2,2026-09-06,s14b_supplies
 s07,Open Beauty Facts,3,live,-,1751,2,97512406,,1,1,2026-09-05,s07_obf
-s14b,Ingredient supply claims from company pages,3,live,IN,804,0,0,,1,1,2026-09-06,s14b_supplies
-s10,IndiaMART / retail / trade data,3,not_built,IN,0,0,0,0.0,0,1,never,s10_indiamart
+s10,IndiaMART / retail / trade data,3,not_built,IN,0,0,0,0.0,0,2,never,s10_indiamart

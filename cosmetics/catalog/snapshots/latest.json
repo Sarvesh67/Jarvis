@@ -1,5 +1,5 @@
 {
-  "taken_on": "2026-09-14",
+  "taken_on": "2026-10-30",
   "graph": {
     "nodes": {
       "Company": 131663,
@@ -13,16 +13,17 @@
       "Cluster": 17,
       "Certification": 13,
       "ProcessCapability": 13,
-      "PackagingComponent": 10,
+      "PackagingComponent": 9,
       "Event": 2,
       "Association": 1
     },
     "edges": {
       "LOCATED_IN": 125835,
-      "SUPPLIES_PACKAGING": 60087,
+      "SERVES_CATEGORY": 67893,
+      "SUPPLIES_PACKAGING": 40962,
       "SUBJECT_TO_GENERAL_RULE": 12405,
+      "SUPPLIES": 8868,
       "ACCREDITED_AS": 6594,
-      "SERVES_CATEGORY": 4434,
       "MEMBER_OF": 3576,
       "CONTAINS": 2841,
       "RESTRICTED_BY": 2422,
@@ -30,11 +31,10 @@
       "SUBSTITUTE_FOR": 2049,
       "CLAIMS_CAPABILITY": 1796,
       "LICENSED_UNDER": 878,
-      "SUPPLIES": 764,
       "CLAIMS_CERTIFICATION": 512,
       "LIKELY_MAKES": 434,
       "SUPPORTED_BY": 430,
-      "OPERATES": 302,
+      "OPERATES": 305,
       "LOAN_LICENCE_WITH": 210,
       "EXHIBITED_AT": 208,
       "IN_CATEGORY": 147,
@@ -43,31 +43,32 @@
       "HAS_CAPABILITY": 6
     },
     "company_trust_level": {
-      "0": 123746,
-      "1": 3073,
+      "0": 6794,
+      "1": 120025,
       "2": 1,
       "4": 4843
     }
   },
   "postgres": {
     "tables": {
-      "property_claim": 1076468,
+      "property_claim": 1076475,
       "crosswalk": 228790,
-      "trust_state": 136783,
       "raw_company": 136518,
-      "review_queue": 15527,
+      "trust_state": 132030,
+      "ref_pincode": 19238,
+      "review_queue": 15603,
+      "raw_supplies": 8868,
       "person": 6682,
-      "fetch_manifest": 3650,
+      "fetch_manifest": 6645,
       "raw_facility": 881,
-      "operates_edge": 843,
-      "raw_supplies": 804,
-      "ref_pincode": 0,
-      "gst_record": 0,
+      "operates_edge": 847,
+      "gstin_check": 54,
+      "raw_ingredient": 0,
       "unresolved_ingredient": 0,
-      "raw_rule": 0,
-      "raw_product": 0,
+      "gst_record": 0,
       "adverse_signal": 0,
-      "raw_ingredient": 0
+      "raw_rule": 0,
+      "raw_product": 0
     },
     "raw_company": {
       "s17b_udyam_api": 119120,
@@ -81,9 +82,9 @@
     },
     "fetch_manifest": {
       "s14_sites": {
-        "payloads": 3555,
+        "payloads": 6549,
         "first_seen": "2026-09-05",
-        "last_seen": "2026-09-06"
+        "last_seen": "2026-10-29"
       },
       "s09_chemexcil": {
         "payloads": 74,
@@ -106,9 +107,9 @@
         "last_seen": "2026-09-05"
       },
       "s15_ref": {
-        "payloads": 1,
+        "payloads": 2,
         "first_seen": "2026-09-05",
-        "last_seen": "2026-09-05"
+        "last_seen": "2026-10-29"
       }
     }
   },
@@ -123,7 +124,7 @@
     "s09_chemexcil": 9035690,
     "s10_indiamart": 0,
     "s11_nabl": 184435,
-    "s14_sites": 688218468,
-    "s15_ref": 1742997
+    "s14_sites": 1165968028,
+    "s15_ref": 3485781
   }
 }
