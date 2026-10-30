@@ -36,7 +36,7 @@ COVERAGE_FIELDS = [
     ("licence categories stated",
      "EXISTS { (c)-[:OPERATES]->(:Facility)-[:LICENSED_UNDER]->(:Licence)-[:PERMITS]->() }"),
     ("website", "c.website IS NOT NULL"),
-    ("email or phone", "c.email IS NOT NULL OR c.phone IS NOT NULL"),
+    ("business email or phone", "c.email IS NOT NULL OR c.phone IS NOT NULL"),
     ("a claimed capability", "EXISTS { (c)-[:CLAIMS_CAPABILITY]->() }"),
     ("a claimed certification", "EXISTS { (c)-[:CLAIMS_CERTIFICATION]->() }"),
     ("supplies a known ingredient", "EXISTS { (c)-[:SUPPLIES]->() }"),

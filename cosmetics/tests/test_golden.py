@@ -93,6 +93,45 @@ def test_no_person_data_leaked_into_company_rows():
         assert cur.fetchone()[0] == 0
 
 
+def test_only_a_firms_own_lines_count_as_business_contacts():
+    """decisions/0029: a sole trader's number and a named person's address are personal."""
+    from pipeline.contact import business_contacts, business_email
+    personal = "24AAAPZ1234C1Z6"     # synthetic; holder type P
+    company = "24AAACZ1234C1Z6"      # synthetic; holder type C
+    # a proprietorship shows nothing, not even a role mailbox
+    assert business_contacts("ANIL TRADERS", None, personal, None,
+                             "9812345678", "info@aniltraders.com") == (None, None)
+    # a company shows its phone and role mailbox, never a named employee
+    assert business_contacts("ACME CHEMICALS PVT. LTD.", None, None, None,
+                             "9812345678", "sales@acme.in") == ("9812345678", "sales@acme.in")
+    assert business_contacts("ACME CHEMICALS", None, company, None,
+                             "9812345678", "amar.singh@acme.in") == ("9812345678", None)
+    # form unknown: the role mailbox reaches the business, the phone may be one man's
+    assert business_contacts("SHARDA INDUSTRIES", None, None, None,
+                             "9812345678", "info@shardaindustries.com") \
+        == (None, "info@shardaindustries.com")
+    for e in ("khushal@navdeep.com", "achyut2000@yahoo.com", "info@example.com",
+              "sales.rajesh@acme.in"):
+        assert business_email(e) is None, e
+    for e in ("info@acme.in", "export.india@acme.in", "sales2@acme.in", "contactus@acme.in"):
+        assert business_email(e) == e, e
+
+
+def test_graph_contacts_are_business_lines(session):
+    """Every phone in the graph belongs to a legal entity; every email is a role mailbox."""
+    from pipeline.contact import ENTITY_FORM, business_email
+    rows = session.run("""MATCH (c:Company) WHERE c.phone IS NOT NULL OR c.email IS NOT NULL
+                          RETURN c.legal_name AS name, c.cin AS cin, c.gstins AS gstins,
+                                 c.phone AS phone, c.email AS email""").data()
+    assert rows
+    for r in rows:
+        if r["email"]:
+            assert business_email(r["email"]) == r["email"], r["email"]
+        if r["phone"]:
+            unmasked = [g for g in r["gstins"] or [] if "•" not in g]
+            assert r["cin"] or unmasked or ENTITY_FORM.search(r["name"] or ""), r["name"]
+
+
 def test_every_udyam_row_carries_registry_membership():
     """Both Udyam adapters stamp `udyam_registered`, which trust.py reads for rung 1.
     s17b once never set it and 119,120 registered firms sat at L0."""

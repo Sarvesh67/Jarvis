@@ -76,6 +76,10 @@ feeds:
 
 do_not:
   - >
+    Do not show a phone or email the graph does not hold. The phones and emails this
+    source carries reach the graph only as a firm's business lines; a sole trader's
+    number and a named person's address stay in Postgres (decisions/0029).
+  - >
     A CLAIMS_* edge is a claim, not a fact. Never present a claimed certification as a
     verified one — tier 2 is company-declared.
   - >

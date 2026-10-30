@@ -422,6 +422,8 @@
   .quote{font-size:13.5px;color:var(--mut);border-left:3px solid;border-image:var(--grad) 1;
     padding:2px 0 2px 12px;margin:0;line-height:1.55}
   .row{display:flex;gap:7px;flex-wrap:wrap}
+  .row .btn{max-width:100%}
+  .btn .trunc{min-width:0;overflow:hidden;text-overflow:ellipsis}
   .dfoot{flex:none;border-top:1px solid var(--line);padding:14px 22px;display:flex;
     gap:8px;flex-wrap:wrap;background:var(--panel)}
   .dfoot .btn{flex:1;min-height:40px}
@@ -508,6 +510,8 @@ const ICON = {
   back: '<path d="M15 5l-7 7 7 7"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+  phone: '<path d="M5 4h3.5l1.7 4.3-2.2 1.4a11 11 0 0 0 6.3 6.3l1.4-2.2L20 15.5V19a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5L12 13l8.5-6.5"/>',
 };
 function icon(name){
   const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -778,6 +782,16 @@ function siteOf(w){
   catch (e) { return null; }
 }
 
+// The graph holds a firm's own business lines only (decisions/0029): never a sole
+// trader's mobile or a named person's address, so whatever arrives here may be shown.
+function telOf(p){
+  let d = String(p || "").replace(/\D/g, "");
+  if (d.length === 12 && d.startsWith("91")) d = d.slice(2);
+  if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
+  if (d.length !== 10) return null;
+  return {href: "tel:+91" + d, label: "+91 " + d.slice(0, 5) + " " + d.slice(5)};
+}
+
 function vendorOf(row, e, d){
   const name = row.company || row.laboratory || row.supplier;
   const trust = Number.isInteger(row.trust) ? row.trust
@@ -789,6 +803,7 @@ function vendorOf(row, e, d){
     state: row.state ? titleCase(row.state) : null,
     cluster: clusterName(row.cluster),
     site: siteOf(row.website),
+    tel: telOf(row.phone), email: row.email || null,
     trust, rungs: Array.isArray(row.trust_rungs) ? row.trust_rungs : null,
     why: arr(row.why), roles,
     category: CATEGORY[e.template]
@@ -895,6 +910,19 @@ function siteBtn(v, grow){
   a.target = "_blank"; a.rel = "noopener nofollow";
   a.appendChild(icon("globe")); a.appendChild(document.createTextNode("Website"));
   a.title = v.site.host;
+  return a;
+}
+function telBtn(v){
+  if (!v.tel) return null;
+  const a = el("a", "btn"); a.href = v.tel.href;
+  a.appendChild(icon("phone")); a.appendChild(document.createTextNode(v.tel.label));
+  return a;
+}
+function mailBtn(v){
+  if (!v.email) return null;
+  const a = el("a", "btn"); a.href = "mailto:" + v.email;
+  a.appendChild(icon("mail")); a.appendChild(el("span", "trunc", v.email));
+  a.title = v.email;
   return a;
 }
 
@@ -1167,12 +1195,16 @@ function openVendor(v, focus){
 
     const ct = section("Contact");
     const row = el("div", "row");
-    const site = siteBtn(v);
-    if (site) { row.appendChild(site); ct.appendChild(row); }
-    const why = el("p", "sub", v.site
-      ? `No phone or WhatsApp number is on file in the sources we hold. ${v.site.host} is the contact route.`
-      : "No phone, WhatsApp or website is on file in the sources we hold.");
-    if (site) why.style.marginTop = "10px";
+    const lines = [siteBtn(v), telBtn(v), mailBtn(v)].filter(Boolean);
+    lines.forEach(a => row.appendChild(a));
+    if (lines.length) ct.appendChild(row);
+    const why = el("p", "sub", v.tel || v.email
+      ? "These are the company's published business lines. We do not show a sole trader's "
+        + "own number or a named person's address."
+      : v.site
+      ? `No business phone or email is on file in the sources we hold. ${v.site.host} is the contact route.`
+      : "No business phone, email or website is on file in the sources we hold.");
+    if (lines.length) why.style.marginTop = "10px";
     ct.appendChild(why);
     body.appendChild(ct);
 
@@ -1257,6 +1289,8 @@ function openCompare(){
     line("Website", v => { if (!v.site) return "Not on file";
       const a = el("a", null, v.site.host); a.href = v.site.url; a.target = "_blank";
       a.rel = "noopener nofollow"; a.style.color = "var(--accent)"; return a; });
+    line("Contact", v => { const c = [v.tel && v.tel.label, v.email].filter(Boolean);
+      return c.length ? c.join(" · ") : "Not on file"; });
     line("Evidence", v => (TIER[v.tier] || [null, "Exploratory"])[1]);
     line("", v => btn("btn", "Ask AI", "ask", () => askAbout(v)));
     t.appendChild(tb); wrap.appendChild(t); body.appendChild(wrap);

@@ -107,6 +107,19 @@
     RETURN count(c) AS violations
   expect_zero: violations
 
+# decisions/0029. A phone or email is shown only where it reaches the firm. A sole trader's
+# number and address are his own; they stay in Postgres, never on a Company node.
+- id: no_contact_for_a_sole_trader
+  q: "No proprietorship or HUF carries a phone or email in the graph (DPDP)"
+  shape: invariant
+  cypher: |
+    MATCH (c:Company)
+    WHERE (c.phone IS NOT NULL OR c.email IS NOT NULL)
+      AND (c.is_proprietorship = true
+           OR any(g IN coalesce(c.gstins, []) WHERE g CONTAINS '•'))
+    RETURN count(c) AS violations
+  expect_zero: violations
+
 # Registry membership is rung-1 evidence. The national Udyam adapter once never set the
 # flag, leaving 119,120 registered firms at L0 — this catches the trust side of that.
 - id: udyam_registration_reaches_trust

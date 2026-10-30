@@ -30,7 +30,7 @@
       AND l.regime = 'cosmetics'
     RETURN c.legal_name AS company, l.form_type AS licence_form, l.number AS licence_no,
            l.status AS licence_status, f.address_raw AS address, cl.name AS cluster,
-           c.trust_level AS trust
+           c.trust_level AS trust, c.website AS website, c.phone AS phone, c.email AS email
     ORDER BY trust DESC LIMIT $limit
 
 - id: cosmetics_firms_in_cluster
@@ -68,7 +68,8 @@
          END AS rank
     RETURN c.legal_name AS company, c.district AS district, cl.name AS cluster,
            evidence_basis, c.roles AS roles, c.trust_level AS trust,
-           2 IN c.trust_rungs AS has_licence_evidence
+           2 IN c.trust_rungs AS has_licence_evidence,
+           c.website AS website, c.phone AS phone, c.email AS email
     ORDER BY rank, trust DESC, company LIMIT $limit
 
 - id: loan_licence_partners
@@ -117,7 +118,7 @@
     WHERE ($cluster IS NULL OR cl.cluster_id = $cluster)
       AND ($district IS NULL OR toUpper(c.district) = $district)
     RETURN c.legal_name AS company, c.website AS website, cl.name AS cluster,
-           e.evidence AS claimed_on_their_site, c.trust_level AS trust
+           e.evidence AS claimed_on_their_site, c.trust_level AS trust, c.phone AS phone, c.email AS email
     ORDER BY trust DESC LIMIT $limit
 
 - id: packaging_converters_in_cluster
@@ -135,7 +136,8 @@
       AND ($district IS NULL OR toUpper(c.district) = $district)
       AND ($component IS NULL OR p.type = $component)
     RETURN c.legal_name AS company, p.type AS component, c.district AS district,
-           cl.name AS cluster, c.trust_level AS trust
+           cl.name AS cluster, c.trust_level AS trust,
+           c.website AS website, c.phone AS phone, c.email AS email
     ORDER BY trust DESC, company LIMIT $limit
 
 - id: suppliers_of_ingredient
@@ -151,7 +153,7 @@
     MATCH (c:Company)-[e:SUPPLIES]->(i:Ingredient)
     WHERE ($ingredient IS NULL OR i.inci_name = $ingredient) AND e.cosmetics_relevant
     RETURN i.inci_name AS ingredient, c.legal_name AS supplier, c.website AS website,
-           e.mode AS mode, e.evidence AS evidence, c.trust_level AS trust
+           e.mode AS mode, e.evidence AS evidence, c.trust_level AS trust, c.phone AS phone, c.email AS email
     ORDER BY trust DESC LIMIT $limit
 
 - id: ingredient_suppliers_near
@@ -178,7 +180,7 @@
     RETURN i.inci_name AS ingredient, c.legal_name AS supplier, c.district AS district,
            c.state AS state, CASE WHEN m IS NULL THEN null ELSE round(m / 1000.0) END AS km,
            c.website AS website, e.matched AS matched_on, e.mode AS mode,
-           e.evidence AS evidence, c.trust_level AS trust
+           e.evidence AS evidence, c.trust_level AS trust, c.phone AS phone, c.email AS email
     ORDER BY km, trust DESC LIMIT $limit
 
 - id: packaging_suppliers_near
@@ -204,7 +206,7 @@
                               point({latitude: $near.lat, longitude: $near.lon})) AS m
     RETURN c.legal_name AS company, p.type AS component, c.district AS district,
            c.state AS state, CASE WHEN m IS NULL THEN null ELSE round(m / 1000.0) END AS km,
-           c.trust_level AS trust
+           c.trust_level AS trust, c.website AS website, c.phone AS phone, c.email AS email
     ORDER BY km, trust DESC, company LIMIT $limit
 
 - id: ingredient_restriction_india
@@ -344,6 +346,7 @@
     OPTIONAL MATCH (c)-[:CLAIMS_CERTIFICATION]->(ce:Certification)
     RETURN c.legal_name AS company, c.cin AS cin, c.gstins AS gstins,
            c.district AS district, c.cluster_id AS cluster, c.website AS website,
+           c.phone AS phone, c.email AS email,
            c.roles AS roles, c.trust_level AS trust_level,
            c.trust_rungs AS trust_rungs, c.trust_reasons AS why,
            collect(DISTINCT l.form_type + ' ' + l.number) AS licences,
@@ -408,5 +411,6 @@
     RETURN c.legal_name AS laboratory, c.state AS state, c.district AS district,
            a.certificate_number AS certificate, a.valid_till AS valid_till,
            a.groups_matched AS cosmetics_scope, a.accredited_sites AS accredited_sites,
-           a.disciplines AS disciplines, a.groups AS accredited_scope
+           a.disciplines AS disciplines, a.groups AS accredited_scope,
+           c.website AS website, c.phone AS phone, c.email AS email
     ORDER BY scope_rank, laboratory LIMIT $limit

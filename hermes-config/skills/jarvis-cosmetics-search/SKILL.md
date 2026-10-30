@@ -134,8 +134,10 @@ The executed query comes back with the results. Quote it when the answer matters
 - **Never mix jurisdictions.** An EU annex restriction has no force in India. Keep the label.
 - Use only the companies, labs and rules the tools return. Never invent a firm, licence
   number, GSTIN or certificate.
-- Do not report contact people, emails or phones — that data is held outside the graph on
-  purpose (DPDP).
+- Report a phone or email only when a row carries it. The graph holds a firm's business
+  lines only: a role mailbox (info@, sales@) and, for a legal entity, its published phone.
+  Never name a contact person, and never look for, guess or ask for a proprietor's number
+  or a named person's address; those stay outside the graph on purpose (DPDP, decision 0029).
 - A GSTIN with its middle masked (`24••••••••••1ZZ`) is a proprietorship or HUF. The masked
   part is a person's PAN. Show it masked, and never guess, reconstruct or ask for it.
 

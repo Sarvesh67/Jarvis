@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import lib  # noqa: E402
 from pipeline import reconcile as rec  # noqa: E402
+from pipeline.contact import business_contacts  # noqa: E402
 from pipeline.gstin import is_personal, is_personal_pan, is_proprietorship, public_gstin  # noqa: E402
 
 BATCH = 1000
@@ -309,6 +310,12 @@ def load_companies(s) -> dict[str, dict]:
         # the full values stay in Postgres, where person-grade data lives. A null in the
         # map REMOVES the property, which clears values loaded before this rule existed.
         props["gstins"] = [public_gstin(g)] if g else []
+        # Only the firm's own lines reach the graph (decisions/0029): no contact at all
+        # for a proprietorship, a role mailbox but no phone where the firm's form is
+        # unknown. A sole trader's mobile and a named employee's address stay in Postgres.
+        props["phone"], props["email"] = business_contacts(
+            w.get("legal_name"), w.get("cin"), g, w.get("pan"),
+            w.get("phone"), w.get("email"))
         props.pop("gstin", None)
         if is_personal(g) or is_personal_pan(w.get("pan")):
             props["pan"] = None
