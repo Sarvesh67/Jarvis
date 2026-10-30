@@ -562,9 +562,15 @@ def load_site_claims(s) -> None:
 
 def load_supplies(s) -> None:
     """Company -[:SUPPLIES]-> Ingredient, observed on the supplier's own product pages."""
-    rows = q("""SELECT entity_id, inci_name, evidence, mode, tier, source_id,
+    # raw_supplies is the whole truth for this edge, and S14b rewrites it whenever the
+    # matching rules change. MERGE alone cannot retract, so a claim the current rules no
+    # longer support would survive in the graph; drop the edges and rebuild them.
+    s.run("MATCH ()-[e:SUPPLIES]->() "
+          "CALL (e) { DELETE e } IN TRANSACTIONS OF 1000 ROWS").consume()
+    rows = q("""SELECT entity_id, inci_name, matched_text, evidence, mode, tier, source_id,
                        cosmetics_relevant FROM raw_supplies""")
     payload = [{"company_id": r["entity_id"], "inci": r["inci_name"],
+                "matched": r["matched_text"],
                 "evidence": r["evidence"], "mode": r["mode"],
                 "cosmetics_relevant": r["cosmetics_relevant"],
                 "prov": pv(r["source_id"], r["tier"], 0.7)} for r in rows]
@@ -574,7 +580,7 @@ def load_supplies(s) -> None:
         MATCH (i:Ingredient {inci_name: row.inci})
         MERGE (c)-[e:SUPPLIES]->(i)
         SET e += row.prov, e.mode = row.mode, e.evidence = row.evidence,
-            e.cosmetics_relevant = row.cosmetics_relevant
+            e.matched = row.matched, e.cosmetics_relevant = row.cosmetics_relevant
     """, payload, "SUPPLIES")
 
 

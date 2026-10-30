@@ -164,10 +164,45 @@ def test_directory_website_junk_is_rejected():
 
 def test_ingredient_needles_exclude_ordinary_english():
     """Ambiguous single-token INCI names must never become supply-claim needles."""
+    from pipeline import materials
+    keys = materials.matching_keys()
+    for word in ("MILK", "SAND", "HONEY", "WATER", "TALC", "ROSE", "SOAP", "ALUMINIUM"):
+        assert word in materials.AMBIGUOUS
+        assert word not in keys, word
+
+
+def test_ingredient_synonyms_and_cas_resolve_to_one_inci():
+    """decisions/0018: the glycerin miss was a vocabulary miss."""
+    from pipeline import materials
+    for name in ("glycerin", "Glycerine", "glycerol", "56-81-5", "1,2,3-Propanetriol"):
+        assert materials.resolve_name(name) == "GLYCERIN", name
+    assert materials.resolve_name("nicotinamide") == "NIACINAMIDE"
+    assert materials.resolve_name("zinc sulphate") == "ZINC SULFATE"
+    assert materials.cas_ok("56-81-5") and not materials.cas_ok("56-81-6")
+    assert materials.resolve_name("water") is None
+
+
+def test_supply_claims_come_from_entries_not_mentions():
+    """decisions/0011: a catalogue entry is a claim; a name in a sentence is not."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "adapters"))
-    from s14b_supplies import AMBIGUOUS
-    for word in ("MILK", "SAND", "HONEY", "WATER", "TALC", "ROSE", "SOAP"):
-        assert word in AMBIGUOUS
+    from s14b_supplies import claims_on_page
+    from pipeline import materials
+    page = [
+        "Our Products", "Glycerine IP", "Cetyl Alcohol", "Sodium Benzoate",
+        "Range: zinc oxide, titanium dioxide and kaolin, supplied in 25 kg bags to the "
+        "cosmetics and ceramics trades across India.",
+        "We dye cotton with a mordant like tannic acid, as our grandparents did, and the "
+        "process has not changed since the founding of this company.",
+        "4-Nitro Anisole", "Formaldehyde Free Binder", "Rose Crystal ex Benzaldehyde",
+        "Castor Oil Sulphate", "Zinc Sulphate Heptahydrate",
+    ]
+    got = claims_on_page(page, materials.matching_keys(), materials.cas_index())
+    for kept in ("GLYCERIN", "CETYL ALCOHOL", "SODIUM BENZOATE", "ZINC OXIDE",
+                 "TITANIUM DIOXIDE", "KAOLIN", "ZINC SULFATE"):
+        assert kept in got, kept
+    for dropped in ("TANNIC ACID", "ANISOLE", "FORMALDEHYDE", "BENZALDEHYDE",
+                    "RICINUS COMMUNIS SEED OIL"):
+        assert dropped not in got, dropped
 
 
 def test_site_identifiers_need_the_company_name_on_the_page():

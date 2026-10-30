@@ -117,6 +117,11 @@ def resolve(kind: str, raw: str | None, vocab: dict, session) -> tuple[str | Non
                           q=q).single()
         if rec:
             return rec["n"], "exact"
+        # a CosIng synonym or CAS number names exactly one INCI entry, or it is not used
+        from pipeline import materials
+        syn = materials.resolve_name(raw)
+        if syn:
+            return syn, "synonym"
         rows = [r["n"] for r in session.run(
             "MATCH (i:Ingredient) WHERE i.inci_name STARTS WITH $p "
             "RETURN i.inci_name AS n LIMIT 200", p=q.split()[0][:6])]
@@ -212,17 +217,18 @@ def _named_ingredient(question: str, session) -> str | None:
     # decision 0011 already refuses to read them as ingredient mentions in a document,
     # and the same list applies here. Without it "what standard do I need for a face
     # CREAM" reads as a question about an ingredient.
-    import sys as _sys
-    _sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "adapters"))
-    from s14b_supplies import AMBIGUOUS
+    from pipeline import materials
     words = re.findall(r"[A-Za-z][A-Za-z'-]*", question.upper())
     grams = [" ".join(words[i:i + n])
              for n in (3, 2, 1) for i in range(len(words) - n + 1)]
     if not grams:
         return None
-    grams = [g for g in grams if g not in AMBIGUOUS]
+    grams = [g for g in grams if g not in materials.AMBIGUOUS]
     if not grams:
         return None
+    # a synonym ("glycerol", "zinc sulphate") names its INCI entry (decisions/0018)
+    keys = materials.matching_keys()
+    grams = list(dict.fromkeys(keys.get(g, g) for g in grams))
     rec = session.run(
         "MATCH (i:Ingredient) WHERE i.inci_name IN $g "
         "RETURN i.inci_name AS n ORDER BY size(i.inci_name) DESC LIMIT 1", g=grams).single()
@@ -262,12 +268,16 @@ def route_by_keyword(question: str, session=None) -> dict:
             "confidence": conf}
 
 
-def extract_params(question: str, template: dict, given: dict) -> dict:
+def extract_params(question: str, template: dict, given: dict, session=None) -> dict:
     """Fill declared params the model left empty, from the question text."""
     out = dict(given or {})
-    for name in (template.get("params") or {}):
+    for name, kind in (template.get("params") or {}).items():
         if out.get(name):
             continue
+        # Without this the keyword path answered "suppliers of glycerine" with every
+        # supplier of everything: the ingredient was named but never extracted.
+        if kind == "inci_name" and session is not None:
+            out[name] = _named_ingredient(question, session)
         m = re.search(r"\b(?:in|at|near|from)\s+([A-Z][\w .&-]{2,40})", question)
         if name in ("cluster",) and m:
             out[name] = m.group(1).strip()
@@ -323,7 +333,7 @@ def answer(question: str, *, explain: bool = False, use_model: bool = True,
             return out
         t = TEMPLATES[tid]
         vocab = _vocab(s)
-        raw_params = extract_params(question, t, decision.get("params"))
+        raw_params = extract_params(question, t, decision.get("params"), s)
         params, how = {}, {}
         for name, kind in (t.get("params") or {}).items():
             val, note = resolve(kind, raw_params.get(name), vocab, s)

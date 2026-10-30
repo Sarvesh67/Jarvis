@@ -33,23 +33,50 @@ acquisition:
     why: Re-derivable from landed S14 HTML without refetching. Cheap to replay.
 
 volume:
-  raw_rows: 804
+  raw_rows: 8868
   graph: {}
 
 coverage:
   claimed: null
-  obtained: 804
+  obtained: 8868
   pct: null
   note: >
-    764 SUPPLIES edges from 804 raw claims. Coverage is undefined — there is no
-    denominator for "ingredients a company could have mentioned".
+    8,868 SUPPLIES edges from 8,868 raw claims, across 486 suppliers; 6,542 of them are
+    for an ingredient with a cosmetic function (`cosmetics_relevant`, the slice the
+    templates show). 804 claims over 53 suppliers before 2026-10-29. Coverage is
+    undefined — there is no denominator for "ingredients a company could have
+    mentioned".
 
 defects:
   - >
-    Matched only on unambiguous INCI names. "MILK", "SAND", "HONEY" and "TALC" are real
-    INCI names and also ordinary English; they are excluded rather than guessed at.
-    A page must yield >= 3 distinct ingredients before any of them is believed.
-    See decisions/0011.
+    Matched only on unambiguous keys: INCI names, CosIng's own synonyms ("Glycerine",
+    "glycerol") and check-digit-valid CAS numbers, each resolving to exactly one INCI name
+    (pipeline/materials.py, decisions/0011 as amended and 0018). "MILK", "SAND", "HONEY"
+    and "TALC" are real INCI names and also ordinary English; they are excluded rather
+    than guessed at. A one-word name counts only where it stands alone ("GLYCERIN SOAP
+    BASE" is not glycerin). A SITE must yield >= 3 distinct ingredients across its landed
+    pages, and read as a catalogue rather than a storefront, before any is believed.
+  - >
+    A name counts only as a catalogue ENTRY: an element of its own (list item, cell,
+    heading, link) or listed beside another substance or a CAS number. Not where it sits in
+    a sentence ("a mordant like tannic acid"), is negated or named as a source ("no
+    paraben", "ex benzaldehyde"), or where a prefix or suffix makes it another substance
+    ("4-nitro anisole", "glycerol hydroxystearate"). Measured on two uniform samples of 50
+    cosmetics-relevant claims after these rules: about 83% are a real offer of that
+    substance (17 of 100 wrong, roughly ±8). Before them, about 60% of claims on smaller
+    sites were right (decisions/0011, amended 2026-10-30). What remains wrong
+    is mostly composition and specification tables ("fatty-acid composition: palmitic
+    acid 1-1.5%"), "raw material for ..." phrasing, and double salts ("nickel ammonium
+    sulphate"). Every row carries its evidence window; read it before acting.
+  - >
+    The catalogue-vs-storefront test is keyword-based and lets some brand sites through:
+    a herbal brand listing "GLYCERINE CREAM" next to its body oils reads as a supplier
+    because it also lists raw oils. Since 2026-10-30 a site using four or more distinct
+    finished-goods phrases ("paraben-free", "for all skin types", "private label",
+    "launch your brand") is dropped as a brand or private-label house; 6 were. One such
+    phrase proves nothing ("contract manufacturing" is ordinary custom-synthesis
+    language), so sites with fewer still get through. Treat every row as a lead, as the
+    tier says.
 
 feeds:
   nodes: [Ingredient]
@@ -59,6 +86,10 @@ do_not:
   - >
     Tier 3 is observed, not declared and not regulated. A SUPPLIES edge means the words
     co-occurred on a page the company controls — treat it as a lead, not as inventory.
+  - >
+    Do not show `matched` (the synonym or CAS that was found) as a fact about the
+    ingredient. It is how the INCI name was found on that page, nothing more
+    (decisions/0018).
 
 # Store keys this card is measured against by `make catalog-check`.
 # null = this source has no row there, and that field is not checked.

@@ -288,6 +288,19 @@ def ngrams(toks: list[str], needles: set[str], max_n: int = MAX_NGRAM) -> dict[s
     inside it are not matched again.
     """
     hits: dict[str, int] = {}
+    for i, _k, cand in ngram_spans(toks, needles, max_n):
+        hits.setdefault(cand, i)
+    return hits
+
+
+def ngram_spans(toks: list[str], needles: set[str],
+                max_n: int = MAX_NGRAM) -> list[tuple[int, int, str]]:
+    """Every (start, length, name) occurrence, longest match first, spans never overlapping.
+
+    `ngrams` keeps the first of each; a caller that needs to judge each occurrence on
+    its surroundings (S14b: is this name in a list or in a sentence?) needs them all.
+    """
+    spans: list[tuple[int, int, str]] = []
     consumed: set[int] = set()
     n = len(toks)
     for k in range(max_n, 0, -1):
@@ -298,9 +311,9 @@ def ngrams(toks: list[str], needles: set[str], max_n: int = MAX_NGRAM) -> dict[s
             if len(cand) > 60:
                 continue
             if cand in needles:
-                hits.setdefault(cand, i)
+                spans.append((i, k, cand))
                 consumed.update(range(i, i + k))
-    return hits
+    return spans
 
 
 def embed(texts: list[str], *, model: str = "embed", batch: int = 32) -> list[list[float]]:

@@ -131,19 +131,14 @@ def site_corpus(limit: int) -> list[dict]:
     return docs
 
 
-def linker_vocab() -> tuple[set[str], dict[str, str]]:
-    """Ingredient and category needles, filtered the same way S14b filters its own."""
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "adapters"))
-    from s14b_supplies import AMBIGUOUS, MIN_LEN_MULTI, MIN_LEN_SINGLE
+def linker_vocab() -> tuple[dict[str, str], dict[str, str]]:
+    """Ingredient keys (-> INCI name) and category needles.
 
-    ing = set()
-    for r in q("SELECT DISTINCT inci_name FROM raw_ingredient WHERE source_id='s06_cosing'"):
-        n = r["inci_name"]
-        if not n or n in AMBIGUOUS or "(" in n or len(n) > 60:
-            continue
-        if len(n) < (MIN_LEN_MULTI if " " in n else MIN_LEN_SINGLE):
-            continue
-        ing.add(n)
+    The ingredient keys are pipeline/materials.matching_keys(), the same set S14b and
+    the router use (decisions/0018), so "glycerol" in a rule links to GLYCERIN.
+    """
+    from pipeline import materials
+    ing = materials.matching_keys()
     # category names live on the ProductCategory nodes (the regulator vocabulary from S5)
     cats: dict[str, str] = {}
     drv = lib.neo4j_driver()
@@ -176,6 +171,7 @@ def main() -> int:
         return 0
 
     ing_needles, cat_needles = linker_vocab()
+    ing_key_set = set(ing_needles)
     print(f"  linker vocabulary: {len(ing_needles)} ingredients, {len(cat_needles)} categories")
 
     for d in docs:
@@ -203,7 +199,7 @@ def main() -> int:
     per_doc_unlinked: dict[str, int] = defaultdict(int)
     for d in docs:
         toks = lib.tokens_of(d["text"])
-        hits_i = lib.ngrams(toks, ing_needles)
+        hits_i = {ing_needles[k] for k in lib.ngrams(toks, ing_key_set)}
         hits_c = lib.ngrams(toks, set(cat_needles))
         for inci in hits_i:
             ing_edges.append({"chunk_id": d["chunk_id"], "inci": inci,

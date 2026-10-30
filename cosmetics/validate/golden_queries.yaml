@@ -338,3 +338,14 @@
     MATCH (l:Licence) WHERE l.regime = 'cosmetics'
     RETURN l.form_type AS form, l.number AS number, l.sla_state AS state
   expect_min: 1
+
+- id: glycerin_has_suppliers
+  q: "Who supplies glycerin? (asked 2026-10-08 and answered with nothing)"
+  shape: Company-[:SUPPLIES]->Ingredient
+  cypher: |
+    MATCH (c:Company)-[e:SUPPLIES]->(i:Ingredient {inci_name: 'GLYCERIN'})
+    RETURN c.legal_name AS supplier, e._tier AS tier, e.matched AS matched_on
+  expect_min: 1
+  coverage_gap: >
+    GLYCERIN was excluded as "ambiguous" and the matcher knew no synonym, so "Glycerine
+    IP" on a catalogue page matched nothing. decisions/0018. Tier 3: a lead, not stock.
