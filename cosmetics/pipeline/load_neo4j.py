@@ -291,9 +291,18 @@ def load_companies(s) -> dict[str, dict]:
            JOIN crosswalk x ON x.source_id=r.source_id AND x.source_key=r.source_key
             AND x.entity_type='company' AND x.superseded_by IS NULL
            WHERE r.payload->>'udyam_registered' = 'true'""")}
+    # Where the firm is, as a point, so supplier questions rank by distance rather than
+    # by cluster membership (decisions/0028). The pincode's GeoNames centroid, which can
+    # sit 10-20 km from the town (Baddi lands ~17 km west): enough to rank a sourcing
+    # shortlist, never enough to quote a distance as fact, and labelled as such.
+    centroid = {r["pincode"]: (r["lat"], r["lon"]) for r in q(
+        "SELECT pincode, lat, lon FROM ref_pincode WHERE lat IS NOT NULL")}
     rows = []
     for eid, w in winners.items():
         props = {k: v for k, v in w.items() if k != "company_id" and v is not None}
+        ll = centroid.get(w.get("pincode") or "")
+        props["lat"], props["lon"] = ll if ll else (None, None)
+        props["location_basis"] = "pincode_centroid" if ll else None
         g = w.get("gstin")
         # Neo4j is readable by the agent's own Cypher, so it holds only what may be shown.
         # A GSTIN on a personal PAN (proprietorship, HUF) is masked and the PAN dropped;
@@ -311,7 +320,10 @@ def load_companies(s) -> dict[str, dict]:
     run(s, """
         UNWIND $rows AS row
         MERGE (c:Company {company_id: row.company_id})
-        SET c += row.props, c.updated_at = datetime()
+        SET c += row.props, c.updated_at = datetime(),
+            c.location = CASE WHEN row.props.lat IS NULL THEN null
+                              ELSE point({latitude: row.props.lat,
+                                          longitude: row.props.lon}) END
     """, rows, "Company")
     return winners
 

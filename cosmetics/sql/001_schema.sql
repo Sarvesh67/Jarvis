@@ -149,6 +149,11 @@ CREATE TABLE IF NOT EXISTS ref_pincode (
   pincode TEXT PRIMARY KEY,
   district TEXT, state TEXT, place TEXT
 );
+-- Centroid of every GeoNames place listed under the pincode (decisions/0028).
+ALTER TABLE ref_pincode ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION;
+ALTER TABLE ref_pincode ADD COLUMN IF NOT EXISTS lon DOUBLE PRECISION;
+-- Every GeoNames place under the pincode, so "near Vapi" resolves (Vapi is not first).
+ALTER TABLE ref_pincode ADD COLUMN IF NOT EXISTS places TEXT[];
 
 -- Trust levels, recomputed nightly (Stage 8). Never ingested.
 CREATE TABLE IF NOT EXISTS trust_state (

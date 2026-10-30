@@ -28,6 +28,7 @@ def main() -> int:
     lib.land(SOURCE, URL, r.content, suffix=".zip", key="geonames_IN")
 
     rows: dict[str, dict] = {}
+    coords: dict[str, list[tuple[float, float]]] = {}
     with zipfile.ZipFile(io.BytesIO(r.content)) as z:
         with z.open("IN.txt") as fh:
             for rec in csv.reader(io.TextIOWrapper(fh, "utf-8"), delimiter="\t"):
@@ -39,6 +40,18 @@ def main() -> int:
                 # first record for a pincode wins; GeoNames lists several places per pin
                 rows.setdefault(pin, {"pincode": pin, "district": district or None,
                                       "state": state or None, "place": place or None})
+                # ...but every place name is kept, and the location is the centroid of
+                # all of them (decisions/0028)
+                if place:
+                    rows[pin].setdefault("places", []).append(place)
+                try:
+                    coords.setdefault(pin, []).append((float(rec[9]), float(rec[10])))
+                except (IndexError, ValueError):
+                    pass
+    for pin, row in rows.items():
+        pts = coords.get(pin)
+        row["lat"] = round(sum(p[0] for p in pts) / len(pts), 5) if pts else None
+        row["lon"] = round(sum(p[1] for p in pts) / len(pts), 5) if pts else None
     n = lib.upsert("ref_pincode", list(rows.values()), "pincode")
     print(f"reference: {n} pincodes loaded")
 

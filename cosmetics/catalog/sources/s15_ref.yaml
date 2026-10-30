@@ -6,13 +6,16 @@ status: live
 jurisdiction: IN
 
 what_it_is: >
-  A plain lookup table: pincode -> district -> state. Unglamorous and load-bearing. Every
-  address in every other source is a free-text string; this is what turns it into a place,
-  and therefore what makes clusters, proximity and "who is near whom" answerable at all.
+  A plain lookup table: pincode -> district -> state, and since 2026-10-29 the pincode's
+  location (the centroid of every GeoNames place listed under it) and all those place
+  names. Unglamorous and load-bearing. Every address in every other source is a free-text
+  string; this is what turns it into a place, and therefore what makes clusters,
+  proximity and "who is near whom" answerable at all (decisions/0028).
 
 what_it_answers:
   - "Where is this pincode, and which district and state is it in?"
   - "Which cluster does this address fall in?"
+  - "Which suppliers are nearest to this pincode, district or town?"
 
 publisher:
   org: GeoNames
@@ -23,10 +26,10 @@ acquisition:
   adapter: adapters/s15_reference.py
   method: bulk_file
   landed_at: raw/s15_ref/
-  payloads: 1
-  bytes: 1742997
+  payloads: 2
+  bytes: 3485781
   first_seen: 2026-09-05
-  last_seen: 2026-09-05
+  last_seen: 2026-10-29
   refresh:
     cadence: annual
     why: Pincodes are stable; district boundaries occasionally split.
@@ -44,13 +47,19 @@ coverage:
 
 defects:
   - >
-    `ref_pincode` currently reports 0 rows in Postgres — the reference is consumed at
-    normalize time rather than persisted. Verify before relying on the table directly;
-    read through ontology/cluster_map.yaml instead.
+    A pincode's location is the centroid of its GeoNames places, which can sit 10-20 km
+    from the town people mean (Baddi lands ~17 km west of the industrial area). Good for
+    ranking a shortlist, never for quoting a distance as fact.
+  - >
+    GeoNames districts are partly pre-bifurcation: Dahej is filed under Vadodara, not
+    Bharuch, and neighbouring pincodes of one town can sit in two districts. Place lookup
+    treats candidates within 50 km of each other as one place, and refuses a name that is
+    genuinely several places ("Tarapur": Palghar, Anand, Surat, Cachar).
 
 feeds:
   nodes: [Cluster]
   edges: [LOCATED_IN]
+  properties: [Company.location, Company.lat, Company.lon]
 
 do_not:
   - >

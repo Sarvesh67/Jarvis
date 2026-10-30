@@ -154,6 +154,59 @@
            e.mode AS mode, e.evidence AS evidence, c.trust_level AS trust
     ORDER BY trust DESC LIMIT $limit
 
+- id: ingredient_suppliers_near
+  flow: buyer
+  intent: >
+    Nearest Indian suppliers of a named ingredient or raw material to a place (a city,
+    district or 6-digit pincode), ranked by straight-line distance
+  examples:
+    - "who supplies glycerol near 380001"
+    - "nearest castor oil suppliers to Vapi"
+    - "glycerin suppliers close to Dahej"
+  params: {ingredient: inci_name, near: place}
+  tier_floor: 3
+  note: >
+    Supply claims are tier 3: the words appeared on the supplier's own catalogue page
+    (decisions/0011, 0019). Distance is between GeoNames pincode centroids, which can be
+    10-20 km off for Indian pincodes; it ranks, it is not a delivery promise. A supplier with no pincode on record cannot be
+    placed and is not listed (decisions/0028).
+  cypher: |
+    MATCH (c:Company)-[e:SUPPLIES]->(i:Ingredient)
+    WHERE ($ingredient IS NULL OR i.inci_name = $ingredient) AND c.location IS NOT NULL
+    WITH c, e, i, point.distance(c.location,
+                                 point({latitude: $near.lat, longitude: $near.lon})) AS m
+    RETURN i.inci_name AS ingredient, c.legal_name AS supplier, c.district AS district,
+           c.state AS state, CASE WHEN m IS NULL THEN null ELSE round(m / 1000.0) END AS km,
+           c.website AS website, e.matched AS matched_on, e.mode AS mode,
+           e.evidence AS evidence, c.trust_level AS trust
+    ORDER BY km, trust DESC LIMIT $limit
+
+- id: packaging_suppliers_near
+  flow: buyer
+  intent: >
+    Nearest packaging converters (bottles, jars, tubes, cans, cartons, labels) to a place
+    (a city, district or 6-digit pincode), ranked by straight-line distance
+  examples:
+    - "bottle suppliers near Baddi"
+    - "nearest carton makers to 421302"
+    - "glass bottle manufacturers near Vapi"
+  params: {component: packaging_type, near: place}
+  tier_floor: 1
+  note: >
+    Udyam registry activity (tier 1) typed by its NIC code's own registry text
+    (decisions/0027): this firm registered packaging manufacture of that kind. It says
+    nothing about capacity, MOQ or fill volume. Distance is between GeoNames pincode
+    centroids, which can be 10-20 km off; it ranks, it does not measure.
+  cypher: |
+    MATCH (c:Company)-[:SUPPLIES_PACKAGING]->(p:PackagingComponent)
+    WHERE ($component IS NULL OR p.type = $component) AND c.location IS NOT NULL
+    WITH c, p, point.distance(c.location,
+                              point({latitude: $near.lat, longitude: $near.lon})) AS m
+    RETURN c.legal_name AS company, p.type AS component, c.district AS district,
+           c.state AS state, CASE WHEN m IS NULL THEN null ELSE round(m / 1000.0) END AS km,
+           c.trust_level AS trust
+    ORDER BY km, trust DESC, company LIMIT $limit
+
 - id: ingredient_restriction_india
   flow: compliance
   intent: Is an ingredient restricted or prohibited in INDIA

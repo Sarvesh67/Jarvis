@@ -116,6 +116,8 @@ def resolve(kind: str, raw: str | None, vocab: dict, session) -> tuple[str | Non
     """Free text -> a value that exists in the graph. Returns (value, how_it_resolved)."""
     if not raw:
         return None, None
+    if kind == "place":
+        return _place(raw)
     q = raw.strip().upper()
     if kind == "inci_name":
         rec = session.run("MATCH (i:Ingredient) WHERE i.inci_name = $q RETURN i.inci_name AS n",
@@ -160,6 +162,64 @@ def resolve(kind: str, raw: str | None, vocab: dict, session) -> tuple[str | Non
 
 
 # --------------------------------------------------------------------- routing
+
+def _km(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Great-circle distance in km (haversine)."""
+    import math
+    la1, lo1, la2, lo2 = map(math.radians, (*a, *b))
+    h = (math.sin((la2 - la1) / 2) ** 2
+         + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2)
+    return 6371.0 * 2 * math.asin(math.sqrt(h))
+
+
+def _one_place(hits: list) -> bool:
+    """GeoNames files neighbouring pincodes of one town under two districts (Baddi,
+    Ankleshwar). Candidates within 50 km of each other are one place, not a choice."""
+    pts = [(h[1], h[2]) for h in hits]
+    return all(_km(a, b) <= 50 for a in pts for b in pts)
+
+
+def _place(raw: str) -> tuple[dict | None, str]:
+    """A pincode, district or town name -> {lat, lon, label}, from the GeoNames reference.
+
+    A name that is several places in different districts ("Tarapur" is in Palghar,
+    Anand, Surat and Cachar) is NOT averaged into a point in the middle of nowhere. It
+    resolves only if exactly one of those districts holds firms in the graph's clusters;
+    otherwise it is reported as ambiguous and the caller should ask for a pincode.
+    """
+    q = re.sub(r"\s+", " ", raw.strip())
+    with lib.pg() as c, c.cursor() as cur:
+        if re.fullmatch(r"\d{6}", q):
+            cur.execute("SELECT lat, lon, district FROM ref_pincode WHERE pincode=%s", (q,))
+            r = cur.fetchone()
+            return ({"lat": r[0], "lon": r[1], "label": f"{q} ({r[2]})"}, "pincode") \
+                if r and r[0] is not None else (None, "unresolved")
+        for how, sql in (
+                ("district", "SELECT district, avg(lat), avg(lon) FROM ref_pincode "
+                             "WHERE upper(district) = upper(%s) AND lat IS NOT NULL "
+                             "GROUP BY district"),
+                ("place", "SELECT district, avg(lat), avg(lon) FROM ref_pincode "
+                          "WHERE lat IS NOT NULL AND EXISTS (SELECT 1 FROM unnest(places) pl "
+                          "WHERE upper(pl) = upper(%s) OR upper(pl) LIKE upper(%s) || ' %%') "
+                          "GROUP BY district")):
+            cur.execute(sql, (q,) if how == "district" else (q, q))
+            hits = cur.fetchall()
+            if len(hits) > 1 and _one_place(hits):
+                lat = sum(h[1] for h in hits) / len(hits)
+                lon = sum(h[2] for h in hits) / len(hits)
+                return {"lat": lat, "lon": lon, "label": q}, how
+            if len(hits) > 1:
+                cur.execute("SELECT DISTINCT upper(r.district) FROM raw_company r "
+                            "WHERE r.cluster_id IS NOT NULL AND r.district IS NOT NULL")
+                clustered = {d for (d,) in cur.fetchall()}
+                hits = [h for h in hits if (h[0] or "").upper() in clustered]
+            if len(hits) == 1:
+                d, lat, lon = hits[0]
+                return {"lat": lat, "lon": lon, "label": f"{q} ({d})"}, how
+            if len(hits) > 1:
+                return None, f"ambiguous: {len(hits)} districts — give a pincode"
+    return None, "unresolved"
+
 def route_with_model(question: str) -> dict | None:
     catalogue = [{"id": t["id"], "intent": t["intent"],
                   "params": list((t.get("params") or {}).keys()),
@@ -169,8 +229,10 @@ def route_with_model(question: str) -> dict | None:
         "Reply with JSON only: {\"template\": \"<id>\", \"params\": {...}, "
         "\"confidence\": 0.0-1.0}\n"
         "Use only parameter names the chosen template declares. Copy parameter values "
-        "verbatim from the question; do not translate them into codes. If nothing fits, "
-        "reply {\"template\": null}.\n\n"
+        "verbatim from the question; do not translate them into codes. A place after "
+        "'near' or 'around' means the area, not the district boundary: fill `near` if the "
+        "template declares it, else `cluster`, and `district` only when the question "
+        "names a district. If nothing fits, reply {\"template\": null}.\n\n"
         f"TEMPLATES:\n{json.dumps(catalogue, indent=1)}\n\nQUESTION: {question}"
     )
     key = lib.ENV.get("LITELLM_MASTER_KEY", "")
@@ -292,6 +354,11 @@ def extract_params(question: str, template: dict, given: dict, session=None) -> 
         m = re.search(r"\b(?:in|at|near|from)\s+([A-Z][\w .&-]{2,40})", question)
         if name in ("cluster",) and m:
             out[name] = m.group(1).strip()
+        if kind == "place":
+            near = re.search(r"\b(?:near|around|close to|nearest to|to|in|at)\s+"
+                             r"(\d{6}|[A-Za-z][A-Za-z .-]{2,30}?)\s*(?:[?.,]|$)", question)
+            if near:
+                out[name] = near.group(1).strip()
     return out
 
 
@@ -432,6 +499,14 @@ def coverage_note(tid: str, session=None) -> str:
             "cluster MSMEs have no website — so absence here is missing evidence, not "
             "absence of contract manufacturers. Ask `cosmetics_firms_in_cluster` for the "
             "firms the registry shows in that cluster.",
+        "packaging_suppliers_near":
+            "Packaging converters come from Udyam registry activity codes over the swept "
+            "pincodes only; a firm with no pincode cannot be placed. A coverage gap, not "
+            "an absence of converters.",
+        "ingredient_suppliers_near":
+            "Supply claims come from supplier catalogue pages crawled so far, and a "
+            "supplier with no pincode on record cannot be placed. Absence here is "
+            "missing evidence, not absence of suppliers.",
     }.get(tid, "No rows. This is a coverage gap, not an assertion that none exist.")
 
 
