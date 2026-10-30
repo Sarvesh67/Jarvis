@@ -461,6 +461,26 @@ Done and verified: 34/34 golden queries, 214/214 tests and 43/43 demo questions 
   40,962 edges. About 18,000 firms now have no in-scope code. They stay in the graph
   until Phase 1's promotion rule.
 
+#### Phase 0 commits, and how to revert each
+
+Committed 2026-10-30 on `cosmetics-graph`, one commit per piece of work. Each recipe was
+tested in a scratch worktree: the reverts apply cleanly and the non-graph tests pass.
+Revert newest first. Code reverts do not touch data: run the "then" step to bring the
+stores back in line.
+
+| Commit | What | Revert with | Then |
+|---|---|---|---|
+| `78b0b88` | Plan, decisions 0017-0026, 0006 amendment | `git revert 78b0b88` | nothing |
+| `e7c6ed8` | National Udyam category key; batched deletes | `git revert e7c6ed8` | `make derive` |
+| `dc593c6` | Website as resolver contact evidence (0007) | `git revert dc593c6` | `make pipeline`. Existing merges stay in `crosswalk`, which is append-only; supersede them via `make review` if needed |
+| `00ff8ad` | One material vocabulary; S14b entry rules (0011, 0018) | `git revert 20efe3e 107a92a 8bb4423 00ff8ad` (the later three use it) | `make ingest SOURCE=s14b`, then `make load derive trust validate` |
+| `8bb4423` | S14 follows catalogue links | `git revert 8bb4423` | nothing. Landed pages stay in `raw/` (append-only), and S14b keeps reading them |
+| `1c9e8d2` | Udyam packaging typed by registry text (0027) | `git revert 1c9e8d2` | `make ingest SOURCE=s17b ARGS=--retype`, then `make load derive` |
+| `107a92a` | Distance ranking (0028) | `git revert 20efe3e 107a92a` | `make load`. The `ref_pincode` lat/lon columns can stay |
+| `a0e3fe8` | Demo UI: vendor cards, ladder, compare, drawer | `git revert 20efe3e a0e3fe8` | `launchctl kickstart -k gui/$(id -u)/com.lattix.demo` |
+| `20efe3e` | Business contacts only (0029) | `git revert 20efe3e` | `make load`, then restart the demo as above |
+| `c6063dd` | Catalog snapshot 2026-10-30 | `git revert c6063dd` | `make catalog` |
+
 Not done:
 
 - **Stage 7 re-index.** The document linker now uses the shared vocabulary, but
