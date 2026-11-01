@@ -640,47 +640,58 @@ async function ask(question){
   inner.appendChild(aturn);
   scrollDown();
 
+  // One answer may arrive over several connections. If the stream drops mid-answer (a
+  // tunnel reconnect, a phone switching apps), the server keeps computing and the page
+  // resumes from the last event it saw (app.py, `_follow`). Browsers report a dropped
+  // request in their own words — Safari's is "Load failed" — so none of that reaches
+  // the screen: only a failure with no answer left to resume is shown, in plain words.
+  const st = {job: null, seq: 0, done: null};
+  const onEvent = ev => {
+    if (ev.seq) st.seq = ev.seq;
+    if (ev.type === "job") st.job = ev.id;
+    else if (ev.type === "stage") { stage.textContent = ev.stage; scrollDown(); }
+    else if (ev.type === "error") throw Object.assign(new Error(ev.message), {fatal: true});
+    else if (ev.type === "done") st.done = ev;
+  };
   try {
-    const r = await fetch("/api/ask", {
-      method: "POST",
-      headers: {"content-type": "application/json"},
-      cache: "no-store",
-      body: JSON.stringify({question, history: HISTORY.slice(-8)})
-    });
-    if (!r.ok) {
-      let m = "Something went wrong.";
-      try { m = (await r.json()).detail || m; } catch (e) {}
-      throw new Error(m);
-    }
-
-    // Server-sent events, read off the body stream. Each `data:` line is one stage or
-    // the finished turn.
-    const reader = r.body.getReader();
-    const dec = new TextDecoder();
-    let buf = "", done = null;
-    while (true) {
-      const {value, done: fin} = await reader.read();
-      if (fin) break;
-      buf += dec.decode(value, {stream: true});
-      const parts = buf.split("\n\n");
-      buf = parts.pop();
-      for (const p of parts) {
-        const line = p.split("\n").find(l => l.startsWith("data: "));
-        if (!line) continue;
-        const ev = JSON.parse(line.slice(6));
-        if (ev.type === "stage") { stage.textContent = ev.stage; scrollDown(); }
-        else if (ev.type === "error") throw new Error(ev.message);
-        else if (ev.type === "done") done = ev;
+    for (let attempt = 0; !st.done; attempt++) {
+      if (attempt > 0) {
+        if (attempt > 5 || (!st.job && attempt > 1)) throw new Error(DROPPED);
+        stage.textContent = "Connection dropped — reconnecting…";
+        await whenVisible();
+        await new Promise(r => setTimeout(r, Math.min(1000 * 2 ** (attempt - 1), 8000)));
       }
+      let r;
+      try {
+        r = st.job
+          ? await fetch(`/api/ask/${st.job}?after=${st.seq}`, {cache: "no-store"})
+          : await fetch("/api/ask", {
+              method: "POST",
+              headers: {"content-type": "application/json"},
+              cache: "no-store",
+              body: JSON.stringify({question, history: HISTORY.slice(-8)})
+            });
+      } catch (e) { continue; }                       // the network, not the answer
+      if (!r.ok) {
+        let m = "Something went wrong.";
+        try { m = (await r.json()).detail || m; } catch (e) {}
+        throw Object.assign(new Error(m), {fatal: true});
+      }
+      await readEvents(r, onEvent);
     }
-    if (!done) throw new Error("The answer did not arrive. Try again.");
 
     bub.replaceChildren();
-    render(bub, done);
+    render(bub, st.done);
     HISTORY.push({role: "user", content: question});
-    HISTORY.push({role: "assistant", content: done.reply});
+    HISTORY.push({role: "assistant", content: st.done.reply});
   } catch (err) {
-    bub.replaceChildren(el("div", "err", String(err.message || err)));
+    const box = el("div", "err", String(err.message || err));
+    bub.replaceChildren(box);
+    if (!err.fatal || /expired/.test(err.message)) {
+      const again = btn("btn", "Try again", null, () => { aturn.remove(); uturn.remove(); ask(question); });
+      again.style.marginTop = "10px";
+      bub.appendChild(again);
+    }
   } finally {
     go.disabled = false;
     // A vendor answer is read from its top, not its bottom: land on the question.
@@ -688,6 +699,38 @@ async function ask(question){
     else scrollDown();
     ta.focus();
   }
+}
+
+const DROPPED = "The connection dropped before the answer arrived.";
+
+// Server-sent events off a response body. A dropped connection ends the read quietly;
+// the caller decides whether the answer can be resumed.
+async function readEvents(r, onEvent){
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  while (true) {
+    let chunk;
+    try { chunk = await reader.read(); } catch (e) { return; }
+    if (chunk.done) return;
+    buf += dec.decode(chunk.value, {stream: true});
+    const parts = buf.split("\n\n");
+    buf = parts.pop();
+    for (const p of parts) {
+      const line = p.split("\n").find(l => l.startsWith("data: "));
+      if (line) onEvent(JSON.parse(line.slice(6)));
+    }
+  }
+}
+
+// A phone that switched apps cannot reconnect until the page is in front again.
+function whenVisible(){
+  if (document.visibilityState === "visible") return Promise.resolve();
+  return new Promise(res => document.addEventListener("visibilitychange", function h(){
+    if (document.visibilityState === "visible") {
+      document.removeEventListener("visibilitychange", h); res();
+    }
+  }));
 }
 
 function render(bub, d){

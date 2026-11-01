@@ -296,6 +296,8 @@ investors undoes that.
 | What happens | Do |
 |---|---|
 | An answer takes over 25 seconds | Narrate the stages. That's normal for the first, multi-part question |
+| "Connection dropped — reconnecting…" | Keep talking. The answer keeps computing on the server, and the page picks it up where it stopped |
+| "The connection dropped before the answer arrived" | Click **Try again** under it |
 | "That is more than 20 questions in a minute" | Wait 60 seconds; talk through the last answer meanwhile |
 | "The demo has answered its budget of questions for today" | Switch to the recorded video. The cap (2,000 a day) resets at midnight |
 | "The graph did not answer", or the page hangs | The model gateway is down. Switch to the video. (Gap: the demo has no model-free fallback yet. It's in IDEAS.md) |

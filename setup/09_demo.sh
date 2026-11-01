@@ -87,6 +87,10 @@ mkdir -p "$HOME/.cloudflared"
 cat > "$HOME/.cloudflared/config.yml" <<YAML
 tunnel: $ID
 credentials-file: $HOME/.cloudflared/$ID.json
+# HTTP/2 over TCP, not QUIC. The QUIC links timed out ("datagram manager error: no
+# recent network activity") several times a day; each reconnect dropped any answer
+# mid-stream, and Safari showed it as "Load failed".
+protocol: http2
 
 ingress:
   - hostname: $HOSTNAME_

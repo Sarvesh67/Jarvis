@@ -28,7 +28,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import time
+import uuid
 from collections import defaultdict, deque
 from pathlib import Path
 
@@ -189,24 +191,91 @@ async def ask(request: Request):
     if len(question) > MAX_QUESTION_CHARS:
         raise HTTPException(400, f"Keep it under {MAX_QUESTION_CHARS} characters.")
     _meter(_client_ip(request))
+    job = _start(question, history)
+    return _stream(job, 0)
 
-    def events():
+
+# An answer takes 10-25 seconds, and the connection carrying it can drop: the tunnel's
+# QUIC links to Cloudflare time out and reconnect several times a day, and a phone that
+# switches apps mid-answer kills its request. Computed inside the response, the answer
+# died with the connection and the page printed the browser's own error ("Load failed").
+# So the answer runs in its own thread, its events are kept, numbered, for JOB_TTL
+# seconds, and a page that loses the stream resumes it at /api/ask/{job}?after=N.
+JOB_TTL = 600
+KEEPALIVE_S = 10
+_JOBS: dict[str, dict] = {}
+_JOBS_LOCK = threading.Lock()
+
+
+def _start(question: str, history: list) -> dict:
+    now = time.monotonic()
+    with _JOBS_LOCK:
+        for k in [k for k, j in _JOBS.items() if now - j["t"] > JOB_TTL]:
+            del _JOBS[k]
+        job = {"id": uuid.uuid4().hex, "t": now, "events": [], "done": False,
+               "cond": threading.Condition()}
+        _JOBS[job["id"]] = job
+
+    def run():
         from serve import agent
+
+        def put(ev):
+            with job["cond"]:
+                job["events"].append(ev)
+                job["cond"].notify_all()
         try:
             for ev in agent.stream(question, history):
                 if ev["type"] == "done":
-                    yield _sse({"type": "done",
-                                "reply": ev["reply"],
-                                "asked_at": time.strftime("%H:%M:%S"),
-                                "evidence": [_evidence_view(e) for e in ev["evidence"]]})
+                    put({"type": "done", "reply": ev["reply"],
+                         "asked_at": time.strftime("%H:%M:%S"),
+                         "evidence": [_evidence_view(e) for e in ev["evidence"]]})
                 else:
-                    yield _sse(ev)
+                    put(ev)
         except Exception as e:                                # pragma: no cover
-            yield _sse({"type": "error", "message": f"The graph did not answer: {e}"})
+            put({"type": "error", "message": f"The graph did not answer: {e}"})
+        finally:
+            with job["cond"]:
+                job["done"] = True
+                job["cond"].notify_all()
 
-    return StreamingResponse(events(), media_type="text/event-stream",
+    threading.Thread(target=run, name=f"ask-{job['id'][:8]}", daemon=True).start()
+    return job
+
+
+def _follow(job: dict, after: int):
+    """Every event from number `after` on, then the rest as they arrive. A comment line
+    every KEEPALIVE_S seconds keeps a quiet connection from being idled out while the
+    model thinks."""
+    yield _sse({"type": "job", "id": job["id"]})
+    i = after
+    while True:
+        with job["cond"]:
+            if i >= len(job["events"]) and not job["done"]:
+                job["cond"].wait(timeout=KEEPALIVE_S)
+            fresh, finished = job["events"][i:], job["done"]
+        for ev in fresh:
+            i += 1
+            yield _sse({**ev, "seq": i})
+        if finished and i >= len(job["events"]):
+            return
+        if not fresh:
+            yield ": keepalive\n\n"
+
+
+def _stream(job: dict, after: int) -> StreamingResponse:
+    return StreamingResponse(_follow(job, after), media_type="text/event-stream",
                              headers={"X-Accel-Buffering": "no",
                                       "Cache-Control": "no-store"})
+
+
+@app.get("/api/ask/{job_id}")
+def resume(job_id: str, after: int = 0):
+    """Pick an answer up where a dropped connection left it. Not metered: the question
+    was already counted when it was asked."""
+    job = _JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(404, "That answer has expired. Ask again.")
+    return _stream(job, max(0, after))
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -207,6 +207,7 @@ card on the spot.
 | Stage labels were function names | "Running ingredient restriction india" | Plain labels per query, e.g. "Checking the Cosmetics Rules 2020", with a test that every template has one |
 | Distance not shown; the table showed evidence text as columns | km invisible; a wall of text in table view | "· 22 km" on cards and in compare; internal columns hidden in the table |
 | Price questions pointed buyers to IndiaMART | Sent the buyer to a competitor | Quote-first wording in the skill |
+| "Load failed" on the public link (fixed 2026-11-01) | The tunnel's QUIC links timed out and reconnected several times a day, and a phone switching apps also kills a request. The answer, computed inside the response, died with it, and the page printed Safari's raw error | Tunnel runs over HTTP/2. Answers run in their own thread and stay resumable for 10 minutes (`/api/ask/{job}?after=N`). The page reconnects by itself and shows plain words with a Try again button |
 | The demo checks tested the router, not the agent the demo uses | The distance bug stayed invisible to every test | An agent-path test per demo question, plus `make demo-rehearse` against the live demo |
 
 ### Still open
