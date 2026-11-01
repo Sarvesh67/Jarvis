@@ -19,6 +19,8 @@ publisher:
   org: GSTN, via a commercial API provider
   url: null
   access: key_required
+  family:  gstn
+  kind:    registry
 
 acquisition:
   adapter: null

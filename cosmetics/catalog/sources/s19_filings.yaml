@@ -18,6 +18,8 @@ publisher:
   org: Securities and Exchange Board of India
   url: https://www.sebi.gov.in/filings/public-issues.html
   access: open
+  family:  sebi
+  kind:    reference
 
 acquisition:
   adapter: null

@@ -21,6 +21,8 @@ publisher:
   org: GeoNames
   url: https://download.geonames.org/export/zip/
   access: public
+  family:  geonames
+  kind:    reference
 
 acquisition:
   adapter: adapters/s15_reference.py

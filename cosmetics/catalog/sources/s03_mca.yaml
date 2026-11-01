@@ -18,6 +18,8 @@ publisher:
   org: Ministry of Corporate Affairs, via data.gov.in
   url: https://www.data.gov.in/
   access: key_required
+  family:  mca
+  kind:    registry
 
 acquisition:
   adapter: adapters/s03_mca_master.py

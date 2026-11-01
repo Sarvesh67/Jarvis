@@ -20,6 +20,8 @@ publisher:
   org: Central Drugs Standard Control Organisation
   url: https://cdsco.gov.in/opencms/opencms/en/Approved-Manufacturing-Sites/
   access: public
+  family:  cdsco
+  kind:    registry
 
 acquisition:
   adapter: adapters/s01_cdsco_sites.py

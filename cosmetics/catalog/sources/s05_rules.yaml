@@ -21,6 +21,8 @@ publisher:
   org: CDSCO / Ministry of Health and Family Welfare
   url: https://cdsco.gov.in/
   access: public
+  family:  cdsco_rules
+  kind:    reference
 
 acquisition:
   adapter: adapters/s05_ninth_schedule.py

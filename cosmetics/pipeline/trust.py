@@ -3,10 +3,11 @@
 trust_level is COMPUTED, never ingested. The ladder:
 
   L0 Listed          appears in >= 1 source
-  L1 Legally exists  a CIN, GSTIN or Udyam number resolves
+  L1 Legally exists  a tier-1 registry entry in force (Udyam; MCA while Active; CDSCO;
+                     NABL while in date), or a CIN/GSTIN on record
   L2 Permitted       an active COS-8 / COS-9 covering the category
   L3 Operating       GSTIN active and GSTR-3B filed within 90 days      (needs S16)
-  L4 Corroborated    >= 2 independent sources agree, or council/exhibitor presence
+  L4 Corroborated    L1, and >= 2 independent PUBLISHERS agree (trust/families.py)
   L5 Confirmed       the company claimed and verified its own profile   (onboarding)
   L6 Vouched         a buyer confirmed a completed transaction          (behavioural)
 
@@ -16,6 +17,13 @@ licence is the binding constraint. So the level awarded is the HIGHEST rung whos
 evidence is present, and every rung's evidence is recorded in `reasons` — because the UI
 must show the reason, not a gold star. "Active GSTIN, filed GSTR-3B through July 2026"
 persuades; a badge does not.
+
+Corroboration counts publishers, not source ids (TRUST_PLAN §6.2, 2026-10-31). Counting
+sources made 4,843 firms L4: Udyam counted twice, a firm's own website counted as a second
+opinion, and council membership alone counted as corroboration — 3,408 of them had no
+identity evidence at all. A dead company's CIN no longer counts as identity either: it is
+a tier-1 adverse fact (`adverse_signal`), or a review item when the same entity also has a
+live registry entry, since that may be a wrong merge.
 
 Two constraints are enforced elsewhere and restated here so they are not lost:
   * DPDP — a proprietorship GSTIN derives from an individual's PAN and is arguably
@@ -36,31 +44,44 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import lib  # noqa: E402
 from pipeline.gstin import is_proprietorship, public_gstin  # noqa: E402
 from pipeline.load_neo4j import run  # noqa: E402
+from trust import families  # noqa: E402
 
 COSMETIC_FORMS = {"COS-8", "COS-9"}
-CORROBORATING_SOURCES = {"s08_exhibitors", "s09_chemexcil"}
+# adverse_signal rows trust.py derives from raw_company each run (and so rebuilds); any
+# other signal type is written by its own source and only read here.
+DERIVED_ADVERSE = {"mca_struck_off", "mca_dissolved", "mca_liquidated"}
+_MCA_SIGNAL = {"Strike Off": "mca_struck_off", "Dissolved": "mca_dissolved",
+               "Liquidated": "mca_liquidated", "Converted to LLP and dissolved": "mca_dissolved"}
 
 
 def gather() -> dict[str, dict]:
     ent: dict[str, dict] = defaultdict(lambda: {
-        "sources": set(), "cin": None, "gstin": None, "udyam": None,
+        "sources": set(), "records": [], "cin": None, "cin_from_mca": None,
+        "gstin": None, "udyam": None,
         "licences": [], "names": set(), "pincodes": set(), "adverse": [],
         "gst_status": None, "last_gstr3b": None, "is_proprietorship": None,
         "onboarded": False, "vouched": False})
 
-    for r in _q("""SELECT x.entity_id, r.source_id, r.cin, r.gstin, r.norm_name, r.pincode,
-                          r.payload FROM raw_company r
+    for r in _q("""SELECT x.entity_id, r.source_id, r.source_key, r.retrieved_at, r.cin,
+                          r.gstin, r.norm_name, r.pincode, r.payload FROM raw_company r
                    JOIN crosswalk x ON x.source_id=r.source_id AND x.source_key=r.source_key
                     AND x.entity_type='company' AND x.superseded_by IS NULL"""):
         e = ent[r["entity_id"]]
         e["sources"].add(r["source_id"])
+        p = r["payload"] or {}
+        e["records"].append({"source_id": r["source_id"], "source_key": r["source_key"],
+                             "retrieved_at": r["retrieved_at"], "payload": p,
+                             "family": families.family_of(r["source_id"], p),
+                             "in_force": families.registry_in_force(r["source_id"], p)})
+        if r["source_id"] == "s03_mca" and r["cin"]:
+            # the register's own status decides whether this CIN still means anything
+            e["cin_from_mca"] = p.get("company_status")
         e["cin"] = e["cin"] or r["cin"]
         e["gstin"] = e["gstin"] or r["gstin"]
         if r["norm_name"]:
             e["names"].add(r["norm_name"])
         if r["pincode"]:
             e["pincodes"].add(r["pincode"])
-        p = r["payload"] or {}
         if p.get("udyam_registered"):
             e["udyam"] = e["udyam"] or "registered"
 
@@ -88,8 +109,36 @@ def gather() -> dict[str, dict]:
             e["is_proprietorship"] = is_proprietorship(e["gstin"])
 
     for r in _q("SELECT entity_id, signal_type, detail FROM adverse_signal"):
-        ent[r["entity_id"]]["adverse"].append(r["signal_type"])
+        if r["signal_type"] not in DERIVED_ADVERSE:      # those are re-derived below
+            ent[r["entity_id"]]["adverse"].append(r["signal_type"])
+    for e in ent.values():
+        e["mca_adverse"], e["mca_review"] = _mca_status(e)
     return ent
+
+
+def _mca_status(e: dict) -> tuple[dict | None, dict | None]:
+    """A dead company on the MCA register: (adverse fact, review item) — at most one.
+
+    If the entity also has a registry entry that is in force (Udyam, CDSCO, NABL), the
+    struck-off CIN and the live firm may be two firms merged on name; publishing
+    "Struck off" on a live firm would be the worst error this layer can make, so it goes
+    to review instead (TRUST_PLAN §6.1).
+    """
+    dead = [r for r in e["records"] if r["source_id"] == "s03_mca"
+            and r["payload"].get("company_status") in families.MCA_DEAD]
+    if not dead:
+        return None, None
+    d = dead[0]
+    status = d["payload"]["company_status"]
+    live = [r for r in e["records"] if r["in_force"] and r is not d]
+    if live:
+        return None, {"left": f"s03_mca|{d['source_key']}",
+                      "right": f"{live[0]['source_id']}|{live[0]['source_key']}",
+                      "status": status}
+    as_of = d["retrieved_at"].date().isoformat() if d["retrieved_at"] else None
+    return {"signal_type": _MCA_SIGNAL[status], "cin": e["cin"], "status": status,
+            "shown": families.MCA_DEAD[status], "as_of": as_of,
+            "source_key": d["source_key"]}, None
 
 
 def _q(sql: str) -> list[dict]:
@@ -119,8 +168,11 @@ def level_for(e: dict) -> tuple[int, list[str], list[str], list[int]]:
         reasons.append(f"Listed in {len(e['sources'])} source(s): {', '.join(sorted(e['sources']))}")
 
     ids = []
-    if e["cin"]:
-        ids.append(f"CIN {e['cin']}")
+    in_force = sorted({r["family"] for r in e["records"] if r["in_force"] and r["family"]})
+    # a CIN counts unless MCA itself says the company is no longer Active
+    cin_ok = e["cin"] and e["cin_from_mca"] in (None, *families.MCA_LIVE)
+    if cin_ok:
+        ids.append(f"CIN {e['cin']}" + (" (MCA: Active)" if e["cin_from_mca"] else ""))
     if e["gstin"]:
         # reasons are public: a GSTIN on a personal PAN shows with the PAN part masked
         shown = public_gstin(e["gstin"])
@@ -129,6 +181,9 @@ def level_for(e: dict) -> tuple[int, list[str], list[str], list[int]]:
     if e["udyam"]:
         # never print the derived local key as if it were a registration number
         ids.append("registered on the Udyam MSME registry")
+    for fam in in_force:
+        if fam not in ("udyam", "mca"):
+            ids.append(f"on the {families.display(fam)}")
     if ids:
         level = max(level, 1); rungs.append(1)
         reasons.append("Legally exists — " + ", ".join(ids))
@@ -147,13 +202,14 @@ def level_for(e: dict) -> tuple[int, list[str], list[str], list[int]]:
         level = max(level, 3); rungs.append(3)
         reasons.append("Active GSTIN with a recent GSTR-3B filing")  # period NEVER shown publicly
 
-    corroborated = len(e["sources"]) >= 2 or bool(e["sources"] & CORROBORATING_SOURCES)
-    if corroborated:
+    # Independent publishers that agree this firm exists: registries in force plus
+    # third-party directories. The firm's own site is never one (families.family_of).
+    pubs = sorted({r["family"] for r in e["records"] if r["family"]
+                   and (r["in_force"] or families.kind_of(r["source_id"]) == "directory")})
+    if 1 in rungs and len(pubs) >= 2:
         level = max(level, 4); rungs.append(4)
-        if e["sources"] & CORROBORATING_SOURCES:
-            reasons.append("Corroborated — exhibited at a trade fair or holds council membership")
-        else:
-            reasons.append(f"Corroborated — {len(e['sources'])} independent sources agree")
+        reasons.append(f"Corroborated — {len(pubs)} independent publishers agree: "
+                       + ", ".join(families.display(f) for f in pubs))
 
     if e["onboarded"]:
         level = max(level, 5); rungs.append(5)
@@ -162,11 +218,17 @@ def level_for(e: dict) -> tuple[int, list[str], list[str], list[int]]:
         level = max(level, 6); rungs.append(6)
         reasons.append("A buyer confirmed a completed transaction")
 
+    if e.get("mca_adverse"):
+        a = e["mca_adverse"]
+        # a fact with its source and date, never an adjective (TRUST_PLAN §7.4)
+        reasons.append(f"MCA status: {a['shown']}, as of {a['as_of']} "
+                       "(MCA company register via data.gov.in)")
+        demotions.append(a["signal_type"])
     for a in e["adverse"]:
         demotions.append(a)
-    if demotions:
+    if e["adverse"]:
         level = max(0, level - 1)
-        reasons.append(f"DEMOTED by adverse signal(s): {', '.join(sorted(set(demotions)))}")
+        reasons.append(f"DEMOTED by adverse signal(s): {', '.join(sorted(set(e['adverse'])))}")
     return level, reasons, demotions, sorted(set(rungs))
 
 
@@ -200,6 +262,25 @@ def main() -> int:
                         ([r["entity_id"] for r in rows],))
             if cur.rowcount:
                 print(f"  pruned {cur.rowcount} trust rows for entities that no longer exist")
+            adverse = [(eid, e["mca_adverse"]) for eid, e in ent.items() if e["mca_adverse"]]
+            cur.execute("DELETE FROM adverse_signal WHERE signal_type = ANY(%s)",
+                        (sorted(DERIVED_ADVERSE),))
+            cur.executemany(
+                "INSERT INTO adverse_signal (entity_id, signal_type, detail, source_id, "
+                "observed_at) VALUES (%s, %s, %s, 's03_mca', %s)",
+                [(eid, a["signal_type"], lib.jsonb({k: a[k] for k in ("cin", "status", "source_key")}),
+                  a["as_of"]) for eid, a in adverse])
+            review = [e["mca_review"] for e in ent.values() if e["mca_review"]]
+            cur.executemany(
+                "INSERT INTO review_queue (entity_type, left_key, right_key, features) "
+                "SELECT 'company', %s, %s, %s WHERE NOT EXISTS (SELECT 1 FROM review_queue "
+                "WHERE left_key=%s AND right_key=%s "
+                "AND features->>'reason' = 'adverse_vs_live_registry')",
+                [(rv["left"], rv["right"], lib.jsonb({"reason": "adverse_vs_live_registry",
+                                                      "mca_status": rv["status"]}),
+                  rv["left"], rv["right"]) for rv in review])
+            print(f"  {len(adverse)} tier-1 adverse facts (MCA), "
+                  f"{len(review)} dead CINs on a live registry entity -> review_queue")
         drv = lib.neo4j_driver()
         with drv.session() as s:
             run(s, """

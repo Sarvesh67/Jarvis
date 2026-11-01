@@ -19,6 +19,8 @@ publisher:
   org: the companies themselves
   url: null
   access: public
+  family:  self
+  kind:    self
 
 acquisition:
   adapter: adapters/s14b_supplies.py

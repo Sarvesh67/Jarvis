@@ -21,6 +21,8 @@ publisher:
   org: Ministry of MSME, via data.gov.in
   url: https://www.data.gov.in/
   access: key_required
+  family:  udyam
+  kind:    registry
 
 acquisition:
   adapter: adapters/s17b_udyam_api.py

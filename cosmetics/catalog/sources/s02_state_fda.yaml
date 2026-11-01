@@ -18,6 +18,8 @@ publisher:
   org: State Food & Drug Administrations / ONDLS portals
   url: null
   access: none
+  family:  state_fda
+  kind:    registry
 
 acquisition:
   adapter: null

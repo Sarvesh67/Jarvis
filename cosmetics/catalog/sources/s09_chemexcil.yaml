@@ -19,6 +19,8 @@ publisher:
   org: Basic Chemicals, Cosmetics & Dyes Export Promotion Council
   url: https://chemexcil.gov.in/
   access: public
+  family:  chemexcil
+  kind:    directory
 
 acquisition:
   adapter: adapters/s09_chemexcil.py

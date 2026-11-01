@@ -17,6 +17,8 @@ publisher:
   org: IndiaMART and others
   url: https://www.indiamart.com/
   access: public
+  family:  marketplace
+  kind:    directory
 
 acquisition:
   adapter: null

@@ -726,10 +726,10 @@ function isVendorSet(rows){
 // shown as unavailable, never as failed.
 const LADDER = [
   [0, "Listed", "Appears in at least one source we hold"],
-  [1, "Legally exists", "A CIN, GSTIN or Udyam number resolves"],
+  [1, "Legally exists", "In a government registry that is still in force (Udyam, MCA, CDSCO, NABL)"],
   [2, "Permitted", "An active COS-8 / COS-9 manufacturing licence on file"],
   [3, "Operating", "GST registration active and current"],
-  [4, "Corroborated", "Two independent sources agree, or trade-council / trade-fair presence"],
+  [4, "Corroborated", "Registered, and two independent publishers agree it exists"],
   [5, "Confirmed", "The company has claimed and verified its own profile"],
   [6, "Vouched", "A buyer has confirmed a completed order"],
 ];
@@ -898,7 +898,8 @@ function badges(v){
   if (v.certificate) add(true, "NABL accredited");
   if (v.licence === true) add(true, "Licence on file");
   else if (v.licence === false) add(false, "No licence on file");
-  if (v.cin || (v.rungs && v.rungs.includes(1))) add(true, "Entity verified");
+  // A registry entry, not a verification: nothing here has been checked live (TRUST_PLAN §7.6).
+  if (v.cin || (v.rungs && v.rungs.includes(1))) add(true, "Registered");
   if (v.gstin) add(true, "GSTIN on record");
   else add(false, "GST evidence unavailable");
   return b;
@@ -1282,7 +1283,7 @@ function openCompare(){
     line("Category", v => v.category);
     line("Licence", v => v.licence === true ? (v.licences.join(", ") || "On file")
       : v.licence === false ? "None on file" : "Unknown");
-    line("Entity", v => v.cin ? "CIN " + v.cin : (v.rungs && v.rungs.includes(1)) ? "Verified" : "Unknown");
+    line("Entity", v => v.cin ? "CIN " + v.cin : (v.rungs && v.rungs.includes(1)) ? "Registered" : "Unknown");
     line("GST", v => v.gstin ? "GSTIN on record" : "Evidence unavailable");
     line("Match", v => v.match);
     line("Memberships", v => v.tags.join(", "));

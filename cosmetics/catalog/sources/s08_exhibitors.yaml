@@ -18,6 +18,9 @@ publisher:
   org: event organisers
   url: null
   access: public
+  family:  fair
+  kind:    directory
+  family_split_by: event   # one family per value of this payload field
 
 acquisition:
   adapter: adapters/s08_exhibitors.py

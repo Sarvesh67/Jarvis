@@ -1,5 +1,5 @@
 {
-  "taken_on": "2026-10-30",
+  "taken_on": "2026-10-31",
   "graph": {
     "nodes": {
       "Company": 131663,
@@ -43,10 +43,10 @@
       "HAS_CAPABILITY": 6
     },
     "company_trust_level": {
-      "0": 6794,
-      "1": 120025,
+      "0": 4565,
+      "1": 126841,
       "2": 1,
-      "4": 4843
+      "4": 256
     }
   },
   "postgres": {
@@ -56,19 +56,19 @@
       "raw_company": 136518,
       "trust_state": 132030,
       "ref_pincode": 19238,
-      "review_queue": 15603,
+      "review_queue": 15604,
       "raw_supplies": 8868,
       "person": 6682,
       "fetch_manifest": 6645,
       "raw_facility": 881,
       "operates_edge": 847,
+      "adverse_signal": 683,
       "gstin_check": 54,
-      "raw_ingredient": 0,
       "unresolved_ingredient": 0,
       "gst_record": 0,
-      "adverse_signal": 0,
       "raw_rule": 0,
-      "raw_product": 0
+      "raw_product": 0,
+      "raw_ingredient": 0
     },
     "raw_company": {
       "s17b_udyam_api": 119120,

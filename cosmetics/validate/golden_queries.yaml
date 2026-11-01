@@ -131,6 +131,17 @@
     RETURN count(c) AS violations
   expect_zero: violations
 
+# TRUST_PLAN §2.8. The ladder let 3,408 firms reach L4 "corroborated" with no identity
+# evidence at all: council membership alone counted. Corroboration now needs identity.
+- id: corroboration_requires_identity
+  q: "No company is corroborated (rung 4) without legal-existence evidence (rung 1)"
+  shape: invariant
+  cypher: |
+    MATCH (c:Company) WHERE 4 IN coalesce(c.trust_rungs, [])
+      AND NOT 1 IN coalesce(c.trust_rungs, [])
+    RETURN count(c) AS violations
+  expect_zero: violations
+
 - id: every_edge_has_provenance
   q: "Every relationship carries provenance (hard rule 9)"
   shape: invariant

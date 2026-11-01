@@ -19,6 +19,8 @@ publisher:
   org: National Accreditation Board for Testing and Calibration Laboratories
   url: https://nabl-india.org/
   access: public
+  family:  nabl
+  kind:    registry
 
 acquisition:
   adapter: adapters/s11_nabl.py

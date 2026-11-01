@@ -18,6 +18,8 @@ publisher:
   org: Ministry of MSME
   url: https://udyamregistration.gov.in/
   access: public
+  family:  udyam
+  kind:    registry
 
 acquisition:
   adapter: adapters/s17_udyam.py

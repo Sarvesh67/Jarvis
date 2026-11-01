@@ -686,6 +686,13 @@ council-only L4s. T3 rides along with SOURCES_PLAN. T4–T7 start when their blo
 
 ### 10.1 T0 — stop the number misleading
 
+**Done 2026-10-31.** L4 went from 4,843 to 256, and 0 of them lack identity. Rung 1 now
+covers 127,465 firms (96.5%): NABL and CDSCO count as registries, and dead MCA companies
+no longer do. There are 683 tier-1 adverse facts in `adverse_signal`: 616 struck off, 65
+dissolved, 2 liquidated. 1 dead CIN on a live Udyam firm went to `review_queue`.
+10 expired NABL certificates with cosmetics scope now rank last in `testing_labs_for_cosmetics`.
+`tests/test_trust.py` holds the lint and the invariants.
+
 1. **Ranking.** Take `trust DESC` out of the eight templates and rank per §6.5. Add the
    `trust_never_orders_results` lint.
 2. **Independence.** Add `publisher_family` to every source card. `trust.py` counts families, never

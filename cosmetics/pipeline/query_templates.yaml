@@ -31,7 +31,7 @@
     RETURN c.legal_name AS company, l.form_type AS licence_form, l.number AS licence_no,
            l.status AS licence_status, f.address_raw AS address, cl.name AS cluster,
            c.trust_level AS trust, c.website AS website, c.phone AS phone, c.email AS email
-    ORDER BY trust DESC LIMIT $limit
+    ORDER BY company LIMIT $limit
 
 - id: cosmetics_firms_in_cluster
   flow: buyer
@@ -70,7 +70,7 @@
            evidence_basis, c.roles AS roles, c.trust_level AS trust,
            2 IN c.trust_rungs AS has_licence_evidence,
            c.website AS website, c.phone AS phone, c.email AS email
-    ORDER BY rank, trust DESC, company LIMIT $limit
+    ORDER BY rank, company LIMIT $limit
 
 - id: loan_licence_partners
   flow: buyer
@@ -119,7 +119,7 @@
       AND ($district IS NULL OR toUpper(c.district) = $district)
     RETURN c.legal_name AS company, c.website AS website, cl.name AS cluster,
            e.evidence AS claimed_on_their_site, c.trust_level AS trust, c.phone AS phone, c.email AS email
-    ORDER BY trust DESC LIMIT $limit
+    ORDER BY company LIMIT $limit
 
 - id: packaging_converters_in_cluster
   flow: buyer
@@ -138,7 +138,7 @@
     RETURN c.legal_name AS company, p.type AS component, c.district AS district,
            cl.name AS cluster, c.trust_level AS trust,
            c.website AS website, c.phone AS phone, c.email AS email
-    ORDER BY trust DESC, company LIMIT $limit
+    ORDER BY company LIMIT $limit
 
 - id: suppliers_of_ingredient
   flow: buyer
@@ -154,7 +154,7 @@
     WHERE ($ingredient IS NULL OR i.inci_name = $ingredient) AND e.cosmetics_relevant
     RETURN i.inci_name AS ingredient, c.legal_name AS supplier, c.website AS website,
            e.mode AS mode, e.evidence AS evidence, c.trust_level AS trust, c.phone AS phone, c.email AS email
-    ORDER BY trust DESC LIMIT $limit
+    ORDER BY supplier LIMIT $limit
 
 - id: ingredient_suppliers_near
   flow: buyer
@@ -181,7 +181,7 @@
            c.state AS state, CASE WHEN m IS NULL THEN null ELSE round(m / 1000.0) END AS km,
            c.website AS website, e.matched AS matched_on, e.mode AS mode,
            e.evidence AS evidence, c.trust_level AS trust, c.phone AS phone, c.email AS email
-    ORDER BY km, trust DESC LIMIT $limit
+    ORDER BY km, supplier LIMIT $limit
 
 - id: packaging_suppliers_near
   flow: buyer
@@ -207,7 +207,7 @@
     RETURN c.legal_name AS company, p.type AS component, c.district AS district,
            c.state AS state, CASE WHEN m IS NULL THEN null ELSE round(m / 1000.0) END AS km,
            c.trust_level AS trust, c.website AS website, c.phone AS phone, c.email AS email
-    ORDER BY km, trust DESC, company LIMIT $limit
+    ORDER BY km, company LIMIT $limit
 
 - id: ingredient_restriction_india
   flow: compliance
@@ -407,10 +407,16 @@
          // alphabetical order buried all 145 of them among the 56 that qualify only
          // by an adjacent scope. Rank, do not filter: the definition is unchanged.
          CASE WHEN any(g IN a.groups_matched WHERE g CONTAINS 'COSMETIC')
-              THEN 0 ELSE 1 END AS scope_rank
+              THEN 0 ELSE 1 END AS scope_rank,
+         // valid_till is dd/mm/yyyy on the register. A certificate past it is not
+         // current accreditation (TRUST_PLAN §10.1): ranked last, and the row says so.
+         CASE WHEN a.valid_till IS NULL THEN null
+              ELSE date(split(a.valid_till, '/')[2] + '-' + split(a.valid_till, '/')[1]
+                        + '-' + split(a.valid_till, '/')[0]) >= date() END AS in_date
     RETURN c.legal_name AS laboratory, c.state AS state, c.district AS district,
            a.certificate_number AS certificate, a.valid_till AS valid_till,
+           coalesce(in_date, true) AS certificate_in_date,
            a.groups_matched AS cosmetics_scope, a.accredited_sites AS accredited_sites,
            a.disciplines AS disciplines, a.groups AS accredited_scope,
            c.website AS website, c.phone AS phone, c.email AS email
-    ORDER BY scope_rank, laboratory LIMIT $limit
+    ORDER BY CASE WHEN in_date = false THEN 1 ELSE 0 END, scope_rank, laboratory LIMIT $limit

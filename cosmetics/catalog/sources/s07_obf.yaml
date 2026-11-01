@@ -18,6 +18,8 @@ publisher:
   org: Open Food Facts / Open Beauty Facts
   url: https://world.openbeautyfacts.org/data
   access: public
+  family:  open_beauty_facts
+  kind:    reference
 
 acquisition:
   adapter: adapters/s07_obf.py

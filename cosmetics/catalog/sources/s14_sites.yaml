@@ -22,6 +22,8 @@ publisher:
   org: the companies themselves
   url: null
   access: public
+  family:  self
+  kind:    self
 
 acquisition:
   adapter: adapters/s14_company_sites.py

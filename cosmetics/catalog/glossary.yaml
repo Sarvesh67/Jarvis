@@ -83,6 +83,18 @@ project:
 
   trust_rungs:
     means: The array of rungs actually achieved. This is what you filter on.
+    gotcha: >
+      Since 2026-10-31 (TRUST_PLAN §10.1) rung 1 needs a registry entry still in force — a
+      struck-off company's CIN is an adverse fact, not identity — and rung 4 needs rung 1
+      plus two independent PUBLISHERS (`publisher_family`), so Udyam counted twice or a
+      firm's own website no longer corroborates. L4 fell from 4,843 to 256.
+
+  publisher_family:
+    means: >
+      Who actually published a row, declared as `publisher.family` / `publisher.kind` on
+      each source card and read by trust/families.py. S17 and S17b are one family (udyam);
+      S14 is `self` and never corroborates; each trade fair is its own family.
+    gotcha: Count families, never source ids, when you say "N independent sources".
 
   provenance envelope:
     means: >

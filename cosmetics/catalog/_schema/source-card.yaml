@@ -18,6 +18,9 @@ publisher:
   org:     str
   url:     str
   access:  enum  # public | key_required | login_required | none
+  family:  str   # who actually publishes the rows; sources sharing one count once for trust
+  kind:    enum  # registry | directory | self | reference  (TRUST_PLAN §6.2)
+  family_split_by: str  # optional: a payload field naming the real publisher (s08: event)
 
 acquisition:
   adapter:   str   # path, or null if not built

@@ -130,6 +130,9 @@ def _off(card_val, live_val) -> bool:
     return abs(card_val - live_val) / live_val > DRIFT_TOLERANCE
 
 
+PUBLISHER_KINDS = {"registry", "directory", "self", "reference"}
+
+
 def drift(snap: dict) -> list[str]:
     """Every place a source card disagrees with the live stores.
 
@@ -152,6 +155,15 @@ def drift(snap: dict) -> list[str]:
         if "keys" not in card:
             problems.append(f"{stem}: no `keys:` block — cannot be checked against the stores")
             continue
+
+        # Trust counts corroboration by publisher, so a card without one would let its
+        # rows be counted as independent of a source they were copied from (TRUST_PLAN §6.2).
+        pub = card.get("publisher") or {}
+        if not pub.get("family"):
+            problems.append(f"{stem}: publisher.family is missing — trust cannot count it")
+        if pub.get("kind") not in PUBLISHER_KINDS:
+            problems.append(f"{stem}: publisher.kind={pub.get('kind')!r} is not one of "
+                            f"{sorted(PUBLISHER_KINDS)}")
 
         # raw_rows against this source's contribution to raw_company
         k = keys.get("raw_company")

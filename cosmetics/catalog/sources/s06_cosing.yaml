@@ -23,6 +23,8 @@ publisher:
   org: European Commission, DG GROW
   url: https://ec.europa.eu/growth/tools-databases/cosing/
   access: public
+  family:  cosing
+  kind:    reference
 
 acquisition:
   adapter: adapters/s06_cosing.py
