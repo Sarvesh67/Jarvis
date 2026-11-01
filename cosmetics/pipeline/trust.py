@@ -44,7 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import lib  # noqa: E402
 from pipeline.gstin import is_proprietorship, public_gstin  # noqa: E402
 from pipeline.load_neo4j import run  # noqa: E402
-from trust import families  # noqa: E402
+from trust import evidence, facets, families, grade  # noqa: E402
 
 COSMETIC_FORMS = {"COS-8", "COS-9"}
 # adverse_signal rows trust.py derives from raw_company each run (and so rebuilds); any
@@ -63,7 +63,7 @@ def gather() -> dict[str, dict]:
         "onboarded": False, "vouched": False})
 
     for r in _q("""SELECT x.entity_id, r.source_id, r.source_key, r.retrieved_at, r.cin,
-                          r.gstin, r.norm_name, r.pincode, r.payload FROM raw_company r
+                          r.gstin, r.norm_name, r.pincode, r.tier, r.payload FROM raw_company r
                    JOIN crosswalk x ON x.source_id=r.source_id AND x.source_key=r.source_key
                     AND x.entity_type='company' AND x.superseded_by IS NULL"""):
         e = ent[r["entity_id"]]
@@ -71,6 +71,7 @@ def gather() -> dict[str, dict]:
         p = r["payload"] or {}
         e["records"].append({"source_id": r["source_id"], "source_key": r["source_key"],
                              "retrieved_at": r["retrieved_at"], "payload": p,
+                             "cin": r["cin"], "gstin": r["gstin"], "tier": r["tier"],
                              "family": families.family_of(r["source_id"], p),
                              "in_force": families.registry_in_force(r["source_id"], p)})
         if r["source_id"] == "s03_mca" and r["cin"]:
@@ -239,22 +240,45 @@ def main() -> int:
 
     ent = gather()
     rows, dist, rung_counts = [], defaultdict(int), defaultdict(int)
+    ev_rows, grades, facet_counts = [], defaultdict(int), defaultdict(int)
     for eid, e in ent.items():
         lvl, reasons, _, rungs = level_for(e)
         dist[lvl] += 1
         for r in rungs:
             rung_counts[r] += 1
+        # T1 (TRUST_PLAN §6): one grade and three facets, read from evidence rows only
+        ev = evidence.rows_for(eid, e)
+        g = grade.grade(ev)
+        fs = facets.all_facets(ev)
+        grades[g["code"]] += 1
+        for name, f in fs.items():
+            facet_counts[(name, f["state"])] += 1
+        ev_rows.extend(ev)
         rows.append({"entity_id": eid, "trust_level": lvl, "trust_rungs": rungs,
-                     "reasons": lib.jsonb(reasons)})
+                     "reasons": lib.jsonb(reasons), "grade": g, "facets": fs,
+                     "lines": facets.public_lines(ev)})
     if not a.dry_run:
         with lib.pg() as c, c.cursor() as cur:
             cur.executemany(
                 "INSERT INTO trust_state (entity_id, trust_level, trust_rungs, reasons, "
-                "computed_at) VALUES (%s,%s,%s,%s, now()) ON CONFLICT (entity_id) DO UPDATE "
+                "trust_grade, facets, computed_at) VALUES (%s,%s,%s,%s,%s,%s, now()) "
+                "ON CONFLICT (entity_id) DO UPDATE "
                 "SET trust_level=EXCLUDED.trust_level, trust_rungs=EXCLUDED.trust_rungs, "
-                "reasons=EXCLUDED.reasons, computed_at=EXCLUDED.computed_at",
-                [(r["entity_id"], r["trust_level"], r["trust_rungs"], r["reasons"])
-                 for r in rows])
+                "reasons=EXCLUDED.reasons, trust_grade=EXCLUDED.trust_grade, "
+                "facets=EXCLUDED.facets, computed_at=EXCLUDED.computed_at",
+                [(r["entity_id"], r["trust_level"], r["trust_rungs"], r["reasons"],
+                  r["grade"]["code"], lib.jsonb(r["facets"])) for r in rows])
+            # trust_evidence is derived from the append-only stores, so it is replaced
+            # whole, in this transaction (sql/003_trust_evidence.sql).
+            cur.execute("DELETE FROM trust_evidence")
+            cols = ("entity_id", "facet", "signal_type", "value", "source_id", "source_key",
+                    "publisher_family", "tier", "provenance_class", "visibility",
+                    "public_text", "counts", "observed_at", "expiry_at")
+            with cur.copy(f"COPY trust_evidence ({', '.join(cols)}) FROM STDIN") as cp:
+                for r in ev_rows:
+                    cp.write_row([json.dumps(r[k], default=str) if k == "value" else r[k]
+                                  for k in cols])
+            print(f"  {len(ev_rows)} evidence rows -> trust_evidence")
             # trust_state is derived, so an entity superseded by re-resolution must leave
             # it. Upsert-only once kept 4,753 dead entities here, and bi.trust_distribution
             # counted them: 992 phantom L4s.
@@ -289,10 +313,22 @@ def main() -> int:
                 SET c.trust_level = row.trust_level,
                     c.trust_rungs = row.trust_rungs,
                     c.trust_reasons = row.reasons,
+                    c.trust_grade = row.grade,
+                    c.trust_grade_label = row.grade_label,
+                    c.trust_publishers = row.publishers,
+                    c.trust_licence = row.licence, c.trust_licence_note = row.licence_note,
+                    c.trust_activity = row.activity, c.trust_activity_note = row.activity_note,
+                    c.trust_track = row.track, c.trust_track_note = row.track_note,
+                    c.trust_lines = row.lines,
                     c.trust_computed_at = datetime()
             """, [{"entity_id": r["entity_id"], "trust_level": r["trust_level"],
                    "trust_rungs": r["trust_rungs"],
-                   "reasons": json.loads(r["reasons"])} for r in rows], "Company.trust_level")
+                   "reasons": json.loads(r["reasons"]),
+                   "grade": r["grade"]["code"], "grade_label": r["grade"]["label"],
+                   "publishers": len(r["grade"]["publishers"]),
+                   **{k: r["facets"][k]["state"] for k in facets.FACETS},
+                   **{f"{k}_note": r["facets"][k]["note"] for k in facets.FACETS},
+                   "lines": r["lines"]} for r in rows], "Company.trust_grade")
         drv.close()
 
     total = sum(dist.values())
@@ -303,6 +339,12 @@ def main() -> int:
     print("    evidence present at each rung (not exclusive — this is the honest view):")
     for lvl in sorted(rung_counts):
         print(f"      L{lvl}: {rung_counts[lvl]:5d}  ({100*rung_counts[lvl]/max(total,1):5.1f}%)")
+    print("    evidence grade (TRUST_PLAN §6.1 — this is what the card shows):")
+    for code in grade.ORDER:
+        print(f"      {code:7s} {grades[code]:6d}  ({100*grades[code]/max(total,1):5.1f}%)")
+    for name in facets.FACETS:
+        print(f"    {name:8s} " + "  ".join(f"{st} {facet_counts[(name, st)]}"
+              for st in ("verified", "claimed", "unknown", "adverse") if facet_counts[(name, st)]))
     if not any(dist.get(l) for l in (3, 5, 6)):
         print("    (L3 needs a GSTIN verification provider; L5/L6 need onboarding "
               "and buyer confirmations)")

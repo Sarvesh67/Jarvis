@@ -245,6 +245,7 @@
   .score .num{font-family:var(--head);font-size:21px;font-weight:700;line-height:1;
     letter-spacing:-.03em;font-variant-numeric:tabular-nums}
   .score .num small{font-size:11.5px;font-weight:600;color:var(--faint);letter-spacing:0}
+  .score .num.word{font-size:15px;letter-spacing:-.01em}
   .score .lab{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
   .meter{display:flex;gap:2px;width:100%}
   .meter i{flex:1;height:4px;border-radius:2px;background:var(--line2)}
@@ -391,6 +392,7 @@
   .bigscore .num{font-family:var(--head);font-size:44px;font-weight:700;line-height:1;
     letter-spacing:-.05em;font-variant-numeric:tabular-nums}
   .bigscore .num small{font-size:17px;color:var(--faint);font-weight:600;letter-spacing:0}
+  .bigscore .num.word{font-size:30px;letter-spacing:-.03em}
   .bigscore .lab{font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
   .bigmeter{display:flex;gap:3px;margin:4px 0 12px}
   .bigmeter i{flex:1;height:6px;border-radius:3px;background:var(--line)}
@@ -400,10 +402,14 @@
   .ladder li{display:grid;grid-template-columns:24px 1fr;gap:2px 10px;padding:10px 12px;
     border:1px solid var(--line);border-radius:14px;background:var(--panel)}
   .ladder li.yes{background:var(--okdim);border-color:var(--okline)}
+  .ladder li.claimed{background:var(--warndim);border-color:var(--warnline)}
+  .ladder li.bad{background:var(--baddim);border-color:var(--badline)}
   .ladder .mk{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;
     justify-content:center;font-size:11px;font-weight:700}
   .ladder .mk .i{width:12px;height:12px;stroke-width:2.6}
   .mk.yes{background:var(--ok);color:#fff}
+  .mk.claimed{background:var(--warn);color:#fff}
+  .mk.bad{background:var(--bad);color:#fff}
   .mk.unknown{background:var(--panel2);color:var(--faint);border:1px dashed var(--line2)}
   .mk.unitemised{background:var(--panel2);color:var(--faint);border:1px solid var(--line2)}
   .ladder .rn{font-size:13.5px;font-weight:700}
@@ -722,18 +728,24 @@ function isVendorSet(rows){
   return NAME_COLS.some(c => c in r) && !PAIR_COLS.some(c => c in r);
 }
 
-// trust.py's ladder. L3 needs S16 (GSTIN verification), which is blocked — so it is
-// shown as unavailable, never as failed.
-const LADDER = [
-  [0, "Listed", "Appears in at least one source we hold"],
-  [1, "Legally exists", "In a government registry that is still in force (Udyam, MCA, CDSCO, NABL)"],
-  [2, "Permitted", "An active COS-8 / COS-9 manufacturing licence on file"],
-  [3, "Operating", "GST registration active and current"],
-  [4, "Corroborated", "Registered, and two independent publishers agree it exists"],
-  [5, "Confirmed", "The company has claimed and verified its own profile"],
-  [6, "Vouched", "A buyer has confirmed a completed order"],
+// trust/grade.py's evidence grade: ordered and monotonic, each grade needs every grade
+// below it (TRUST_PLAN §6.1). It describes OUR evidence about a firm, never the firm.
+// G4 needs live GST verification, which is not connected, so no firm reaches it yet.
+const GRADE = {
+  flagged: [0, "Flagged", "A tier-1 adverse fact is on record, and no registry in force says otherwise"],
+  G0: [0, "Listed", "Appears in a source we hold, but in no government registry"],
+  G1: [1, "Registered", "One government registry entry in force"],
+  G2: [2, "Corroborated", "Registered, and two independent publishers agree that it exists"],
+  G3: [3, "Corroborated", "Registered, and three or more independent publishers agree that it exists"],
+  G4: [4, "GST verified", "A live GST Network check in the last 30 days: active, name and state match"],
+};
+const TOP = 4;
+// Beside the grade, never folded into it (§6.3). Unknown is not failed.
+const FACET = [
+  ["licence", "Licence", "No licence or accreditation on file in the sources we hold."],
+  ["activity", "Activity", "No recent activity on record."],
+  ["track", "Track record", "No completed order recorded yet."],
 ];
-const TOP = 6;
 
 const CATEGORY = {
   manufacturers_for_category_in_cluster: "Licensed manufacturer",
@@ -794,9 +806,13 @@ function telOf(p){
 
 function vendorOf(row, e, d){
   const name = row.company || row.laboratory || row.supplier;
-  const trust = Number.isInteger(row.trust) ? row.trust
-              : Number.isInteger(row.trust_level) ? row.trust_level : null;
+  const grade = GRADE[row.grade] ? row.grade : null;
   const roles = arr(row.roles);
+  // "facet: text" lines, public rows only (trust/facets.py public_lines)
+  const lines = arr(row.trust_evidence).map(x => {
+    const i = String(x).indexOf(": ");
+    return i > 0 ? {facet: x.slice(0, i), text: x.slice(i + 2)} : {facet: "identity", text: x};
+  });
   const v = {
     key: keyOf(name), name,
     district: row.district ? titleCase(row.district) : null,
@@ -804,8 +820,10 @@ function vendorOf(row, e, d){
     cluster: clusterName(row.cluster),
     site: siteOf(row.website),
     tel: telOf(row.phone), email: row.email || null,
-    trust, rungs: Array.isArray(row.trust_rungs) ? row.trust_rungs : null,
-    why: arr(row.why), roles,
+    grade, gradeLabel: row.grade_label || null, lines, roles,
+    facets: {licence: {state: row.licence_facet || null, note: row.licence_note || null},
+             activity: {state: row.activity_facet || null, note: row.activity_note || null},
+             track: {state: row.track_facet || null, note: row.track_note || null}},
     category: CATEGORY[e.template]
       || (roles.includes("cosmetics_core") ? "Cosmetics manufacturer"
         : roles.includes("cosmetics_active") ? "Cosmetic actives"
@@ -822,8 +840,10 @@ function vendorOf(row, e, d){
     tags: [], match: null, quote: null,
     tier: e.tier, template: e.template, asked_at: d.asked_at,
   };
-  if (v.licences.length || (v.rungs && v.rungs.includes(2))) v.licence = true;
-  else if (Array.isArray(row.licences) || v.rungs) v.licence = false;
+  // For a lab the licence facet is its NABL scope, which has its own badge.
+  const lab = roles.includes("testing_lab") || !!row.certificate;
+  if (v.licences.length || (row.licence_facet === "verified" && !lab)) v.licence = true;
+  else if (Array.isArray(row.licences) || row.licence_facet) v.licence = false;
   if (row.licence_status) v.licence_status = row.licence_status;
 
   // What matched the request, in the row's own words.
@@ -853,27 +873,37 @@ function vendorOf(row, e, d){
 
 const VENDORS = new Map();
 
-function trustTone(t){
-  if (t === null) return "t-none";
-  return t >= 2 ? "t-ok" : t === 1 ? "t-warn" : "t-bad";
+function trustTone(g){
+  if (!g) return "t-none";
+  return g === "flagged" ? "t-bad" : g === "G0" ? "t-none" : g === "G1" ? "t-warn" : "t-ok";
 }
-function rungLabel(t){ return t === null ? "Not rated" : LADDER[t][1]; }
+// The short second line of the score box, from the grade's own label.
+function gradeDetail(v){
+  if (!v.grade) return "Not rated";
+  const l = v.gradeLabel || "";
+  if (v.grade === "G1") return (l.match(/\(([^)]+)\)/) || [, "registry"])[1];
+  if (v.grade === "G2" || v.grade === "G3") return (l.match(/(\d+)/) || [, "2"])[1] + " sources";
+  if (v.grade === "G4") return (l.split("·")[1] || "checked").trim();
+  return v.grade === "G0" ? "No registry" : "Adverse fact";
+}
 
 function scoreEl(v, big){
-  const tone = trustTone(v.trust);
+  const tone = trustTone(v.grade);
   const wrap = el(big ? "div" : "button", big ? "bigscore" : "score");
-  if (!big) { wrap.type = "button"; wrap.title = "Why this score?";
+  if (!big) { wrap.type = "button"; wrap.title = "Why this grade?";
     wrap.onclick = () => openVendor(v, "trust"); }
-  const num = el("div", "num " + tone);
-  if (v.trust === null) num.textContent = "—";
-  else { num.textContent = "L" + v.trust; num.appendChild(el("small", null, " / " + TOP)); }
-  const lab = el("div", "lab " + tone, rungLabel(v.trust));
+  const num = el("div", "num word " + tone, v.grade ? GRADE[v.grade][1] : "—");
+  const lab = el("div", "lab " + tone, gradeDetail(v));
   if (big) { wrap.appendChild(num); wrap.appendChild(lab); return wrap; }
   const m = el("div", "meter " + tone);
-  for (let i = 1; i <= TOP; i++) m.appendChild(el("i", v.trust !== null && i <= v.trust ? "on" : ""));
+  const n = v.grade ? GRADE[v.grade][0] : 0;
+  for (let i = 1; i <= TOP; i++) m.appendChild(el("i", i <= n ? "on" : ""));
   wrap.appendChild(num); wrap.appendChild(m); wrap.appendChild(lab);
   return wrap;
 }
+// "MCA status Active, as of 2026-09-06" -> "MCA status Active": the chip is a summary.
+const shortNote = t => String(t || "").split(/, (as of|valid till|checked) /)[0]
+  .replace(/^[A-Z](?=[a-z])/, c => c.toLowerCase());     // "Website" -> "website", "MCA" stays
 
 function locEl(v, withCat){
   const loc = el("div", "vloc");
@@ -898,8 +928,9 @@ function badges(v){
   if (v.certificate) add(true, "NABL accredited");
   if (v.licence === true) add(true, "Licence on file");
   else if (v.licence === false) add(false, "No licence on file");
-  // A registry entry, not a verification: nothing here has been checked live (TRUST_PLAN §7.6).
-  if (v.cin || (v.rungs && v.rungs.includes(1))) add(true, "Registered");
+  const act = v.facets.activity;
+  if (act.state === "verified" || act.state === "claimed") add(true, "Active: " + shortNote(act.note));
+  else if (act.state) add(false, "Activity unknown");
   if (v.gstin) add(true, "GSTIN on record");
   else add(false, "GST evidence unavailable");
   return b;
@@ -953,7 +984,7 @@ function vendorCard(v){
   c.appendChild(act);
 
   const foot = el("div", "vfoot");
-  foot.appendChild(btn("link", "Why this score?", "info", () => openVendor(v, "trust")));
+  foot.appendChild(btn("link", "Why this grade?", "info", () => openVendor(v, "trust")));
   foot.appendChild(btn("link", "Details", null, () => openVendor(v)));
   // A new question through the same /api/ask — nothing the server does not already do.
   const qa = btn("link", "Ask AI", "ask", () => askAbout(v));
@@ -1120,26 +1151,16 @@ document.addEventListener("keydown", e => {
 function closeX(){ const x = btn("x", null, "x", closeDrawer); x.setAttribute("aria-label", "Close"); return x; }
 function section(title){ const s = el("section", "sec"); s.appendChild(el("h3", null, title)); return s; }
 
-function rungState(v, n){
-  if (v.rungs) return v.rungs.includes(n) ? "yes" : "unknown";
-  if (n === 0) return "yes";                // it is in a result, so it is listed
-  // No rating in this answer is not the same as no evidence held.
-  if (v.trust === null) return "unitemised";
-  if (n === v.trust) return "yes";
-  // trust_level is a MAXIMUM: reaching L4 says nothing about whether L2 was reached.
-  return n < v.trust ? "unitemised" : "unknown";
-}
-function rungDetail(v, n, state){
-  const [, label, means] = LADDER[n];
-  const reason = v.why.find(w => w.toLowerCase().startsWith(label.toLowerCase())
-    || (n === 0 && /^listed in/i.test(w)));
-  // "Legally exists — CIN …" under a row already titled Legally exists: keep the evidence.
-  if (state === "yes") return reason ? reason.replace(/^[^—]+—\s*/, "").replace(/^./, c => c.toUpperCase()) : means;
-  if (n === 3) return "GST evidence unavailable — live GSTIN verification is not connected yet.";
-  if (state === "unitemised") return "Not itemised in this answer.";
-  if (n === 5) return "Not yet claimed by the company.";
-  if (n === 6) return "No completed order recorded yet.";
-  return "No evidence held — unknown, not failed.";
+const STATE = {verified: "yes", claimed: "claimed", adverse: "bad", unknown: "unknown"};
+
+function evidenceRow(label, state, details){
+  const li = el("li", state);
+  const mk = el("span", "mk " + state);
+  mk.appendChild(icon(state === "yes" ? "check" : state === "unknown" ? "q" : "dash"));
+  li.appendChild(mk);
+  li.appendChild(el("div", "rn", label));
+  details.forEach(t => li.appendChild(el("div", "rd", t)));
+  return li;
 }
 
 function openVendor(v, focus){
@@ -1154,43 +1175,43 @@ function openVendor(v, focus){
 
     const body = el("div", "dbody");
 
-    const t = section("Trust score");
+    const t = section("Evidence");
     t.id = "trust-sec";
     t.appendChild(scoreEl(v, true));
-    if (v.trust !== null) {
+    if (v.grade) {
       const bm = el("div", "bigmeter");
+      const n = GRADE[v.grade][0];
       for (let i = 1; i <= TOP; i++) {
-        const seg = el("i", i <= v.trust ? "on" : "");
+        const seg = el("i", i <= n ? "on" : "");
         // One gradient across the whole bar, not one per segment.
-        if (i <= v.trust) seg.style.backgroundPosition = ((i - 1) / (TOP - 1) * 100) + "% 0";
+        if (i <= n) seg.style.backgroundPosition = ((i - 1) / (TOP - 1) * 100) + "% 0";
         bm.appendChild(seg);
       }
       t.appendChild(bm);
     }
-    t.appendChild(el("p", "sub", v.trust === null
-      ? "This answer does not include a trust rating for this supplier."
-      : `The highest rung of evidence we hold for this supplier is L${v.trust} of ${TOP}.`
-        + ((v.why.find(w => /^listed in (\d+)/i.test(w)) || "").replace(/^listed in (\d+) source\(s\).*$/i,
-            (m, n) => ` It appears in ${n} independent source${n === "1" ? "" : "s"}.`))));
+    t.appendChild(el("p", "sub", !v.grade
+      ? "This answer does not include an evidence grade for this supplier."
+      : `${v.gradeLabel || GRADE[v.grade][1]}. ${GRADE[v.grade][2]}.`));
     const ul = el("ul", "ladder");
-    LADDER.slice(1).forEach(([n, label]) => {
-      const st = rungState(v, n);
-      const li = el("li", st);
-      const mk = el("span", "mk " + st);
-      mk.appendChild(icon(st === "yes" ? "check" : st === "unknown" ? "q" : "dash"));
-      li.appendChild(mk);
-      const rn = el("div", "rn"); rn.appendChild(el("span", null, "L" + n));
-      rn.appendChild(document.createTextNode(label)); li.appendChild(rn);
-      li.appendChild(el("div", "rd", rungDetail(v, n, st)));
-      ul.appendChild(li);
+    const of = f => v.lines.filter(x => x.facet === f).map(x => x.text);
+    const ident = of("adverse").concat(of("identity"));
+    if (v.grade !== "G4") ident.push("GST evidence unavailable: live GSTIN verification is not connected yet.");
+    ul.appendChild(evidenceRow("Identity",
+      v.grade === "flagged" ? "bad" : ["G1", "G2", "G3", "G4"].includes(v.grade) ? "yes" : "unknown",
+      ident.length > 1 || v.grade === "G4" ? ident : ["No government registry entry in the sources we hold."].concat(ident)));
+    FACET.forEach(([k, label, none]) => {
+      const f = v.facets[k];
+      const said = of(k);
+      ul.appendChild(evidenceRow(label, STATE[f.state] || "unknown",
+        said.length ? said : [f.note ? f.note + "." : none]));
     });
     t.appendChild(ul);
-    if (LADDER.some(([n]) => rungState(v, n) === "unitemised")) {
-      const full = btn("link", "Load the full trust record", "ask", () => askAbout(v));
+    if (v.grade && !v.lines.length) {
+      const full = btn("link", "Load the full evidence record", "ask", () => askAbout(v));
       full.style.marginTop = "6px"; t.appendChild(full);
     }
     t.appendChild(el("div", "caveat",
-      "Trust measures how well this supplier's identity and permissions are evidenced. "
+      "The grade says how well we can evidence that this firm exists and is this firm. "
       + "It is not a rating of product quality or delivery."));
     body.appendChild(t);
 
@@ -1277,13 +1298,13 @@ function openCompare(){
       COMPARE.forEach(v => { const td = el("td"); const x = f(v);
         if (x instanceof Node) td.appendChild(x); else td.textContent = x || "—"; tr.appendChild(td); });
       tb.appendChild(tr); };
-    line("Trust", v => { const s = el("span", trustTone(v.trust));
-      s.textContent = v.trust === null ? "Not rated" : `L${v.trust} · ${LADDER[v.trust][1]}`; return s; });
+    line("Grade", v => { const s = el("span", trustTone(v.grade));
+      s.textContent = v.grade ? (v.gradeLabel || GRADE[v.grade][1]) : "Not rated"; return s; });
     line("Location", v => [v.district, v.cluster].filter(Boolean).join(" · "));
     line("Category", v => v.category);
     line("Licence", v => v.licence === true ? (v.licences.join(", ") || "On file")
       : v.licence === false ? "None on file" : "Unknown");
-    line("Entity", v => v.cin ? "CIN " + v.cin : (v.rungs && v.rungs.includes(1)) ? "Registered" : "Unknown");
+    line("Activity", v => v.facets.activity.note || "Unknown");
     line("GST", v => v.gstin ? "GSTIN on record" : "Evidence unavailable");
     line("Match", v => v.match);
     line("Memberships", v => v.tags.join(", "));

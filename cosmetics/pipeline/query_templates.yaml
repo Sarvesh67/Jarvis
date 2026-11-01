@@ -30,7 +30,11 @@
       AND l.regime = 'cosmetics'
     RETURN c.legal_name AS company, l.form_type AS licence_form, l.number AS licence_no,
            l.status AS licence_status, f.address_raw AS address, cl.name AS cluster,
-           c.trust_level AS trust, c.website AS website, c.phone AS phone, c.email AS email
+           c.trust_grade AS grade, c.trust_grade_label AS grade_label,
+           c.trust_licence AS licence_facet, c.trust_licence_note AS licence_note,
+           c.trust_activity AS activity_facet, c.trust_activity_note AS activity_note,
+           c.trust_lines AS trust_evidence,
+           c.website AS website, c.phone AS phone, c.email AS email
     ORDER BY company LIMIT $limit
 
 - id: cosmetics_firms_in_cluster
@@ -67,10 +71,14 @@
            ELSE 2
          END AS rank
     RETURN c.legal_name AS company, c.district AS district, cl.name AS cluster,
-           evidence_basis, c.roles AS roles, c.trust_level AS trust,
-           2 IN c.trust_rungs AS has_licence_evidence,
+           evidence_basis, c.roles AS roles,
+           c.trust_grade AS grade, c.trust_grade_label AS grade_label,
+           c.trust_licence AS licence_facet, c.trust_licence_note AS licence_note,
+           c.trust_activity AS activity_facet, c.trust_activity_note AS activity_note,
+           c.trust_lines AS trust_evidence,
+           c.trust_licence = 'verified' AS has_licence_evidence,
            c.website AS website, c.phone AS phone, c.email AS email
-    ORDER BY rank, company LIMIT $limit
+    ORDER BY rank, CASE licence_facet WHEN 'verified' THEN 0 WHEN 'claimed' THEN 1 ELSE 2 END, company LIMIT $limit
 
 - id: loan_licence_partners
   flow: buyer
@@ -118,8 +126,13 @@
     WHERE ($cluster IS NULL OR cl.cluster_id = $cluster)
       AND ($district IS NULL OR toUpper(c.district) = $district)
     RETURN c.legal_name AS company, c.website AS website, cl.name AS cluster,
-           e.evidence AS claimed_on_their_site, c.trust_level AS trust, c.phone AS phone, c.email AS email
-    ORDER BY company LIMIT $limit
+           e.evidence AS claimed_on_their_site,
+           c.trust_grade AS grade, c.trust_grade_label AS grade_label,
+           c.trust_licence AS licence_facet, c.trust_licence_note AS licence_note,
+           c.trust_activity AS activity_facet, c.trust_activity_note AS activity_note,
+           c.trust_lines AS trust_evidence,
+           c.phone AS phone, c.email AS email
+    ORDER BY CASE licence_facet WHEN 'verified' THEN 0 WHEN 'claimed' THEN 1 ELSE 2 END, company LIMIT $limit
 
 - id: packaging_converters_in_cluster
   flow: buyer
@@ -136,9 +149,13 @@
       AND ($district IS NULL OR toUpper(c.district) = $district)
       AND ($component IS NULL OR p.type = $component)
     RETURN c.legal_name AS company, p.type AS component, c.district AS district,
-           cl.name AS cluster, c.trust_level AS trust,
+           cl.name AS cluster,
+           c.trust_grade AS grade, c.trust_grade_label AS grade_label,
+           c.trust_licence AS licence_facet, c.trust_licence_note AS licence_note,
+           c.trust_activity AS activity_facet, c.trust_activity_note AS activity_note,
+           c.trust_lines AS trust_evidence,
            c.website AS website, c.phone AS phone, c.email AS email
-    ORDER BY company LIMIT $limit
+    ORDER BY CASE activity_facet WHEN 'verified' THEN 0 WHEN 'claimed' THEN 1 ELSE 2 END, company LIMIT $limit
 
 - id: suppliers_of_ingredient
   flow: buyer
@@ -153,8 +170,13 @@
     MATCH (c:Company)-[e:SUPPLIES]->(i:Ingredient)
     WHERE ($ingredient IS NULL OR i.inci_name = $ingredient) AND e.cosmetics_relevant
     RETURN i.inci_name AS ingredient, c.legal_name AS supplier, c.website AS website,
-           e.mode AS mode, e.evidence AS evidence, c.trust_level AS trust, c.phone AS phone, c.email AS email
-    ORDER BY supplier LIMIT $limit
+           e.mode AS mode, e.evidence AS evidence,
+           c.trust_grade AS grade, c.trust_grade_label AS grade_label,
+           c.trust_licence AS licence_facet, c.trust_licence_note AS licence_note,
+           c.trust_activity AS activity_facet, c.trust_activity_note AS activity_note,
+           c.trust_lines AS trust_evidence,
+           c.phone AS phone, c.email AS email
+    ORDER BY CASE activity_facet WHEN 'verified' THEN 0 WHEN 'claimed' THEN 1 ELSE 2 END, supplier LIMIT $limit
 
 - id: ingredient_suppliers_near
   flow: buyer
@@ -180,8 +202,13 @@
     RETURN i.inci_name AS ingredient, c.legal_name AS supplier, c.district AS district,
            c.state AS state, CASE WHEN m IS NULL THEN null ELSE round(m / 1000.0) END AS km,
            c.website AS website, e.matched AS matched_on, e.mode AS mode,
-           e.evidence AS evidence, c.trust_level AS trust, c.phone AS phone, c.email AS email
-    ORDER BY km, supplier LIMIT $limit
+           e.evidence AS evidence,
+           c.trust_grade AS grade, c.trust_grade_label AS grade_label,
+           c.trust_licence AS licence_facet, c.trust_licence_note AS licence_note,
+           c.trust_activity AS activity_facet, c.trust_activity_note AS activity_note,
+           c.trust_lines AS trust_evidence,
+           c.phone AS phone, c.email AS email
+    ORDER BY km, CASE activity_facet WHEN 'verified' THEN 0 WHEN 'claimed' THEN 1 ELSE 2 END, supplier LIMIT $limit
 
 - id: packaging_suppliers_near
   flow: buyer
@@ -206,8 +233,12 @@
                               point({latitude: $near.lat, longitude: $near.lon})) AS m
     RETURN c.legal_name AS company, p.type AS component, c.district AS district,
            c.state AS state, CASE WHEN m IS NULL THEN null ELSE round(m / 1000.0) END AS km,
-           c.trust_level AS trust, c.website AS website, c.phone AS phone, c.email AS email
-    ORDER BY km, company LIMIT $limit
+           c.trust_grade AS grade, c.trust_grade_label AS grade_label,
+           c.trust_licence AS licence_facet, c.trust_licence_note AS licence_note,
+           c.trust_activity AS activity_facet, c.trust_activity_note AS activity_note,
+           c.trust_lines AS trust_evidence,
+           c.website AS website, c.phone AS phone, c.email AS email
+    ORDER BY km, CASE activity_facet WHEN 'verified' THEN 0 WHEN 'claimed' THEN 1 ELSE 2 END, company LIMIT $limit
 
 - id: ingredient_restriction_india
   flow: compliance
@@ -347,8 +378,11 @@
     RETURN c.legal_name AS company, c.cin AS cin, c.gstins AS gstins,
            c.district AS district, c.cluster_id AS cluster, c.website AS website,
            c.phone AS phone, c.email AS email,
-           c.roles AS roles, c.trust_level AS trust_level,
-           c.trust_rungs AS trust_rungs, c.trust_reasons AS why,
+           c.roles AS roles,
+           c.trust_grade AS grade, c.trust_grade_label AS grade_label,
+           c.trust_licence AS licence_facet, c.trust_licence_note AS licence_note,
+           c.trust_activity AS activity_facet, c.trust_activity_note AS activity_note,
+           c.trust_lines AS trust_evidence,
            collect(DISTINCT l.form_type + ' ' + l.number) AS licences,
            collect(DISTINCT a.name) AS associations,
            collect(DISTINCT p.capability_id) AS capabilities,
@@ -418,5 +452,9 @@
            coalesce(in_date, true) AS certificate_in_date,
            a.groups_matched AS cosmetics_scope, a.accredited_sites AS accredited_sites,
            a.disciplines AS disciplines, a.groups AS accredited_scope,
+           c.trust_grade AS grade, c.trust_grade_label AS grade_label,
+           c.trust_licence AS licence_facet, c.trust_licence_note AS licence_note,
+           c.trust_activity AS activity_facet, c.trust_activity_note AS activity_note,
+           c.trust_lines AS trust_evidence,
            c.website AS website, c.phone AS phone, c.email AS email
     ORDER BY CASE WHEN in_date = false THEN 1 ELSE 0 END, scope_rank, laboratory LIMIT $limit

@@ -22,7 +22,9 @@ KEY_PROPS = {
     "Company": ["company_id", "legal_name", "norm_name", "cin", "gstins",
                 "is_proprietorship", "district",
                 "state", "cluster_id", "website", "email", "phone", "roles",
-                "trust_level", "trust_rungs", "trust_reasons"],
+                "trust_grade", "trust_grade_label", "trust_publishers", "trust_licence",
+                "trust_activity", "trust_track", "trust_lines",
+                "trust_level", "trust_rungs"],
     "Facility": ["facility_id", "firm_name", "address_raw", "pincode", "district",
                  "state", "cluster_id"],
     "Licence": ["form_type", "number", "sla_state", "status", "is_loan_licence",
@@ -51,11 +53,14 @@ GOTCHAS = [
     "RESTRICTED_BY carries ONLY substance-specific restrictions. Blanket EU notes are on "
     "SUBJECT_TO_GENERAL_RULE instead, because attaching them to RESTRICTED_BY reported "
     "AQUA and SODIUM CHLORIDE as EU-restricted.",
-    "trust_level is the HIGHEST rung reached, not a quality score. For licence evidence "
-    "filter `2 IN c.trust_rungs`, never `c.trust_level >= 2` — L4 (corroborated) outranks "
-    "L2 numerically while saying nothing about permission to manufacture.",
+    "Use `trust_grade` (flagged | G0..G4) and the facets `trust_licence`, `trust_activity`, "
+    "`trust_track` (verified | claimed | unknown | adverse). The grade is how sure we are the "
+    "firm exists and is this firm; it is NOT a quality score and it never sorts results — "
+    "rank by fit, then by the facet the question is about. `trust_level` / `trust_rungs` "
+    "are deprecated (kept one release): never filter `trust_level >= 2`.",
     "Registry presence is NOT a licence. A Company with cosmetics roles may have no COS-8; "
-    "check `2 IN c.trust_rungs` or traverse to Licence.",
+    "check `c.trust_licence = 'verified'` or traverse to Licence. Quote `trust_grade_label` "
+    "and `trust_lines` as written; never describe a supplier as reliable or risky.",
     "roles[] is ADDITIVE and each source uses its own vocabulary. Absence of a role is not "
     "evidence of anything. `*_at_incorporation` roles come from the NIC inside a CIN, which "
     "is never updated after registration and is often stale.",

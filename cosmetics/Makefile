@@ -16,6 +16,7 @@ help:
 bootstrap:              ## docker up, create db, apply SQL + Neo4j constraints
 	docker compose up -d
 	$(PG) -v ON_ERROR_STOP=1 < sql/001_schema.sql
+	$(PG) -v ON_ERROR_STOP=1 < sql/003_trust_evidence.sql
 	$(PY) pipeline/gen_constraints.py --apply
 
 ingest:                 ## Stage 0+1 for one source: make ingest SOURCE=s06 (s17 and s17b differ)

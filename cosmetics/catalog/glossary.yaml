@@ -73,10 +73,27 @@ project:
       Hard rule 3. Enforced by the tier4_never_answers_compliance golden query and by the
       Cypher guard, not by convention.
 
+  trust_grade:
+    means: >
+      The evidence grade per company (TRUST_PLAN §6.1, trust/grade.py), recomputed nightly
+      from `trust_evidence`: flagged | G0 listed | G1 registered (one registry in force) |
+      G2 / G3 corroborated by 2 / 3+ independent publishers | G4 GST verified (live, 30 days).
+      Ordered and monotonic: each grade needs every grade below it.
+    gotcha: >
+      It describes our evidence about a firm, never the firm, and it never sorts results —
+      rank by fit, then by the facet the question is about. Quote `trust_grade_label`.
+
+  trust facets:
+    means: >
+      `trust_licence`, `trust_activity`, `trust_track` on Company: verified (tier 1) |
+      claimed (tier 2-3) | unknown | adverse, each with a `_note`. Beside the grade, never
+      folded into it. Activity evidence expires (18 months; a fair after 12).
+    gotcha: Unknown is not failed. "No licence on file" is a gap in our sources.
+
   trust_level:
     means: >
-      L0-L6 per company, recomputed nightly, never ingested. How much corroboration exists
-      for that entity's identity.
+      DEPRECATED 2026-10-31, kept one release beside trust_grade. L0-L6 per company,
+      recomputed nightly, never ingested.
     gotcha: >
       trust_level is a MAXIMUM. To filter on a rung being present, use `2 IN trust_rungs`,
       not `trust_level = 2`. This has produced wrong answers here before.

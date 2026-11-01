@@ -107,7 +107,11 @@ SELECT
   a.sources,
   t.trust_level,
   t.trust_rungs,
-  (b.constitution = 'proprietorship') AS is_proprietorship
+  (b.constitution = 'proprietorship') AS is_proprietorship,
+  t.trust_grade,
+  t.facets->'licence'->>'state' AS licence_facet,
+  t.facets->'activity'->>'state' AS activity_facet,
+  t.facets->'track'->>'state' AS track_facet
 FROM best b
 JOIN agg a USING (entity_id)
 LEFT JOIN public.trust_state t ON t.entity_id = b.entity_id;
@@ -117,7 +121,9 @@ COMMENT ON VIEW bi.company IS
 COMMENT ON COLUMN bi.company.trust_level IS
   'A MAXIMUM rung reached, not a score and not a category. Filtering trust_level = 2 silently drops everything above it. Filter on trust_rungs instead: 2 = ANY(trust_rungs).';
 COMMENT ON COLUMN bi.company.trust_rungs IS
-  'Every rung this entity actually satisfies. This is the field to filter on.';
+  'Every rung this entity actually satisfies. Deprecated 2026-10-31 with trust_level: use trust_grade and the facet columns.';
+COMMENT ON COLUMN bi.company.trust_grade IS
+  'Evidence grade (TRUST_PLAN §6.1): flagged, G0 listed, G1 registered, G2/G3 corroborated by 2 / 3+ independent publishers, G4 GST verified. Ordered and monotonic. Describes our evidence, not the firm, and never ranks suppliers.';
 COMMENT ON COLUMN bi.company.spine_tier IS
   '1 regulator, 2 company-declared, 3 observed/scraped, 4 inferred. Tier 1 is the only tier that may answer a licence or compliance question.';
 COMMENT ON COLUMN bi.company.n_sources IS
@@ -237,6 +243,17 @@ SELECT
   round(100.0 * count(*) / SUM(count(*)) OVER (), 1) AS pct
 FROM public.trust_state t
 GROUP BY t.trust_level;
+
+CREATE OR REPLACE VIEW bi.trust_grade_distribution AS
+SELECT
+  t.trust_grade,
+  count(*) AS entities,
+  round(100.0 * count(*) / SUM(count(*)) OVER (), 1) AS pct
+FROM public.trust_state t
+GROUP BY t.trust_grade;
+
+COMMENT ON VIEW bi.trust_grade_distribution IS
+  'Entities per evidence grade (TRUST_PLAN §6.1). Since 2026-10-31 this, not trust_distribution, is what the card shows. 96% sit at G1: 99.7% of firms appear in exactly one publisher, so most cannot yet be told apart.';
 
 COMMENT ON VIEW bi.trust_distribution IS
   'How many entities reached each trust rung, as a MAXIMUM. Most sit at L1: the Udyam long tail, registered and real but corroborated by nothing else. L0 is the remainder with no identifier or registry membership at all.';

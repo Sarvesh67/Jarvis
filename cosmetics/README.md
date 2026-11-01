@@ -320,4 +320,4 @@ says in its own `trust` field that you must not count or rank from it.
 The agent reads `--schema` — generated from the live graph, never hand-written — before
 writing any query, so it cannot guess at labels. The schema card also carries the mistakes
 that have already produced wrong answers here (`WHERE` after `OPTIONAL MATCH` filters
-nothing; `trust_level` is a maximum, filter `2 IN trust_rungs`).
+nothing; the evidence grade never ranks, and `trust_level` is deprecated — TRUST_PLAN §6).

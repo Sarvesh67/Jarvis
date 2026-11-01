@@ -116,6 +116,11 @@ The executed query comes back with the results. Quote it when the answer matters
   `1 regulator` · `2 company-declared` · `3 observed/scraped` · `4 inferred`.
   **Tier 4 never answers a licence, compliance or restriction question.**
 - **`note` / `trust`** — caveats that change the meaning. Pass them on.
+- **`grade_label`, `licence_note`, `activity_note`, `trust_evidence`** — what we can
+  evidence about a firm (TRUST_PLAN §6). Quote them as written. The grade says how sure we
+  are the firm exists and is this firm; it is NOT a quality rating, so never call a
+  supplier reliable, risky or trustworthy, and never re-rank rows by grade. "Unknown" means
+  our sources hold nothing, not that the firm failed a check.
 - **`empty_reason`** — zero rows is a COVERAGE GAP, never proof none exist. Relay the
   reason and the suggested alternative.
 - **`evidence_basis`** — "current Udyam activity" is what a firm declares now; "NIC recorded

@@ -64,7 +64,18 @@ def graph_counts() -> dict:
                 "MATCH (c:Company) RETURN c.trust_level AS lvl, count(*) AS n ORDER BY lvl"
             )
         }
-    return {"nodes": nodes, "edges": edges, "company_trust_level": trust}
+        grade = {
+            str(r["g"]): r["n"]
+            for r in s.run(
+                "MATCH (c:Company) RETURN c.trust_grade AS g, count(*) AS n ORDER BY g"
+            )
+        }
+        # TRUST_PLAN §10.4 measures T3 by this: firms that more than one publisher sees
+        corroborated = s.run(
+            "MATCH (c:Company) RETURN count(CASE WHEN c.trust_publishers >= 2 THEN 1 END) AS n"
+        ).single()["n"]
+    return {"nodes": nodes, "edges": edges, "company_trust_level": trust,
+            "company_trust_grade": grade, "companies_with_2plus_publishers": corroborated}
 
 
 def postgres_counts() -> dict:
@@ -237,6 +248,8 @@ def emit_site_data(snap: dict) -> list[Path]:
          [[k, v, k in DERIVED_EDGES] for k, v in g["edges"].items()])
     _csv(d / "trust.csv", ["trust_level", "companies"],
          [[k, v] for k, v in sorted(g["company_trust_level"].items())])
+    _csv(d / "trust_grade.csv", ["trust_grade", "companies"],
+         [[k, v] for k, v in sorted(g.get("company_trust_grade", {}).items())])
     _csv(d / "tables.csv", ["table_name", "rows"],
          [[k, v] for k, v in snap["postgres"]["tables"].items()])
 

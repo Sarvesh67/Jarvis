@@ -104,6 +104,7 @@
     WHERE any(g IN coalesce(c.gstins, []) WHERE g =~ '[0-9]{2}[A-Z]{3}[PH][A-Z][0-9]{4}[A-Z].*')
        OR c.pan =~ '[A-Z]{3}[PH][A-Z][0-9]{4}[A-Z]'
        OR any(r IN coalesce(c.trust_reasons, []) WHERE r =~ '.*[A-Z]{3}[PH][A-Z][0-9]{4}[A-Z].*')
+       OR any(r IN coalesce(c.trust_lines, []) WHERE r =~ '.*[A-Z]{3}[PH][A-Z][0-9]{4}[A-Z].*')
     RETURN count(c) AS violations
   expect_zero: violations
 
@@ -191,6 +192,29 @@
   shape: invariant
   cypher: |
     MATCH (c:Company) WHERE c.trust_level IS NULL RETURN count(c) AS violations
+  expect_zero: violations
+
+- id: trust_grade_on_every_company
+  q: "Every Company carries an evidence grade (TRUST_PLAN §6.1)"
+  shape: invariant
+  cypher: |
+    MATCH (c:Company)
+    WHERE NOT c.trust_grade IN ['flagged', 'G0', 'G1', 'G2', 'G3', 'G4']
+       OR c.trust_licence IS NULL OR c.trust_activity IS NULL OR c.trust_track IS NULL
+    RETURN count(c) AS violations
+  expect_zero: violations
+
+# TRUST_PLAN §7.1. The agent's Cypher can read anything on a Company node, so a private
+# trust fact on one is a published fact. Filing history above all (hard rule 7).
+- id: no_private_trust_fields_in_neo4j
+  q: "No private trust or GST-filing field is on a Company node"
+  shape: invariant
+  cypher: |
+    MATCH (c:Company)
+    WHERE any(k IN keys(c) WHERE k IN ['last_gstr1_period', 'last_gstr3b_period',
+             'filing_streak_mo', 'filing_streak_months', 'filing_on_schedule',
+             'filing_frequency', 'gst_filing', 'einvoice_enabled_private'])
+    RETURN count(c) AS violations
   expect_zero: violations
 
 - id: substitutes_for_a_restricted_ingredient

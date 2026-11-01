@@ -15,7 +15,7 @@ provenance_envelope:
 nodes:
   Company:
     key: [company_id]
-    indexes: [norm_name, trust_level, pincode]
+    indexes: [norm_name, trust_level, trust_grade, pincode]
     properties:
       legal_name: str
       norm_name: str
@@ -28,11 +28,18 @@ nodes:
       constitution: str        # proprietorship | partnership | llp | pvt_ltd | public_ltd
       roles: list              # ADDITIVE array, never a node label (hard rule 1)
       website: str
-      trust_level: int         # L0..L6, computed nightly, never ingested
-      gst_status: str
-      last_gstr3b_period: str
-      filing_streak_mo: int
+      trust_level: int         # L0..L6, DEPRECATED 2026-10-31: kept one release, use trust_grade
+      trust_grade: str         # flagged | G0..G4 — ordered and monotonic (TRUST_PLAN §6.1)
+      trust_grade_label: str   # the card line; describes our evidence, never the supplier
+      trust_publishers: int    # independent publishers that agree (trust/families.py)
+      trust_licence: str       # verified | claimed | unknown | adverse (facets, §6.3)
+      trust_activity: str
+      trust_track: str
+      trust_lines: list        # public evidence lines, "facet: text" — public rows only
+      gst_status: str          # public form only: Active / could not be confirmed (§7.1)
       gst_verified_at: datetime
+      # NEVER here: filing periods or streaks. They are private (hard rule 7, §7.1), and
+      # the agent's Cypher can read anything on this node.
   Facility:
     key: [facility_id]
     indexes: [pincode, cluster_id]

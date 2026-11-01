@@ -47,12 +47,21 @@
       "1": 126841,
       "2": 1,
       "4": 256
-    }
+    },
+    "company_trust_grade": {
+      "G0": 3966,
+      "G1": 126761,
+      "G2": 248,
+      "G3": 5,
+      "flagged": 683
+    },
+    "companies_with_2plus_publishers": 288
   },
   "postgres": {
     "tables": {
       "property_claim": 1076475,
       "crosswalk": 228790,
+      "trust_evidence": 144918,
       "raw_company": 136518,
       "trust_state": 132030,
       "ref_pincode": 19238,
@@ -64,9 +73,9 @@
       "operates_edge": 847,
       "adverse_signal": 683,
       "gstin_check": 54,
-      "unresolved_ingredient": 0,
       "gst_record": 0,
       "raw_rule": 0,
+      "unresolved_ingredient": 0,
       "raw_product": 0,
       "raw_ingredient": 0
     },

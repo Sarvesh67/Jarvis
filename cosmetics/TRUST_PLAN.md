@@ -606,10 +606,11 @@ endorsement (the Emblems and Names Act). Write "Checked against the GST Network 
 ## 9. Data model and code changes
 
 **Postgres** (`sql/003_trust.sql`, additive):
-- **`trust_evidence`** (T1, the PRD §9.1 entity): `entity_id, facet (grade|licence|activity|track),
-  signal_type, value jsonb, source_id, publisher_family, tier, provenance_class,
-  visibility (public|private|consented|supplier_only), observed_at, expiry_at, confidence,
-  superseded_by`. Append-only, like `crosswalk`.
+- **`trust_evidence`** (T1, the PRD §9.1 entity; `sql/003_trust_evidence.sql`): `entity_id,
+  facet (identity|adverse|licence|activity|track), signal_type, value jsonb, source_id,
+  source_key, publisher_family, tier, provenance_class, visibility
+  (public|private|consented|supplier_only), public_text, counts, observed_at, expiry_at`.
+  Derived and rebuilt each run, like `trust_state`. The facts it reads are append-only.
 - **`adverse_signal`** (exists, 0 rows) gets its first writers in T0: `mca_struck_off`,
   `mca_dissolved`, `mca_liquidated`, `nabl_expired`. Later: `gst_cancelled`, `licence_cancelled`.
 - **`gst_record`** (exists, append-only) adds `provider_class` (`live_gstn` | `vendor_cache` |
@@ -709,6 +710,17 @@ dissolved, 2 liquidated. 1 dead CIN on a live Udyam firm went to `review_queue`.
    the s16 and glossary entries.
 
 ### 10.2 T1 — the evidence profile
+
+**Done 2026-10-31.** `trust/evidence.py`, `grade.py` and `facets.py` write 144,918 rows to
+`trust_evidence` (`sql/003_trust_evidence.sql`). Grades on the graph: flagged 683, G0
+3,966, G1 126,761, G2 248, G3 5, G4 0. Licence is verified for 191 firms (189 NABL labs
+with cosmetics scope in date, plus 2 cosmetics licences). Activity is verified for 7,126
+and claimed for 1,470. Templates return the grade and facets and rank by the facet after
+fit. The card shows the grade, and the drawer is an evidence drawer. The BI view
+`bi.trust_grade_distribution` and the snapshot's `companies_with_2plus_publishers` (288)
+measure it. The ontology no longer designs filing fields onto `Company`. Tests: 264, plus
+43/43 demo questions. One deviation from §9: `trust_evidence` is derived and rebuilt each
+run, like `trust_state`, not append-only. The facts it reads are the append-only stores.
 
 - `trust_evidence` plus `evidence.py`, `grade.py` and `facets.py` (§9). `trust.py` keeps its CLI.
 - **Activity, from data already held:** HPCI India 2026 exhibitors (69); MCA status Active

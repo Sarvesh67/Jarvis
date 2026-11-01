@@ -19,10 +19,10 @@ import lib  # noqa: E402
 from trust import families  # noqa: E402
 
 TEMPLATES = yaml.safe_load((ROOT / "pipeline" / "query_templates.yaml").read_text())
-# Fields that describe our evidence about a firm. They may break ties after fit, never
-# lead a ranking (TRUST_PLAN §6.5): an L4 council member once outranked every licensee.
-TRUST_KEYS = re.compile(r"\b(trust\w*|grade\w*|licence_rank|activity_rank)\b")
-NEVER_SORTS = re.compile(r"\b(trust|trust_level|trust_grade|grade|grade_rank)\b")
+# TRUST_PLAN §6.5: rank by fit, then by the FACET that matters for the question (licence
+# for "who can make", activity for suppliers). The grade and the old L-number never sort:
+# `trust DESC` once put the 3.7% of firms at L4 on top of every list.
+NEVER_SORTS = re.compile(r"\b(trust|trust_level|trust_grade|grade|grade_label|trust_rungs)\b")
 
 
 # ------------------------------------------------------------------ unit
@@ -61,9 +61,6 @@ def _order_keys(cypher: str) -> list[str]:
 @pytest.mark.parametrize("t", TEMPLATES, ids=[t["id"] for t in TEMPLATES])
 def test_trust_never_orders_results(t):
     keys = _order_keys(t["cypher"])
-    if not keys:
-        return
-    assert not TRUST_KEYS.search(keys[0]), f"{t['id']}: ranks by evidence before fit: {keys}"
     assert not any(NEVER_SORTS.search(k) for k in keys), f"{t['id']}: sorts on trust: {keys}"
 
 
@@ -128,3 +125,105 @@ def test_own_site_never_corroborates(cur):
 def test_one_registry_is_not_two_sources(cur):
     bad = [s for s in _sources_with_rung4(cur) if s <= {"s17_udyam", "s17b_udyam_api", "s14_sites"}]
     assert not bad, f"{len(bad)} firms corroborated by Udyam alone"
+
+
+# ------------------------------------------------------------------ T1: grade and facets
+
+from trust import facets as F  # noqa: E402
+from trust import grade as G  # noqa: E402
+
+TODAY = date(2026, 10, 31)
+
+
+def ev(facet, signal, family=None, tier=1, counts=True, observed=None, expiry=None, text="x",
+       **value):
+    return {"facet": facet, "signal_type": signal, "publisher_family": family, "tier": tier,
+            "counts": counts, "observed_at": observed, "expiry_at": expiry,
+            "public_text": text, "visibility": "public", "value": value}
+
+
+UDYAM = ev("identity", "registry_entry", "udyam")
+MCA = ev("identity", "registry_entry", "mca")
+COUNCIL = ev("identity", "directory_listing", "chemexcil", tier=2)
+FAIR = ev("identity", "directory_listing", "fair:HPCI India", tier=2)
+SITE = ev("identity", "identifier_claimed", None, tier=3, counts=False)
+
+
+@pytest.mark.parametrize("rows,code", [
+    ([], "G0"),
+    ([COUNCIL], "G0"),                       # a directory never establishes identity
+    ([COUNCIL, FAIR], "G0"),                 # nor do two of them
+    ([SITE, COUNCIL], "G0"),                 # nor the firm's own website
+    ([UDYAM], "G1"),
+    ([UDYAM, UDYAM], "G1"),                  # one registry, however many rows
+    ([UDYAM, COUNCIL], "G2"),
+    ([UDYAM, MCA, COUNCIL], "G3"),
+    ([ev("adverse", "mca_struck_off", "mca", text="MCA status: Struck off, as of 2026-09-06 (x)"),
+      COUNCIL], "flagged"),
+    ([ev("adverse", "mca_struck_off", "mca"), UDYAM], "G1"),   # a live registry outranks it
+])
+def test_grade_rules(rows, code):
+    assert G.grade(rows, TODAY)["code"] == code
+
+
+def test_grade_is_monotonic():
+    """Adding evidence never lowers a grade (TRUST_PLAN §2.8)."""
+    pool = [UDYAM, MCA, COUNCIL, FAIR, SITE]
+    rank = {c: i for i, c in enumerate(G.ORDER)}
+    import itertools
+    for n in range(len(pool)):
+        for combo in itertools.combinations(pool, n):
+            base = rank[G.grade(list(combo), TODAY)["code"]]
+            for extra in pool:
+                assert rank[G.grade(list(combo) + [extra], TODAY)["code"]] >= base
+
+
+def test_gst_verified_is_g4_only_while_fresh():
+    fresh = ev("identity", "gst_verified", "gstn", observed=date(2026, 10, 29))
+    assert G.grade([fresh, COUNCIL], TODAY) == {
+        "code": "G4", "publishers": ["chemexcil", "gstn"], "label": "GST active · checked 2 d ago"}
+    stale = ev("identity", "gst_verified", "gstn", observed=date(2026, 9, 1))
+    assert G.grade([stale], TODAY)["code"] == "G1"     # decays to the grade it would have
+
+
+def test_expired_evidence_counts_for_nothing():
+    lapsed = ev("identity", "registry_entry", "nabl", expiry=date(2026, 9, 10))
+    assert G.grade([lapsed], TODAY)["code"] == "G0"
+    old_fair = ev("activity", "exhibited", "fair:X", tier=2, expiry=date(2026, 1, 1))
+    assert F.facet([old_fair], "activity", TODAY)["state"] == "unknown"
+
+
+def test_facet_states():
+    assert F.facet([], "licence", TODAY) == {"state": "unknown", "note": F.UNKNOWN["licence"]}
+    site = ev("activity", "website_live", tier=3, text="Website live")
+    mca = ev("activity", "mca_active", "mca", text="MCA status Active")
+    assert F.facet([site], "activity", TODAY) == {"state": "claimed", "note": "Website live"}
+    assert F.facet([site, mca], "activity", TODAY) == {"state": "verified", "note": "MCA status Active"}
+
+
+def test_private_rows_never_become_lines():
+    hidden = dict(ev("identity", "registry_lapsed", "mca"), visibility="private", public_text=None)
+    assert F.public_lines([hidden, UDYAM]) == ["identity: x"]
+
+
+def test_every_chip_has_evidence(cur):
+    """Each facet state on a card traces to an evidence row (TRUST_PLAN §10.2)."""
+    for facet in F.FACETS:
+        n = _scalar(cur, """
+            SELECT count(*) FROM trust_state t
+            WHERE t.facets->%s->>'state' IN ('verified', 'claimed')
+              AND NOT EXISTS (SELECT 1 FROM trust_evidence v WHERE v.entity_id = t.entity_id
+                              AND v.facet = %s AND v.counts)""", facet, facet)
+        assert n == 0, f"{n} {facet} chips with no evidence row behind them"
+    n = _scalar(cur, """SELECT count(*) FROM trust_state t WHERE t.trust_grade NOT IN ('G0', 'flagged')
+                        AND NOT EXISTS (SELECT 1 FROM trust_evidence v WHERE v.entity_id = t.entity_id
+                                        AND v.facet = 'identity' AND v.counts
+                                        AND v.signal_type IN ('registry_entry', 'gst_verified'))""")
+    assert n == 0, f"{n} registered grades with no registry row behind them"
+
+
+def test_flagged_never_beside_a_live_registry(cur):
+    n = _scalar(cur, """SELECT count(*) FROM trust_state t WHERE t.trust_grade = 'flagged'
+                        AND EXISTS (SELECT 1 FROM trust_evidence v WHERE v.entity_id = t.entity_id
+                                    AND v.signal_type = 'registry_entry' AND v.counts)""")
+    assert n == 0

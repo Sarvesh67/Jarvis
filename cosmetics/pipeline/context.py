@@ -67,7 +67,8 @@ def _node_out(node) -> dict:
     if name:
         d["name"] = name
     # a compact, useful projection rather than every property
-    for k in ("district", "state", "cluster_id", "trust_level", "trust_rungs", "roles",
+    for k in ("district", "state", "cluster_id", "trust_grade", "trust_grade_label",
+              "trust_licence", "trust_activity", "roles",
               "jurisdiction", "clause", "status", "form_type", "is_loan_licence",
               "type", "code", "website", "cin"):
         v = node.get(k)

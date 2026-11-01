@@ -6,7 +6,7 @@ is the build narrative. This file is the operating brief.
 ## Read first, in this order
 
 1. **`catalog/glossary.yaml`** — domain and project vocabulary. Skipping it is how you
-   misread `trust_level` and `tier`, which are the two fields that decide whether an
+   misread `trust_grade` and `tier`, which are the two fields that decide whether an
    answer is allowed to be given at all.
 2. **`catalog/sources/*.yaml`** — one card per source. The `do_not:` block of any source
    you are about to touch is mandatory reading; several entries are enforced
@@ -24,7 +24,12 @@ is the build narrative. This file is the operating brief.
 - **Tier decides what a fact may claim.** Tier 1 is the regulator and is the only tier
   that may answer a licence or compliance question. Tier 2 (company-declared), tier 3
   (scraped) and tier 4 (inferred) rank and suggest; they never permit.
-- **`trust_level` is a maximum.** Filter with `2 IN trust_rungs`, never `trust_level = 2`.
+- **The evidence grade describes our evidence, never the firm, and never ranks.**
+  `trust_grade` is flagged | G0 listed | G1 registered | G2/G3 corroborated by 2 / 3+
+  independent publishers | G4 GST verified (TRUST_PLAN §6). Licence, activity and track
+  record are separate facets (`trust_licence` …). Count publishers (`publisher.family` on
+  each card), never source ids. `trust_level` / `trust_rungs` are deprecated — kept one
+  release; never filter `trust_level >= 2`.
 - **Pin `jurisdiction` on every `RegulatoryRule`.** The graph holds IN and EU. An EU
   restriction is not an Indian restriction.
 - **An empty edge is a real answer.** `PERMITS` is empty and coverage reports 0% because

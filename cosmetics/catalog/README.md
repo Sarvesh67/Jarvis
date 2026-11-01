@@ -4,7 +4,7 @@ The graph answers *questions*. This directory answers *"should I believe that an
 
 It exists because the load-bearing knowledge about this dataset is not in the data. It is
 things like: the CDSCO register is 99.7% drug licences, `PERMITS` is empty on purpose,
-`trust_level` is a maximum and you must filter on `trust_rungs`, and MILK is an INCI name.
+the evidence grade never ranks a supplier, and MILK is an INCI name.
 Someone who queries the graph without knowing those will get a confident wrong answer and
 have no way to tell.
 
@@ -41,7 +41,7 @@ to match the card.**
 
 Read in this order, and do not skip step 1.
 
-1. **`glossary.yaml`** — or you will misread `trust_level`, `tier`, and at least one
+1. **`glossary.yaml`** — or you will misread `trust_grade`, `tier`, and at least one
    ingredient name.
 2. **The `do_not` block of every source card you are about to touch.** These are not
    style notes. They encode the hard rules, and several of them are enforced mechanically
@@ -58,7 +58,7 @@ The four rules that cause the most wrong answers here:
   that may answer a licence or compliance question. Tier 2 is a company's own claim,
   tier 3 is something observed on a page, tier 4 is inferred — those three rank and
   suggest, never permit.
-- **`trust_level` is a maximum.** Filter with `2 IN trust_rungs`, not `trust_level = 2`.
+- **The evidence grade is not a quality score, and it never ranks.** Read `trust_grade` (flagged, G0–G4) and the facets `trust_licence` / `trust_activity` / `trust_track`; `trust_level` is deprecated. Filter licences with `trust_licence = 'verified'`.
 - **Every `RegulatoryRule` needs its `jurisdiction` pinned.** EU restriction is not Indian
   restriction, and the graph holds both.
 - **An empty edge is a real answer.** `PERMITS` is empty and coverage says 0% because no

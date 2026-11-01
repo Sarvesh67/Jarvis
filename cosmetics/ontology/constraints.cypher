@@ -3,6 +3,7 @@
 CREATE CONSTRAINT company_key IF NOT EXISTS FOR (n:Company) REQUIRE n.company_id IS UNIQUE;
 CREATE INDEX company_norm_name IF NOT EXISTS FOR (n:Company) ON (n.norm_name);
 CREATE INDEX company_trust_level IF NOT EXISTS FOR (n:Company) ON (n.trust_level);
+CREATE INDEX company_trust_grade IF NOT EXISTS FOR (n:Company) ON (n.trust_grade);
 CREATE INDEX company_pincode IF NOT EXISTS FOR (n:Company) ON (n.pincode);
 
 CREATE CONSTRAINT facility_key IF NOT EXISTS FOR (n:Facility) REQUIRE n.facility_id IS UNIQUE;

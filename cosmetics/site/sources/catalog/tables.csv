@@ -1,6 +1,7 @@
 table_name,rows
 property_claim,1076475
 crosswalk,228790
+trust_evidence,144918
 raw_company,136518
 trust_state,132030
 ref_pincode,19238
@@ -12,8 +13,8 @@ raw_facility,881
 operates_edge,847
 adverse_signal,683
 gstin_check,54
-unresolved_ingredient,0
 gst_record,0
 raw_rule,0
+unresolved_ingredient,0
 raw_product,0
 raw_ingredient,0

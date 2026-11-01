@@ -39,7 +39,7 @@ may answer a licence or compliance question. Tier 2 is a company's own claim, ti
 something observed on a web page, tier 4 is inferred. Those three rank and suggest — they
 never permit.
 
-**`trust_level` is a maximum.** Filter with `2 IN trust_rungs`, never `trust_level = 2`.
+**The evidence grade is not a quality score, and it never ranks.** Read `trust_grade` (flagged, G0–G4) and the facets `trust_licence` / `trust_activity` / `trust_track`; `trust_level` is deprecated. Filter licences with `trust_licence = 'verified'`.
 
 **Pin `jurisdiction` on every rule.** The graph holds both Indian and EU regulation, and
 an EU restriction is not an Indian restriction.

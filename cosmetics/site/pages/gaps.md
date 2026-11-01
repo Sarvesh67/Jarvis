@@ -84,21 +84,27 @@ zero above is that answer.
 It was also specced wrong: S1 (CDSCO approved sites) was named as the cosmetics facility
 spine. Of its 911 rows, **3** are cosmetics-regime. See `catalog/decisions/0001`.
 
-## Why so many companies stop at trust L1
+## Why almost every company is "Registered" and nothing more
 
-```sql trust
-select trust_level, companies from catalog.trust order by trust_level
+```sql grade
+select trust_grade, companies from catalog.trust_grade order by trust_grade
 ```
 
-<BarChart data={trust} x=trust_level y=companies title="Companies by trust level" yFmt='#,##0'/>
+<BarChart data={grade} x=trust_grade y=companies title="Companies by evidence grade" yFmt='#,##0'/>
 
-Most companies are Udyam-registered and nothing more: registry membership proves they
-exist (L1) and says nothing about permission or activity. Until 2026-10-18 the national
-Udyam rows never carried their registration flag and sat at L0; the bar moved when that
-was fixed, not because anything new was learned about the firms.
+The evidence grade (`TRUST_PLAN.md` §6) counts **independent publishers**, not sources:
+Udyam counts once however many of our adapters read it, and a firm's own website never
+counts. G1 is one registry entry still in force; G2 and G3 add a second and third
+publisher; G4 needs a live GST check, which is not connected. Flagged firms carry a tier-1
+adverse fact (MCA lists them struck off or dissolved) and no live registry says otherwise.
+
+Most firms sit at G1 because our sources barely overlap: 99.7% of companies appear in
+exactly one publisher. Until 2026-10-31 the old L0–L6 ladder hid this. It counted Udyam
+twice, counted a firm's own site as a second opinion, and let council membership alone
+reach L4, so 4,843 firms looked corroborated and 3,408 of them had no identity evidence.
 
 **S16 — GSTIN verification** is blocked on a paid provider key. It is what would lift a
-company from L2 to L3: the difference between a number that passes a checksum and a number
+company to G4: the difference between a number that passes a checksum and a number
 that is currently active and belongs to this firm. `gst_record` holds 0 rows. We hold a
 GSTIN at all for only 54 companies, so finding GSTINs is the binding problem before
 verifying them is (see `TRUST_PLAN.md`).
