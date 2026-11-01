@@ -388,6 +388,18 @@ Ordered, monotonic, and one per firm. Each grade requires every grade below it.
 - **Successions are not adverse.** Amalgamated and Converted to LLP add no identity credit
   from the old CIN. The drawer notes the succession.
 - **Proprietorships** reach G4 the same way. The GSTIN and legal name stay masked (§7.1).
+- **G0 is a gap in our data, not a finding about the firm,** and the drawer says why
+  (added 2026-10-31, after "No government registry entry" read as an accusation). The
+  reasons are:
+  - the directory that lists it gives no address, and we never match on the name alone;
+  - our Udyam copy holds only MSMEs in cosmetics and packaging activity codes;
+  - our MCA copy is partial;
+  - its NABL certificate lapsed;
+  - MCA shows a succession.
+
+  The fixes are data, not wording: the MCA bridge (§10.4), and SOURCES_PLAN Phase 1's
+  Udyam re-sweep, which keeps chemical activity codes. Of 55 glycerin suppliers, 51 are
+  G0, and 43 of those reached us through CHEMEXCIL and their own website.
 
 ### 6.2 Independent publishers
 
@@ -775,7 +787,11 @@ Grades did not move: the stub verifies nothing. The stub rows were then purged
   source's gain is measured.
 
 **The MCA bridge** is built and ready. It is S3's names mode aimed at Udyam: `make
-mca-bridge`, 11,627 firms with a company or LLP name. Building it fixed two bugs: the
+mca-bridge`, 13,926 company or LLP names. 11,627 are Udyam firms, which would gain a second
+registry and a status. 2,319 are CHEMEXCIL, fair and website firms that are only "Listed"
+today, which would gain a first. A directory row carries no address, so the bridge borrows
+the place from the firm's website row: 711 of them have one, and MCA is matched on name
+plus place, never on the name alone. Building it fixed two bugs: the
 adapter wrote `adverse_signal` rows keyed by CIN, and `trust.py` would have turned those
 into phantom entities. The bridge **has not run**: data.gov.in returned 502 to every
 request on 2026-10-31, for MCA and Udyam alike, so whether our key reaches MCA is still

@@ -77,7 +77,7 @@ out/          built artifacts, gitignored
 ```bash
 make ingest-all        # every source needing no credentials
 make pipeline          # Stages 2-8, ending in validation
-make test              # 280 checks: golden queries + hard-rule invariants + trust + GST + backup
+make test              # 284 checks: golden queries + hard-rule invariants + trust + GST + backup
 make schema            # live schema — read before writing Cypher
 make coverage          # the honest number
 make catalog           # write today's snapshot of the live stores

@@ -116,7 +116,7 @@ def _gst(cls, status="Active", days=1, name=True):
 
 def test_stub_never_verifies():
     rows = evidence.rows_for("e", _entity([_gst("stub")]), date(2026, 10, 31))
-    assert rows == []
+    assert not any(r["source_id"] == "s16_gstin" for r in rows)
     assert grade.grade(rows, date(2026, 10, 31))["code"] == "G0"
 
 

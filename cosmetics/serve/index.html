@@ -733,7 +733,7 @@ function isVendorSet(rows){
 // G4 needs live GST verification, which is not connected, so no firm reaches it yet.
 const GRADE = {
   flagged: [0, "Flagged", "A tier-1 adverse fact is on record, and no registry in force says otherwise"],
-  G0: [0, "Listed", "Appears in a source we hold, but in no government registry"],
+  G0: [0, "Listed", "Not yet matched to a government registry record in the data we hold. That is a gap in our data, not a finding about the firm"],
   G1: [1, "Registered", "One government registry entry in force"],
   G2: [2, "Corroborated", "Registered, and two independent publishers agree that it exists"],
   G3: [3, "Corroborated", "Registered, and three or more independent publishers agree that it exists"],
@@ -884,7 +884,7 @@ function gradeDetail(v){
   if (v.grade === "G1") return (l.match(/\(([^)]+)\)/) || [, "registry"])[1];
   if (v.grade === "G2" || v.grade === "G3") return (l.match(/(\d+)/) || [, "2"])[1] + " sources";
   if (v.grade === "G4") return (l.split("·")[1] || "checked").trim();
-  return v.grade === "G0" ? "No registry" : "Adverse fact";
+  return v.grade === "G0" ? "Not matched yet" : "Adverse fact";
 }
 
 function scoreEl(v, big){
@@ -1191,14 +1191,21 @@ function openVendor(v, focus){
     }
     t.appendChild(el("p", "sub", !v.grade
       ? "This answer does not include an evidence grade for this supplier."
+      // Listed: the reason is the first line under Identity; don't say it twice
+      : v.grade === "G0" ? `${v.gradeLabel || "Listed only"}.`
       : `${v.gradeLabel || GRADE[v.grade][1]}. ${GRADE[v.grade][2]}.`));
     const ul = el("ul", "ladder");
     const of = f => v.lines.filter(x => x.facet === f).map(x => x.text);
     const ident = of("adverse").concat(of("identity"));
-    if (v.grade !== "G4") ident.push("GST evidence unavailable: live GSTIN verification is not connected yet.");
+    // An answer from the agent's own query may carry no evidence at all: say so, and
+    // never let an absent record read as an absent registration.
+    if (!v.lines.length) ident.push(v.grade
+      ? "Not yet matched to a government registry record in the data we hold. That is a gap in our data, not a finding about the firm."
+      : "This answer doesn't include the evidence record for this supplier.");
+    if (v.grade !== "G4") ident.push("GST not checked: live GST verification isn't connected yet.");
     ul.appendChild(evidenceRow("Identity",
       v.grade === "flagged" ? "bad" : ["G1", "G2", "G3", "G4"].includes(v.grade) ? "yes" : "unknown",
-      ident.length > 1 || v.grade === "G4" ? ident : ["No government registry entry in the sources we hold."].concat(ident)));
+      ident));
     FACET.forEach(([k, label, none]) => {
       const f = v.facets[k];
       const said = of(k);
@@ -1206,7 +1213,7 @@ function openVendor(v, focus){
         said.length ? said : [f.note ? f.note + "." : none]));
     });
     t.appendChild(ul);
-    if (v.grade && !v.lines.length) {
+    if (!v.lines.length) {
       const full = btn("link", "Load the full evidence record", "ask", () => askAbout(v));
       full.style.marginTop = "6px"; t.appendChild(full);
     }

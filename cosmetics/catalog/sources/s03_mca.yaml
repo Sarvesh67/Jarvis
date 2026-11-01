@@ -47,7 +47,8 @@ blocked_on: >
   A data.gov.in API key with MCA master access. Note the same key already works for S17b
   (Udyam) — the MCA resource is separately gated. Re-tested 2026-10-31: inconclusive, the
   API answered 502 to MCA and Udyam alike. When it answers, `make mca-bridge` runs the
-  names mode over the 11,627 Udyam firms with a company or LLP name (TRUST_PLAN §10.4).
+  names mode over 13,926 company or LLP names: 11,627 Udyam firms, plus 2,319 CHEMEXCIL,
+  fair and website firms that are only "Listed" today (TRUST_PLAN §10.4).
 
 defects:
   - >

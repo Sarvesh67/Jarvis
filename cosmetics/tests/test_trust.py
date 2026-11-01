@@ -234,3 +234,48 @@ def test_adverse_rows_name_live_entities(cur):
     n = _scalar(cur, """SELECT count(*) FROM adverse_signal a WHERE NOT EXISTS
                         (SELECT 1 FROM trust_state t WHERE t.entity_id = a.entity_id)""")
     assert n == 0, f"{n} adverse rows name no entity"
+
+
+# ------------------------------------------------------------------ why a firm is only Listed
+
+from datetime import datetime as _dt  # noqa: E402
+
+from trust import evidence as EV  # noqa: E402
+
+
+def _rec(source_id, payload=None, in_force=False):
+    return {"source_id": source_id, "source_key": "k", "payload": payload or {},
+            "retrieved_at": _dt(2026, 9, 5), "cin": None, "gstin": None, "tier": 2,
+            "family": families.family_of(source_id, payload or {}), "in_force": in_force}
+
+
+def _ent(records, pincodes=()):
+    return {"records": records, "pincodes": set(pincodes), "adverse": [], "licences": [],
+            "mca_adverse": None, "gst": []}
+
+
+def _gap(e):
+    rows = EV.rows_for("e", e, TODAY)
+    return [r["public_text"] for r in rows if r["signal_type"] == "registry_gap"]
+
+
+def test_listed_firm_says_it_is_our_gap():
+    [text] = _gap(_ent([_rec("s09_chemexcil")]))
+    assert "gap in our data, not a finding about the firm" in text
+    assert "gives no address" in text and "never on name alone" in text
+
+
+def test_gap_names_the_lapsed_certificate():
+    [text] = _gap(_ent([_rec("s11_nabl", {"certificate_valid_till": "10/09/2026"})], ["380001"]))
+    assert "lapsed on 10/09/2026" in text
+
+
+def test_registered_firm_has_no_gap_line():
+    assert _gap(_ent([_rec("s17b_udyam_api", {"udyam_registered": True}, in_force=True)])) == []
+
+
+def test_expired_activity_is_not_listed_under_activity():
+    rows = EV.rows_for("e", _ent([_rec("s08_exhibitors", {"event": "Expo", "year": "2025"})]), TODAY)
+    lines = F.public_lines(rows, TODAY)
+    assert "identity: Exhibited at Expo 2025" in lines
+    assert not any(l.startswith("activity:") for l in lines)

@@ -90,8 +90,8 @@ demo-check:             ## every demo question and paraphrase, through the live 
 demo:                   ## print the demo script: questions, in order, with the caveats
 	$(PY) -m pipeline.demo
 
-mca-bridge:             ## T3: ask MCA about every Udyam firm with a company/LLP name (~11.6k, hours, resumable), then rebuild
-	$(PY) adapters/s03_mca_master.py --mode names --sources s17b_udyam_api s17_udyam --limit 20000
+mca-bridge:             ## T3: ask MCA about every company/LLP name from Udyam, CHEMEXCIL, fairs and websites (~13.9k, hours, resumable), then rebuild
+	$(PY) adapters/s03_mca_master.py --mode names --sources s17b_udyam_api s17_udyam s09_chemexcil s08_exhibitors s14_sites --limit 20000
 	$(MAKE) pipeline
 
 gst-stub:               ## T2: run GST verification + name search end to end on the STUB provider (verifies nothing)

@@ -259,7 +259,7 @@ Proposed card ids (`s20`+) are provisional.
 |---|---|---|
 | Company website/domain as a resolver key | **G** (code) | Already loaded and unused. It is the join key for COSMOS, brand sites and distributor pages, which give names but no IDs. |
 | GSTIN from AIPMA and supplier claims | **G** | Feeds TRUST_PLAN rung 0 straight away |
-| **MCA bridge**: CIN and status for the 11,627 Udyam firms with a company or LLP name (added 2026-10-31, TRUST_PLAN §10.4) | **A** (access untested) | `make mca-bridge`. It is the S3 names mode, aimed at Udyam. It gives each firm a second registry, its MCA status, and a CIN for T4's CIN → PAN → GSTIN route. data.gov.in returned 502 on 2026-10-31, so whether the key reaches MCA is still unknown |
+| **MCA bridge**: CIN and status for 13,926 company or LLP names: 11,627 Udyam firms, plus 2,319 CHEMEXCIL, fair and website firms that are only "Listed" (added 2026-10-31, TRUST_PLAN §10.4) | **A** (access untested) | `make mca-bridge`. It is the S3 names mode, aimed at Udyam. It gives each firm a second registry, its MCA status, and a CIN for T4's CIN → PAN → GSTIN route. data.gov.in returned 502 on 2026-10-31, so whether the key reaches MCA is still unknown |
 | e-invoice IRP public keys | **G** | Live page with production and sandbox certificates. A signed-QR check works offline. Each private IRP likely has its own key; not confirmed. Layer E, per TRUST_PLAN L6. |
 
 ### 4.7 The first-party RFQ rail (s31), the only source of layers D and E

@@ -164,4 +164,46 @@ def rows_for(entity_id: str, e: dict, today: date | None = None) -> list[dict]:
                      f"{l['form']} licence on the CDSCO register (status and categories "
                      "not published)", family="cdsco", tier=1, prov="registry",
                      expiry=l["expires_on"]))
+    gap = _registry_gap(entity_id, e, out, today)
+    if gap:
+        add(gap)
     return out
+
+
+# Why a firm is only "Listed" (G0). Without this the drawer said "no government registry
+# entry", which reads as a finding about the firm. It is a gap in OUR data: Udyam covers
+# only MSMEs and we hold only its cosmetics and packaging slice; MCA access is partial;
+# and a directory without an address cannot be matched on name alone (0007).
+COVERAGE = ("Our Udyam copy holds only MSMEs registered for cosmetics or packaging work in "
+            "the areas swept so far, and our MCA copy is partial.")
+
+
+def _registry_gap(entity_id: str, e: dict, rows: list[dict], today: date) -> dict | None:
+    live = [r for r in rows if r["facet"] == "identity" and r["counts"]
+            and r["signal_type"] in ("registry_entry", "gst_verified")
+            and (r["expiry_at"] is None or r["expiry_at"] >= today)]
+    if live or e.get("mca_adverse"):
+        return None                 # registered, or flagged: the grade already says why
+    lead = "Not yet matched to a government registry record in the data we hold. "
+    lapsed_nabl = [r for r in e["records"] if r["source_id"] == "s11_nabl"]
+    succession = [r for r in e["records"] if r["source_id"] == "s03_mca"
+                  and r["payload"].get("company_status") not in (*families.MCA_LIVE,
+                                                                 *families.MCA_DEAD)]
+    dirs = sorted({families.display(r["family"]) for r in e["records"]
+                   if families.kind_of(r["source_id"]) == "directory" and r["family"]})
+    if lapsed_nabl:
+        till = lapsed_nabl[0]["payload"].get("certificate_valid_till")
+        why = f"Its NABL certificate lapsed on {till}, and no other registry record is matched."
+    elif succession:
+        status = succession[0]["payload"].get("company_status")
+        why = f"MCA lists the company as {status}; the company that succeeded it is not matched yet."
+    elif dirs and not e.get("pincodes"):
+        why = (f"The {dirs[0]} gives no address, and we match registry records on name and "
+               f"place, never on name alone. {COVERAGE}")
+    elif dirs:
+        why = f"No Udyam or MCA record matches its name and place. {COVERAGE}"
+    else:
+        why = f"We know it only from its own website. {COVERAGE}"
+    return _row(entity_id, "identity", "registry_gap",
+                lead + "That is a gap in our data, not a finding about the firm. " + why,
+                counts=False)

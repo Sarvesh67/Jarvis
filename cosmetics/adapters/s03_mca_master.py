@@ -268,8 +268,9 @@ def candidates(limit: int, only_corporate: bool, sources: list[str] | None = Non
     """Companies worth asking MCA about. Proprietorships and partnerships are skipped —
     MCA cannot see them at all, so a lookup is a wasted request, not a miss.
 
-    `sources` narrows the ask, e.g. to the Udyam firms with a company or LLP name: the
-    MCA bridge of TRUST_PLAN §10.4, which gives them a second registry and a status."""
+    `sources` narrows the ask: the MCA bridge of TRUST_PLAN §10.4 asks about Udyam firms
+    with a company or LLP name (a second registry and a status) and about the directory
+    and website firms that are only "Listed" (a first registry)."""
     where = ["r.source_id <> 's03_mca'", "r.legal_name IS NOT NULL"]
     if sources:
         where.append("r.source_id IN (" + ", ".join(f"'{s}'" for s in sources
@@ -277,10 +278,22 @@ def candidates(limit: int, only_corporate: bool, sources: list[str] | None = Non
     if only_corporate:
         # filter in SQL, not after LIMIT, or the cap is spent on rows we then discard
         where.append(r"r.legal_name ~* '\m(PRIVATE LIMITED|PVT\.? ?LTD|LIMITED|LTD|LLP)\M'")
+    # A directory row (CHEMEXCIL, a fair) carries no address; the firm's own website row
+    # often does. Borrow the place from any record of the same entity, so MCA can be
+    # matched on name AND place (`corroborate`), never on the name alone.
     sql = f"""
         SELECT DISTINCT ON (r.norm_name)
-               r.legal_name, r.norm_name, r.state, r.pincode, r.source_id
+               r.legal_name, r.norm_name, coalesce(r.state, sib.state) AS state,
+               coalesce(r.pincode, sib.pincode) AS pincode, r.source_id
         FROM raw_company r
+        LEFT JOIN crosswalk x ON x.source_id = r.source_id AND x.source_key = r.source_key
+         AND x.entity_type = 'company' AND x.superseded_by IS NULL
+        LEFT JOIN LATERAL (
+            SELECT r2.state, r2.pincode FROM crosswalk x2
+            JOIN raw_company r2 ON r2.source_id = x2.source_id AND r2.source_key = x2.source_key
+            WHERE x2.entity_id = x.entity_id AND x2.superseded_by IS NULL
+              AND r2.pincode IS NOT NULL
+            LIMIT 1) sib ON true
         WHERE {' AND '.join(where)}
         ORDER BY r.norm_name, r.tier
         LIMIT {limit}

@@ -35,11 +35,17 @@ def all_facets(rows: list[dict], today: date | None = None) -> dict[str, dict]:
     return {f: facet(rows, f, today) for f in FACETS}
 
 
-def public_lines(rows: list[dict]) -> list[str]:
-    """Every public fact as "facet: text", in reading order, for the evidence drawer."""
+def public_lines(rows: list[dict], today: date | None = None) -> list[str]:
+    """Every public fact as "facet: text", in reading order, for the evidence drawer.
+
+    Expired activity is left out: a 2025 fair listed under Activity beside an "unknown"
+    facet contradicts itself. It still shows under Identity as a directory listing."""
+    today = today or date.today()
     order = {f: i for i, f in enumerate(("identity", "adverse", "licence", "activity", "track"))}
     seen, out = set(), []
     for r in sorted(rows, key=lambda r: (order[r["facet"]], r["tier"] or 9)):
+        if r["facet"] == "activity" and r["expiry_at"] and r["expiry_at"] < today:
+            continue
         if r["visibility"] == "public" and r["public_text"]:
             line = f"{r['facet']}: {r['public_text']}"
             if line not in seen:
