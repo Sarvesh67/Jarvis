@@ -13,7 +13,7 @@ Measured 2026-10-30, at commit `e954fcf`.
 | Store | Size | What it holds | If lost |
 |---|---|---|---|
 | `cosmetics/raw/` | 7,439 files, 1.35 GB | Every payload a source landed, content-addressed and append-only (`lib.land`, recorded in `fetch_manifest`) | Re-fetch from origin (§4); some sources no longer serve the same pages |
-| Postgres `cosmetics` | 18 tables, 1.69M rows, 785 MB | Parsed source rows (`raw_*`), resolution (`crosswalk`, `review_queue`, `property_claim`), `trust_state`, `person` | See below: part of it exists nowhere else |
+| Postgres `cosmetics` | 21 tables, 1.84M rows, 893 MB | Parsed source rows (`raw_*`), resolution (`crosswalk`, `review_queue`, `property_claim`), `trust_state` and `trust_evidence` (derived; `make trust` rebuilds them), `gst_record` / `gstin_candidate` / `verification_spend` (empty until a live GST provider), `person` | See below: part of it exists nowhere else |
 | Postgres `jarvis` | 23 MB | The platform's own tables | Platform setup state |
 | `msme/out/firms.parquet` | 31 MB | Gujarat Udyam firms, the input S17 reads | The Udyam CSV it was built from (`udyam_500k.csv`) is no longer on this Mac. This file is the only copy |
 | `msme/cache/` | 0.8 MB | Cached LLM outputs for the NIC-to-material snap (1,161 codes) | Re-run costs LLM calls |
@@ -184,6 +184,7 @@ destroys data. Afterwards: `make pipeline`, `make index`, `make catalog`, and fi
 | s09 CHEMEXCIL members | `make ingest SOURCE=s09` | nothing | yes | 74 alphabet pages |
 | s11 NABL testing labs | `make ingest SOURCE=s11` | nothing | **no**, rows only | Every state; states over the 100-row cap are split by city. Lab contacts go to `person` |
 | s03 MCA master | `make ingest SOURCE=s03 ARGS="--mode bulk"` | `DATA_GOV_IN_KEY` with MCA access | **no**, rows only | Card says blocked: the MCA resource is gated separately from Udyam. Checkpoints in `cache/s03_offsets.json` |
+| s03 MCA bridge for Udyam firms | `make mca-bridge` (names mode over the 11,627 Udyam firms with a company or LLP name, then `make pipeline`) | `DATA_GOV_IN_KEY` with MCA access | **no**, rows only | TRUST_PLAN §10.4. Not yet run: data.gov.in answered 502 to every request on 2026-10-31, so MCA access is untested. Checkpoint `cache/s03_names_done.json`; a stopped run resumes |
 | s17 Udyam, Gujarat | `make ingest SOURCE=s17` | `msme/out/firms.parquet` | no (reads the parquet) | To rebuild the parquet: `bash msme/run.sh --csv <Udyam CSV>`. The CSV must be obtained again |
 | s17b Udyam, national | `make ingest SOURCE=s17b ARGS="--scope wedge --delay 1.2"`, then `make ingest SOURCE=s17b ARGS="--scope all-clusters --delay 1.2 --max-requests 9000"` | `DATA_GOV_IN_KEY` | **no**, rows only | ~12,300 requests, 4-5 h, resumable. 3,264 of 4,842 cluster pincodes were swept; Kerala, West Bengal and Assam were not. Phase 1 must make it land pages (0006) |
 | s14 company websites | `make ingest SOURCE=s14 ARGS="--all-roles --limit <N>"`, repeated until the remaining sites time out, then `make ingest SOURCE=s14 ARGS="--follow-landed"` | nothing | yes, HTML | Hours. The September passes visited 113, 600 and 2,011 sites (`cache/s14_*.log`); their exact flags were not recorded. The catalogue pass ran on 2026-10-29. Sites change, so a re-crawl will not reproduce the same pages |

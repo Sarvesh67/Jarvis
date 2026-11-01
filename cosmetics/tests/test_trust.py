@@ -227,3 +227,10 @@ def test_flagged_never_beside_a_live_registry(cur):
                         AND EXISTS (SELECT 1 FROM trust_evidence v WHERE v.entity_id = t.entity_id
                                     AND v.signal_type = 'registry_entry' AND v.counts)""")
     assert n == 0
+
+
+def test_adverse_rows_name_live_entities(cur):
+    """An adverse fact is about an ENTITY. S3 once keyed them by CIN (TRUST_PLAN §10.4)."""
+    n = _scalar(cur, """SELECT count(*) FROM adverse_signal a WHERE NOT EXISTS
+                        (SELECT 1 FROM trust_state t WHERE t.entity_id = a.entity_id)""")
+    assert n == 0, f"{n} adverse rows name no entity"

@@ -767,6 +767,23 @@ Grades did not move: the stub verifies nothing. The stub rows were then purged
 
 ### 10.4 T3 — free sources that corroborate
 
+**Partly done 2026-10-31.** The in-repo half is built:
+- every source card names its publisher;
+- `trust/families.py` already names the Phase 2–3 publishers (ZED, pollution boards, EC,
+  COSMOS, associations), so each new card plugs straight in;
+- the catalog snapshot counts `companies_with_2plus_publishers` (288 today), so each
+  source's gain is measured.
+
+**The MCA bridge** is built and ready. It is S3's names mode aimed at Udyam: `make
+mca-bridge`, 11,627 firms with a company or LLP name. Building it fixed two bugs: the
+adapter wrote `adverse_signal` rows keyed by CIN, and `trust.py` would have turned those
+into phantom entities. The bridge **has not run**: data.gov.in returned 502 to every
+request on 2026-10-31, for MCA and Udyam alike, so whether our key reaches MCA is still
+untested.
+
+The other T3 sources are SOURCES_PLAN Phase 2–3 adapters, which don't exist yet. Each lands
+with its phase.
+
 Chosen for overlap with the Udyam population, since 99.7% of firms sit in one publisher today.
 
 | Source | Where it's planned | Grade | Facet | Expected reach |

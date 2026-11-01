@@ -264,10 +264,16 @@ def corroborate(rec: dict, cand: dict) -> tuple[str, float]:
     return "unverified", 0.50
 
 
-def candidates(limit: int, only_corporate: bool) -> list[dict]:
+def candidates(limit: int, only_corporate: bool, sources: list[str] | None = None) -> list[dict]:
     """Companies worth asking MCA about. Proprietorships and partnerships are skipped —
-    MCA cannot see them at all, so a lookup is a wasted request, not a miss."""
+    MCA cannot see them at all, so a lookup is a wasted request, not a miss.
+
+    `sources` narrows the ask, e.g. to the Udyam firms with a company or LLP name: the
+    MCA bridge of TRUST_PLAN §10.4, which gives them a second registry and a status."""
     where = ["r.source_id <> 's03_mca'", "r.legal_name IS NOT NULL"]
+    if sources:
+        where.append("r.source_id IN (" + ", ".join(f"'{s}'" for s in sources
+                                                     if re.fullmatch(r"[a-z0-9_]+", s)) + ")")
     if only_corporate:
         # filter in SQL, not after LIMIT, or the cap is spent on rows we then discard
         where.append(r"r.legal_name ~* '\m(PRIVATE LIMITED|PVT\.? ?LTD|LIMITED|LTD|LLP)\M'")
@@ -504,6 +510,7 @@ def main() -> int:
     ap.add_argument("--max-requests", type=int, default=900,
                     help="quota guard; the checkpoint makes a stopped run resumable")
     ap.add_argument("--limit", type=int, default=8000, help="companies to look up")
+    ap.add_argument("--sources", nargs="*", help="names mode: ask only about these source_ids")
     ap.add_argument("--all-names", action="store_true",
                     help="also ask about names with no corporate suffix (MCA cannot see them)")
     ap.add_argument("--states", nargs="*", default=WEDGE_STATES)
@@ -542,7 +549,7 @@ def main() -> int:
         return 0
 
     if a.mode == "names":
-        cands = candidates(a.limit, not a.all_names)
+        cands = candidates(a.limit, not a.all_names, a.sources)
         print(f"  {len(cands)} companies to look up "
               f"({'all names' if a.all_names else 'corporate-suffix names only — MCA holds no '
                'proprietorships or partnerships'})")
@@ -555,14 +562,11 @@ def main() -> int:
         finally:
             f.close()
         n = lib.upsert("raw_company", rows, "source_id, source_key")
+        # The status lands in the payload. Turning it into an adverse fact is trust.py's
+        # job (TRUST_PLAN §10.1): it knows the ENTITY, and whether a live registry entry
+        # sits beside the dead CIN, in which case it is a review item, not a public fact.
+        # This adapter once wrote adverse rows keyed by CIN, which is no entity at all.
         adverse = st.pop("adverse", [])
-        if adverse:
-            with lib.pg() as c, c.cursor() as cur:
-                cur.executemany(
-                    "INSERT INTO adverse_signal (entity_id, signal_type, detail, "
-                    "source_id, observed_at) VALUES (%s,%s,%s,%s, now())",
-                    [(cin, "mca_status_not_active",
-                      lib.jsonb({"company_status": stt}), SOURCE) for cin, stt in adverse])
         print(f"S3 done: {n} MCA companies written from {st['asked']} lookups "
               f"({st['requests']} requests)")
         print(f"  matched {st['hit']}, no MCA record {st['miss']}")

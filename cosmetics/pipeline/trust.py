@@ -116,7 +116,8 @@ def gather() -> dict[str, dict]:
             e["is_proprietorship"] = is_proprietorship(e["gstin"])
 
     for r in _q("SELECT entity_id, signal_type, detail FROM adverse_signal"):
-        if r["signal_type"] not in DERIVED_ADVERSE:      # those are re-derived below
+        # derived types are rebuilt below; a row for no live entity must not create one
+        if r["signal_type"] not in DERIVED_ADVERSE and r["entity_id"] in ent:
             ent[r["entity_id"]]["adverse"].append(r["signal_type"])
     for e in ent.values():
         e["mca_adverse"], e["mca_review"] = _mca_status(e)

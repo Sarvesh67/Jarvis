@@ -30,6 +30,12 @@ DISPLAY = {
     "fair": "trade-fair exhibitor list",
     "marketplace": "marketplace listing",
     "self": "the company's own website",
+    # SOURCES_PLAN Phase 2-3 publishers, named before their cards exist (TRUST_PLAN §10.4)
+    "zed": "ZED certification register",
+    "pcb": "pollution control board consent register",
+    "ec": "environmental clearance register",
+    "cosmos": "COSMOS certification register",
+    "association": "industry association directory",
 }
 
 # A registry row establishes identity only while it is in force (TRUST_PLAN §1.2, §10.1).
