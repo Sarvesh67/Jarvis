@@ -125,7 +125,36 @@ def suggestions():
     presenting, and this page is the product as a customer sees it. That material lives
     in the playbook, which is where the presenter reads it — off screen.
     """
-    return [{"id": d["id"], "ask": d["asks"][0]} for d in DEMO]
+    chosen = sorted((d for d in DEMO if d.get("suggest")), key=lambda d: d["suggest"])
+    return [{"id": d["id"], "ask": d["asks"][0]} for d in (chosen or DEMO)]
+
+
+_STATS: dict = {"at": 0.0, "body": None}
+
+
+@app.get("/api/stats")
+def stats():
+    """The four figures under the headline, counted from the live graph.
+
+    They were typed into the page once and went stale: "201 accredited labs" stayed after
+    10 of those certificates lapsed. Cached for ten minutes; the graph changes nightly.
+    """
+    if _STATS["body"] and time.monotonic() - _STATS["at"] < 600:
+        return _STATS["body"]
+    drv = lib.neo4j_driver()
+    with drv.session() as s:
+        one = lambda q: s.run(q).single()["n"]  # noqa: E731
+        body = {
+            "companies": one("MATCH (c:Company) RETURN count(c) AS n"),
+            "ingredients": one("MATCH (i:Ingredient) RETURN count(i) AS n"),
+            "rules": one("MATCH (r:RegulatoryRule) RETURN count(r) AS n"),
+            # in-date cosmetics scope only (TRUST_PLAN §10.1): a lapsed lab is not one
+            "labs": one("MATCH (c:Company) WHERE c.trust_licence = 'verified' "
+                        "AND 'testing_lab' IN coalesce(c.roles, []) RETURN count(c) AS n"),
+        }
+    drv.close()
+    _STATS.update(at=time.monotonic(), body=body)
+    return body
 
 
 def _evidence_view(res: dict) -> dict:

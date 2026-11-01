@@ -194,15 +194,21 @@ def _place(raw: str) -> tuple[dict | None, str]:
             r = cur.fetchone()
             return ({"lat": r[0], "lon": r[1], "label": f"{q} ({r[2]})"}, "pincode") \
                 if r and r[0] is not None else (None, "unresolved")
+        # An exact place name beats a prefix: "Baddi" once also matched "Baddi Jhallian",
+        # a Punjab village 39 km away, and the two were averaged into a point between
+        # them, so "packaging near Baddi" ranked Rupnagar firms first. The prefix match
+        # ("Vapi GIDC" for "Vapi") is a fallback for when no place has the exact name.
         for how, sql in (
                 ("district", "SELECT district, avg(lat), avg(lon) FROM ref_pincode "
                              "WHERE upper(district) = upper(%s) AND lat IS NOT NULL "
                              "GROUP BY district"),
                 ("place", "SELECT district, avg(lat), avg(lon) FROM ref_pincode "
                           "WHERE lat IS NOT NULL AND EXISTS (SELECT 1 FROM unnest(places) pl "
-                          "WHERE upper(pl) = upper(%s) OR upper(pl) LIKE upper(%s) || ' %%') "
-                          "GROUP BY district")):
-            cur.execute(sql, (q,) if how == "district" else (q, q))
+                          "WHERE upper(pl) = upper(%s)) GROUP BY district"),
+                ("place", "SELECT district, avg(lat), avg(lon) FROM ref_pincode "
+                          "WHERE lat IS NOT NULL AND EXISTS (SELECT 1 FROM unnest(places) pl "
+                          "WHERE upper(pl) LIKE upper(%s) || ' %%') GROUP BY district")):
+            cur.execute(sql, (q,))
             hits = cur.fetchall()
             if len(hits) > 1 and _one_place(hits):
                 lat = sum(h[1] for h in hits) / len(hits)
@@ -278,6 +284,16 @@ PERMISSION_MARKERS = re.compile(
     r"\b(use|add|put|include|formulate)\b", re.I)
 
 
+# A distance question names a place to measure from, and token overlap cannot see that:
+# "glycerin suppliers near Ahmedabad" scored highest against the packaging template's own
+# example, "packaging suppliers near Ahmedabad".
+NEAR_MARKERS = re.compile(r"\b(near|nearest|closest|close to|around|within\s+\d+\s*km|"
+                          r"ke\s+paas|ke\s+pass)\b", re.I)
+PACKAGING_WORDS = re.compile(r"\b(bottles?|jars?|tubes?|cartons?|closures?|caps?|pumps?|"
+                             r"droppers?|labels?|packaging|containers?|cans?|tins?|"
+                             r"pouch(?:es)?)\b", re.I)
+
+
 def _named_ingredient(question: str, session) -> str | None:
     """An INCI name that appears verbatim in the question, longest match first.
 
@@ -330,6 +346,11 @@ def route_by_keyword(question: str, session=None) -> dict:
             eu = re.search(r"\b(eu|european|europe|ec\s*1223)\b", question, re.I)
             tid = "ingredient_restriction_eu" if eu else "ingredient_restriction_india"
             return {"template": tid, "params": {"ingredient": ing}, "confidence": 0.9}
+    if NEAR_MARKERS.search(question) and "ingredient_suppliers_near" in TEMPLATES:
+        if _named_ingredient(question, session):
+            return {"template": "ingredient_suppliers_near", "params": {}, "confidence": 0.85}
+        if PACKAGING_WORDS.search(question):
+            return {"template": "packaging_suppliers_near", "params": {}, "confidence": 0.85}
     best, score = None, 0
     for t in candidates:
         hay = " ".join([t["intent"]] + t.get("examples", [])).lower()
@@ -359,6 +380,10 @@ def extract_params(question: str, template: dict, given: dict, session=None) -> 
                              r"(\d{6}|[A-Za-z][A-Za-z .-]{2,30}?)\s*(?:[?.,]|$)", question)
             if near:
                 out[name] = near.group(1).strip()
+            # Hindi puts the place first: "Ahmedabad ke paas"
+            paas = re.search(r"\b(\d{6}|[A-Za-z][A-Za-z.-]{2,30})\s+ke\s+paa?s\b", question, re.I)
+            if paas:
+                out[name] = paas.group(1).strip()
     return out
 
 

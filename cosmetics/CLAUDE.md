@@ -18,6 +18,8 @@ is the build narrative. This file is the operating brief.
    like bugs and are not.
 5. **`DATA.md`** — where every byte the graph is built from lives, what exists only in
    Postgres, how it is backed up, and how to fetch each source again.
+6. **`DEMO_SCRIPT.md`** before any demo, and **`IDEAS.md`** for what was noticed but not
+   yet planned.
 
 ## The four mistakes that produce confidently wrong answers here
 
@@ -86,6 +88,7 @@ make backup            # snapshot Postgres, mirror raw/ + msme inputs, encrypt t
 make backup-verify     # restore the newest snapshot into a scratch db and check it
 make backup-verify-offsite  # the same check on the encrypted iCloud copy alone
 make gst-stub          # GST verification end to end on the STUB provider (verifies nothing); gst-stub-purge after
+make demo-rehearse     # ask the LIVE demo the 12 investor-demo questions in script order (DEMO_SCRIPT.md)
 make ask Q="..."       # natural language -> whitelisted template
 make site              # rebuild the Evidence reading site
 make viz-up            # Metabase :3001, NeoDash :5005, Neo4j Browser :7474

@@ -10,9 +10,38 @@
 # demo, not a disclaimer bolted on: the product's claim is that it knows what it does
 # not know, and a caveat left unsaid makes that claim untrue.
 
+- id: ingredient_near
+  template: ingredient_suppliers_near
+  expect_min: 5
+  suggest: 1
+  asks:
+    - "glycerin suppliers near Ahmedabad"
+    - "who supplies glycerol near 380001"
+    - "nearest castor oil suppliers to Vapi"
+  caveat: >
+    Ranked by straight-line km between pincode centres (decisions/0028): it ranks, it is
+    not a delivery promise. Supply claims come from the supplier's own catalogue, and most
+    of these firms are "Listed": CHEMEXCIL gives no address, so they are not yet matched
+    to a registry. Say that is our data gap, not a finding about them. Stay with places
+    that resolve well (Ahmedabad, Vapi, Baddi, Haridwar, a pincode): GeoNames puts all of
+    Palghar about 65 km off.
+
+- id: packaging_near
+  template: packaging_suppliers_near
+  expect_min: 5
+  suggest: 2
+  asks:
+    - "bottle suppliers near Baddi"
+    - "carton makers near Haridwar"
+  caveat: >
+    Udyam registry activity typed by its NIC text (decisions/0027): firms registered to
+    make this kind of packaging. Nothing about capacity, MOQ or fill volume, and most have
+    no website or phone on file — the next step is a quote.
+
 - id: mercury_india
   template: ingredient_restriction_india
   expect_min: 2
+  suggest: 4
   asks:
     - "is mercury allowed in cosmetics in India"
     - "can I use mercury in a face cream in India"
@@ -64,6 +93,7 @@
 - id: testing_labs
   template: testing_labs_for_cosmetics
   expect_min: 10
+  suggest: 3
   asks:
     - "where can I test my face cream"
     - "NABL labs for cosmetics testing in Maharashtra"
@@ -111,6 +141,7 @@
 - id: eu_restricted_on_indian_shelves
   template: eu_restricted_in_indian_products
   expect_min: 5
+  suggest: 5
   asks:
     - "EU banned ingredients still sold in India"
     - "products on Indian shelves with EU restricted ingredients"
@@ -121,6 +152,7 @@
 - id: company_profile
   template: company_profile
   expect_min: 1
+  suggest: 6
   asks:
     - "tell me about Galaxy Surfactants"
     - "what do you know about Galaxy Surfactants"

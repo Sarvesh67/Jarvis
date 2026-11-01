@@ -185,10 +185,34 @@ def _dispatch(name: str, args: dict) -> dict:
 _dispatch.question = ""
 
 
+# What each reviewed query is doing, in the words of the source it reads. "Running
+# ingredient restriction india" told a viewer a function name; this tells them where the
+# answer comes from, which is the point of showing the stages at all.
+STAGE = {
+    "ingredient_restriction_india": "Checking the Cosmetics Rules 2020",
+    "ingredient_restriction_eu": "Checking the EU cosmetics annexes",
+    "standard_for_category": "Looking up the BIS standards for the category",
+    "cosmetics_firms_in_cluster": "Finding registered cosmetics makers in the area",
+    "third_party_manufacturers": "Finding contract manufacturers",
+    "manufacturers_for_category_in_cluster": "Checking for licensed manufacturers",
+    "suppliers_of_ingredient": "Finding suppliers of the ingredient",
+    "ingredient_suppliers_near": "Ranking ingredient suppliers by distance",
+    "packaging_converters_in_cluster": "Finding packaging makers in the area",
+    "packaging_suppliers_near": "Ranking packaging makers by distance",
+    "testing_labs_for_cosmetics": "Checking NABL's register for accredited labs",
+    "loan_licence_partners": "Reading CDSCO's loan-licence register",
+    "loan_licence_holders": "Reading CDSCO's loan-licence register",
+    "company_profile": "Pulling the company's record from every source",
+    "eu_restricted_in_indian_products": "Matching EU rules against products on Indian shelves",
+    "substitutes_for_ingredient": "Finding ingredients with the same function",
+}
+
+
 def _label(name: str, args: dict) -> str:
     """What to show the viewer while a path runs."""
     if name == "query_template":
-        return "Running " + (args.get("template") or "a reviewed query").replace("_", " ")
+        tid = args.get("template") or ""
+        return STAGE.get(tid) or ("Running " + (tid or "a reviewed query").replace("_", " "))
     if name == "graph_context":
         return "Pulling the surrounding neighbourhood"
     if name == "graph_schema":

@@ -1,0 +1,80 @@
+# The investor demo, in the order DEMO_SCRIPT.md walks it.
+#
+# Unlike demo_questions.yaml (every paraphrase, through the router), these are asked of
+# the LIVE demo through /api/ask — the exact path the page uses, agent and all — by
+# `make demo-rehearse`. Run it the morning of a pitch. A step fails when the agent stops
+# using the expected query, returns fewer rows, or loses the fact the script points at.
+#
+#   template      a reviewed query the answer must use (null: any, e.g. a generated count)
+#   min_rows      rows that query must return
+#   expect_grade  the first row's evidence grade
+#   expect_km     rows carry a distance
+#   expect_text   words the reply must contain (case-insensitive)
+
+- step: 1
+  ask: "I'm launching a niacinamide face serum in India. What do I need?"
+  template: standard_for_category
+  min_rows: 1
+  expect_text: [IS 15153]
+
+- step: 2
+  ask: "contract manufacturers for skincare near Ahmedabad"
+  template: third_party_manufacturers
+  min_rows: 5
+
+- step: 3
+  ask: "bottle suppliers near Ahmedabad"
+  template: packaging_suppliers_near
+  min_rows: 5
+  expect_km: true
+
+- step: 4
+  ask: "NABL labs for cosmetics testing near Ahmedabad"
+  template: testing_labs_for_cosmetics
+  min_rows: 3
+
+- step: 5
+  ask: "tell me about Garuda Chemicals"
+  template: company_profile
+  min_rows: 1
+  expect_grade: flagged
+  expect_text: [struck off]
+
+- step: 6
+  ask: "tell me about Galaxy Surfactants"
+  template: company_profile
+  min_rows: 1
+  expect_grade: G3
+
+- step: 7
+  ask: "mujhe Ahmedabad ke paas glycerin supplier chahiye"
+  template: ingredient_suppliers_near
+  min_rows: 5
+  expect_km: true
+
+- step: 8
+  ask: "EU restrictions on salicylic acid"
+  template: ingredient_restriction_eu
+  min_rows: 1
+  expect_text: ["0.5"]
+
+- step: 9
+  ask: "is mercury allowed in cosmetics in India"
+  template: ingredient_restriction_india
+  min_rows: 2
+
+- step: 10
+  ask: "who is Encube Ethicals linked to by a loan licence"
+  template: loan_licence_partners
+  min_rows: 3
+  expect_text: [Sanofi]
+
+- step: 11
+  ask: "how many cosmetics firms are there in each cluster"
+  template: null
+  min_rows: 5
+
+- step: 12
+  ask: "EU banned ingredients still sold in India"
+  template: eu_restricted_in_indian_products
+  min_rows: 10

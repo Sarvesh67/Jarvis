@@ -5,7 +5,7 @@
 PY := .venv/bin/python
 PG := docker exec -i jarvis-postgres psql -U $(shell grep -m1 '^POSTGRES_USER=' ../platform/.env | cut -d= -f2-) -d cosmetics
 
-.PHONY: gst-stub gst-stub-purge bootstrap ingest normalize resolve reconcile constraints load derive trust \
+.PHONY: demo-rehearse gst-stub gst-stub-purge bootstrap ingest normalize resolve reconcile constraints load derive trust \
         validate coverage rebuild pipeline clean-graph help demo demo-check \
         catalog catalog-check site site-dev viz-up viz-down \
         backup backup-verify backup-verify-offsite backup-passphrase
@@ -86,6 +86,9 @@ test:                   ## pytest: golden queries + hard-rule invariants
 
 demo-check:             ## every demo question and paraphrase, through the live router
 	$(PY) -m pytest tests/test_demo.py -m demo -q
+
+demo-rehearse:          ## ask the LIVE demo every investor-demo question, in script order (DEMO_SCRIPT.md)
+	$(PY) -m serve.rehearse
 
 demo:                   ## print the demo script: questions, in order, with the caveats
 	$(PY) -m pipeline.demo

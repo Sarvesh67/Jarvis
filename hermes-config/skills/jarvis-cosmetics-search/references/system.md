@@ -42,7 +42,9 @@ result feels short, raise the limit — do not conclude the tool is lossy.
 | Gap | Consequence |
 |---|---|
 | **State COS-8/COS-9 licence registers are not published in bulk** | Licence queries return almost nothing. Registry presence is NOT permission to manufacture. This is the single biggest gap. |
-| No GSTIN verification provider | Trust level L3 is unreachable; most firms are registry-only and sit at trust 1 (Udyam membership). Only 54 companies carry a GSTIN at all. |
+| No live GSTIN verification provider | No firm reaches G4 (GST verified). Most firms are registry-only, at G1 "Registered (Udyam)". Only 54 companies carry a GSTIN at all. |
+| Directory firms carry no address | ~3,300 CHEMEXCIL members (most ingredient suppliers) are G0 "Listed": not matched to Udyam or MCA because CHEMEXCIL gives no address. A gap in our data, never a finding about the firm. |
+| GeoNames pincode centroids | A quarter of pincodes share placeholder points (all of Palghar sits ~65 km off). Distance ranks well around Ahmedabad, Vapi, Baddi, Haridwar; elsewhere prefer a pincode and say distances are approximate. |
 | Contract-manufacturing claims come from company websites | Most cluster MSMEs have no website, so absence is missing evidence, not absence of the capability. |
 | Udyam self-declaration is noisy | A firm registers several activities; its name may reflect a different one. `evidence_basis` exposes this. |
 | MCA NIC codes are incorporation-time | Never updated afterwards; roles derived from them are suffixed `_at_incorporation` and rank last. |

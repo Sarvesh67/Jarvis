@@ -69,6 +69,23 @@ def test_demo_question(gateway, qid, question, spec):
             f"{qid}: an unanswerable question must explain itself, got {reason!r}")
 
 
+FIRST_ASKS = [(d["id"], d["asks"][0], d) for d in DEMO]
+
+
+@pytest.mark.demo
+@pytest.mark.parametrize("qid,question,spec", FIRST_ASKS, ids=[f"agent:{i}" for i, _, _ in FIRST_ASKS])
+def test_demo_agent_path(gateway, qid, question, spec):
+    """The live demo does not answer through `router.answer`: serve/agent.py lets the model
+    pick templates from the table in the skill. The two drifted once — the skill never
+    listed the distance templates, so every "near" question on the demo lost its ranking
+    while the test above stayed green. One phrasing per question, through the agent."""
+    from serve import agent
+    done = next(ev for ev in agent.stream(question) if ev["type"] == "done")
+    used = [e.get("template") for e in done["evidence"]]
+    assert spec["template"] in used, (
+        f"{qid}: the demo agent answered {question!r} with {used}, expected {spec['template']!r}")
+
+
 @pytest.mark.demo
 def test_keyword_routing_survives_a_dead_model(gateway):
     """The demo must not go blank because the gateway is down mid-session.
@@ -170,3 +187,11 @@ def test_the_console_loads_the_same_skill_as_the_demo(gateway):
             "jarvis-knowledge now mentions cosmetics. Its graphs are hedgefund and msme; "
             "the cosmetics graph is Neo4j and outside Cognee, so a cosmetics question "
             "must not be routed through it.")
+
+
+def test_every_template_has_a_plain_stage_label():
+    """The demo shows each stage while it runs. A template without a label shows its
+    function name ("Running ingredient restriction india") to whoever is watching."""
+    from serve import agent
+    ids = [t["id"] for t in yaml.safe_load((ROOT / "pipeline" / "query_templates.yaml").read_text())]
+    assert not [i for i in ids if i not in agent.STAGE]

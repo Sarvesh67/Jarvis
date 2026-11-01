@@ -232,6 +232,7 @@
     color:var(--mut)}
   .vloc .i{width:12px;height:12px;color:var(--faint)}
   .vloc .where{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
+  .vloc .km{flex:none;font-weight:700;color:var(--accent);white-space:nowrap}
   .vcard .vloc{flex-wrap:nowrap}
   .chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;
     background:var(--panel2);border:1px solid var(--line);border-radius:999px;
@@ -306,10 +307,19 @@
     font-size:13px;color:var(--mut)}
   .stats b{font-family:var(--head);font-size:19px;font-weight:700;color:var(--fg);
     letter-spacing:-.03em;margin-right:6px;font-variant-numeric:tabular-nums}
+  .starters{margin:30px auto 0;display:flex;flex-wrap:wrap;justify-content:center;gap:8px;
+    max-width:720px}
+  .starters button{font:inherit;font-size:13px;color:var(--fg);background:var(--panel);
+    border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer;
+    text-align:left}
+  .starters button:hover{border-color:var(--accent);color:var(--accent)}
 
   /* ---------- compare tray ---------- */
   .tray{flex:none;background:var(--panel);border-top:1px solid var(--line)}
   .tray[hidden]{display:none}
+  /* An author `display` beats the browser's own [hidden] rule, so `.cards{display:grid}`
+     kept the cards on screen when Table was chosen, and kept "show all" cards showing. */
+  [hidden]{display:none !important}
   .tray-in{max-width:860px;margin:0 auto;padding:10px 24px;display:flex;
     align-items:center;gap:8px;flex-wrap:wrap}
   .tray .lbl,.eyebrow{font-size:11px;font-weight:800;letter-spacing:.14em;
@@ -465,6 +475,7 @@
       <p>Describe what you need to source — manufacturers, packaging, ingredients or
          testing labs — and see who fits, and the evidence behind whether to trust them.</p>
       <div class="stats" id="stats"></div>
+      <div class="starters" id="starters" aria-label="Try a question"></div>
     </div>
   </div>
 </div>
@@ -482,7 +493,7 @@
 
 <div class="composer-wrap">
   <div class="composer">
-    <textarea id="q" rows="1"
+    <textarea id="q" maxlength="300" rows="1"
               placeholder="What do you need? e.g. face cream maker in Baddi"
               autocomplete="off" spellcheck="false"></textarea>
     <button class="send" id="go" aria-label="Send">→</button>
@@ -561,13 +572,24 @@ const TIER = {
   4: ["p-bad",  "Inferred — not a compliance answer"],
 };
 
-fetch("/healthz").then(r => r.json()).then(d => {
-  if (!d.ok) return;
+// Counted live by /api/stats, so a figure on the first screen can never go stale.
+fetch("/api/stats").then(r => r.json()).then(d => {
   const st = $("#stats");
-  [[d.companies.toLocaleString("en-IN"), "companies"], ["35,864", "ingredients"],
-   ["2,445", "rules"], ["201", "accredited labs"]].forEach(([n, l]) => {
-    const s = el("span"); s.appendChild(el("b", null, n));
+  [[d.companies, "companies"], [d.ingredients, "ingredients"], [d.rules, "rules"],
+   [d.labs, "accredited cosmetics labs"]].forEach(([n, l]) => {
+    const s = el("span"); s.appendChild(el("b", null, Number(n).toLocaleString("en-IN")));
     s.appendChild(document.createTextNode(l)); st.appendChild(s);
+  });
+}).catch(() => {});
+
+// Starter questions come from validate/demo_questions.yaml, so each one is tested.
+fetch("/api/suggestions").then(r => r.json()).then(list => {
+  const box = $("#starters");
+  if (!box) return;
+  list.slice(0, 6).forEach(s => {
+    const b = el("button", null, s.ask); b.type = "button";
+    b.onclick = () => ask(s.ask);
+    box.appendChild(b);
   });
 }).catch(() => {});
 
@@ -747,12 +769,16 @@ const FACET = [
   ["track", "Track record", "No completed order recorded yet."],
 ];
 
+const MAKERS = new Set(["Licensed manufacturer", "Cosmetics manufacturer",
+  "Contract manufacturer", "Licence holder"]);
 const CATEGORY = {
   manufacturers_for_category_in_cluster: "Licensed manufacturer",
   cosmetics_firms_in_cluster: "Cosmetics manufacturer",
   third_party_manufacturers: "Contract manufacturer",
   packaging_converters_in_cluster: "Packaging supplier",
   suppliers_of_ingredient: "Ingredient supplier",
+  ingredient_suppliers_near: "Ingredient supplier",
+  packaging_suppliers_near: "Packaging supplier",
   testing_labs_for_cosmetics: "Testing lab",
   loan_licence_holders: "Licence holder",
 };
@@ -816,6 +842,8 @@ function vendorOf(row, e, d){
   const v = {
     key: keyOf(name), name,
     district: row.district ? titleCase(row.district) : null,
+    // straight-line km from the place asked about (decisions/0028): ranks, never promises
+    km: Number.isFinite(row.km) ? Math.round(row.km) : null,
     state: row.state ? titleCase(row.state) : null,
     cluster: clusterName(row.cluster),
     site: siteOf(row.website),
@@ -913,6 +941,12 @@ function locEl(v, withCat){
     .filter(Boolean).join(" · ");
   if (where) { loc.appendChild(icon("pin")); const w = el("span", "where", where);
     w.title = where; loc.appendChild(w); }
+  if (v.km !== null) {
+    // same pincode as the place asked about: the centres coincide, "0 km" reads as a glitch
+    const k = el("span", "km", v.km < 1 ? "· < 1 km" : `· ${v.km} km`);
+    k.title = "Straight-line distance between pincode centres. It ranks; it is not a delivery promise.";
+    loc.appendChild(k);
+  }
   if (withCat) loc.appendChild(el("span", "chip cat", v.category));
   return loc;
 }
@@ -926,8 +960,11 @@ function badges(v){
     b.appendChild(s);
   };
   if (v.certificate) add(true, "NABL accredited");
+  // A cosmetics manufacturing licence is the maker's obligation. On a lab, a packaging
+  // converter or an ingredient trader "No licence on file" reads as a red flag for a
+  // licence they never needed.
   if (v.licence === true) add(true, "Licence on file");
-  else if (v.licence === false) add(false, "No licence on file");
+  else if (v.licence === false && MAKERS.has(v.category)) add(false, "No licence on file");
   const act = v.facets.activity;
   if (act.state === "verified" || act.state === "claimed") add(true, "Active: " + shortNote(act.note));
   else if (act.state) add(false, "Activity unknown");
@@ -1048,9 +1085,13 @@ function evidenceBlock(e, d, vendors){
   return box;
 }
 
+// Evidence lines and facet notes belong to the card and drawer; as table columns they
+// are walls of text. The grade shows as its label.
+const TABLE_HIDE = new Set(["trust_evidence", "grade", "licence_note", "activity_note"]);
+
 function tableView(rows){
   const frag = el("div");
-  const all = Object.keys(rows[0]);
+  const all = Object.keys(rows[0]).filter(c => !TABLE_HIDE.has(c));
   const cols = all.filter(c => rows.some(r =>
     r[c] !== null && r[c] !== undefined && String(r[c]).length
     && !(Array.isArray(r[c]) && !r[c].length)));
@@ -1308,6 +1349,8 @@ function openCompare(){
     line("Grade", v => { const s = el("span", trustTone(v.grade));
       s.textContent = v.grade ? (v.gradeLabel || GRADE[v.grade][1]) : "Not rated"; return s; });
     line("Location", v => [v.district, v.cluster].filter(Boolean).join(" · "));
+    if (COMPARE.some(v => v.km !== null))
+      line("Distance", v => v.km === null ? "—" : v.km < 1 ? "< 1 km" : `${v.km} km`);
     line("Category", v => v.category);
     line("Licence", v => v.licence === true ? (v.licences.join(", ") || "On file")
       : v.licence === false ? "None on file" : "Unknown");

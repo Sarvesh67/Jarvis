@@ -51,7 +51,9 @@ $COS/.venv/bin/python -m pipeline.router --list           # every template + its
 | loan licence holders | `loan_licence_holders` | — |
 | who is X tied to by a loan licence | `loan_licence_partners` | `company` |
 | who supplies an ingredient | `suppliers_of_ingredient` | `ingredient` |
+| who supplies an ingredient **near a place** | `ingredient_suppliers_near` | `ingredient`, `near` |
 | packaging (bottles, jars, tubes, cartons) | `packaging_converters_in_cluster` | `component`, `cluster`, `district` |
+| packaging **near a place** | `packaging_suppliers_near` | `component`, `near` |
 | where can I get it tested | `testing_labs_for_cosmetics` | `state`, `cluster`, `district` |
 | is X allowed / restricted in India | `ingredient_restriction_india` | `ingredient` |
 | is X restricted in the EU | `ingredient_restriction_eu` | `ingredient` |
@@ -59,6 +61,21 @@ $COS/.venv/bin/python -m pipeline.router --list           # every template + its
 | what can replace ingredient X | `substitutes_for_ingredient` | `ingredient` |
 | everything about one company | `company_profile` | `company` |
 | EU-restricted ingredients on Indian shelves | `eu_restricted_in_indian_products` | — |
+
+**"Near", "nearest", "closest", "around", "within N km of", "ke paas" ask for DISTANCE.**
+Use the `_near` template and pass the place as `near` (a city, district or 6-digit pincode):
+it ranks by kilometres from that place and returns `km` on every row. Never call a supplier
+"close" or "nearest" from a plain list — the plain list does not know where the buyer is.
+If `near` comes back ambiguous, ask for a pincode.
+**Only ingredients and packaging have a distance template.** For labs, manufacturers and
+"who is in this business" near a place, pass the place as `cluster` (or `district` when it
+is one) and say the list is that area, not a ranking by kilometres. Never ask the user to
+fix a parameter: re-run the right template yourself. A follow-up ("only the ones near
+Baddi", "just Gujarat") re-runs the previous question's template with the narrower place.
+
+**Price, MOQ and lead time are not in the graph; they come from quotes.** Say so in one
+line, then name the suppliers worth asking. Never make a marketplace (IndiaMART, TradeIndia)
+the next step: the next step is a quote from the suppliers you just found.
 
 **If the user names a DISTRICT, pass `district`, not `cluster`.** A cluster spans several
 districts — answering "Navsari" with the whole Ahmedabad-Vapi belt is a wrong answer dressed
