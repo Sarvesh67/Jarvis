@@ -120,6 +120,34 @@ def rows_for(entity_id: str, e: dict, today: date | None = None) -> list[dict]:
                          f"Website live, checked {seen:%b %Y}", rec=rec, tier=3, prov="self",
                          observed=seen, expiry=seen + ACTIVITY_LIFE))
 
+    for g in e.get("gst", []):
+        if g.get("provider_class") != "live_gstn":     # defence in depth: stub never verifies
+            continue
+        checked = g["verified_at"].date()
+        rec = {"source_id": "s16_gstin", "source_key": str(g["id"])}
+        base = dict(rec=rec, family="gstn", tier=1, prov="verification", observed=checked)
+        if g["status"] == "Active" and g["name_match"] and g["state_match"] is not False:
+            # G4 while fresh; grade.py lets it decay to a plain registry entry after 30 days
+            add(_row(entity_id, "identity", "gst_verified",
+                     f"GST active, checked {checked} (GST Network via {g['provider']})", **base))
+            add(_row(entity_id, "identity", "registry_entry",
+                     f"GST registration active, checked {checked}", **base))
+            add(_row(entity_id, "activity", "gst_active", f"GST active, checked {checked}",
+                     **base, expiry=checked + timedelta(days=30)))
+        elif g["status"] == "Active":
+            # §7.1: a mismatch is shown as a fact, never a name, and counts for nothing
+            add(_row(entity_id, "identity", "gst_mismatch",
+                     f"GST record differs from ours (name or place), checked {checked}",
+                     **base, counts=False))
+        elif g["status"] == "not_found":
+            add(_row(entity_id, "identity", "gst_not_found", None, **base, counts=False,
+                     visibility="private"))
+        else:
+            # §11.7 wording: the fact and its date, never the exact status in public
+            add(_row(entity_id, "adverse", "gst_not_active",
+                     f"GST could not be confirmed active, checked {checked}", **base,
+                     value={"status": g["status"]}))
+
     a = e.get("mca_adverse")
     if a:
         add(_row(entity_id, "adverse", a["signal_type"],

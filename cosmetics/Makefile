@@ -5,7 +5,7 @@
 PY := .venv/bin/python
 PG := docker exec -i jarvis-postgres psql -U $(shell grep -m1 '^POSTGRES_USER=' ../platform/.env | cut -d= -f2-) -d cosmetics
 
-.PHONY: bootstrap ingest normalize resolve reconcile constraints load derive trust \
+.PHONY: gst-stub gst-stub-purge bootstrap ingest normalize resolve reconcile constraints load derive trust \
         validate coverage rebuild pipeline clean-graph help demo demo-check \
         catalog catalog-check site site-dev viz-up viz-down \
         backup backup-verify backup-verify-offsite backup-passphrase
@@ -17,6 +17,7 @@ bootstrap:              ## docker up, create db, apply SQL + Neo4j constraints
 	docker compose up -d
 	$(PG) -v ON_ERROR_STOP=1 < sql/001_schema.sql
 	$(PG) -v ON_ERROR_STOP=1 < sql/003_trust_evidence.sql
+	$(PG) -v ON_ERROR_STOP=1 < sql/004_gst_verification.sql
 	$(PY) pipeline/gen_constraints.py --apply
 
 ingest:                 ## Stage 0+1 for one source: make ingest SOURCE=s06 (s17 and s17b differ)
@@ -88,6 +89,12 @@ demo-check:             ## every demo question and paraphrase, through the live 
 
 demo:                   ## print the demo script: questions, in order, with the caveats
 	$(PY) -m pipeline.demo
+
+gst-stub:               ## T2: run GST verification + name search end to end on the STUB provider (verifies nothing)
+	COSMETICS_GST_PROVIDERS=stub $(PY) -m trust.gst run-held
+
+gst-stub-purge:         ## delete every stub GST row (they were never facts)
+	$(PY) -m trust.gst purge-stub
 
 review:                 ## list the pending resolution decisions
 	$(PY) -m pipeline.review --list

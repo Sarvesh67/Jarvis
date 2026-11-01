@@ -59,7 +59,7 @@ def gather() -> dict[str, dict]:
         "sources": set(), "records": [], "cin": None, "cin_from_mca": None,
         "gstin": None, "udyam": None,
         "licences": [], "names": set(), "pincodes": set(), "adverse": [],
-        "gst_status": None, "last_gstr3b": None, "is_proprietorship": None,
+        "gst_status": None, "last_gstr3b": None, "is_proprietorship": None, "gst": [],
         "onboarded": False, "vouched": False})
 
     for r in _q("""SELECT x.entity_id, r.source_id, r.source_key, r.retrieved_at, r.cin,
@@ -96,12 +96,18 @@ def gather() -> dict[str, dict]:
             "expires_on": r["expires_on"],
             "regime": (r["payload"] or {}).get("regime")})
 
-    for r in _q("SELECT entity_id, gstin, status, last_gstr3b_period, is_proprietorship, "
-                "verified_at FROM gst_record"):
+    # The latest LIVE check per GSTIN. A stub or vendor-cache record verifies nothing
+    # (TRUST_PLAN §2.5, stub_never_verifies), so it is not even read here.
+    for r in _q("""SELECT DISTINCT ON (gstin) id, entity_id, gstin, status, last_gstr3b_period,
+                          is_proprietorship, verified_at, provider, provider_class,
+                          name_match, state_match
+                   FROM gst_record WHERE provider_class = 'live_gstn'
+                   ORDER BY gstin, verified_at DESC"""):
         e = ent[r["entity_id"]]
         e["gst_status"] = r["status"]
         e["last_gstr3b"] = r["last_gstr3b_period"]
         e["is_proprietorship"] = r["is_proprietorship"]
+        e["gst"].append(r)
 
     # Without a verification record, the GSTIN still says whose PAN it carries (char 6).
     # Leaving this unset is how 12 proprietors' PANs reached the public reasons.
@@ -269,15 +275,17 @@ def main() -> int:
                 [(r["entity_id"], r["trust_level"], r["trust_rungs"], r["reasons"],
                   r["grade"]["code"], lib.jsonb(r["facets"])) for r in rows])
             # trust_evidence is derived from the append-only stores, so it is replaced
-            # whole, in this transaction (sql/003_trust_evidence.sql).
-            cur.execute("DELETE FROM trust_evidence")
+            # whole, in one transaction: a reader never sees it half-written
+            # (sql/003_trust_evidence.sql). lib.pg() is autocommit, hence the explicit block.
             cols = ("entity_id", "facet", "signal_type", "value", "source_id", "source_key",
                     "publisher_family", "tier", "provenance_class", "visibility",
                     "public_text", "counts", "observed_at", "expiry_at")
-            with cur.copy(f"COPY trust_evidence ({', '.join(cols)}) FROM STDIN") as cp:
-                for r in ev_rows:
-                    cp.write_row([json.dumps(r[k], default=str) if k == "value" else r[k]
-                                  for k in cols])
+            with c.transaction():
+                cur.execute("DELETE FROM trust_evidence")
+                with cur.copy(f"COPY trust_evidence ({', '.join(cols)}) FROM STDIN") as cp:
+                    for r in ev_rows:
+                        cp.write_row([json.dumps(r[k], default=str) if k == "value" else r[k]
+                                      for k in cols])
             print(f"  {len(ev_rows)} evidence rows -> trust_evidence")
             # trust_state is derived, so an entity superseded by re-resolution must leave
             # it. Upsert-only once kept 4,753 dead entities here, and bi.trust_distribution
@@ -287,13 +295,15 @@ def main() -> int:
             if cur.rowcount:
                 print(f"  pruned {cur.rowcount} trust rows for entities that no longer exist")
             adverse = [(eid, e["mca_adverse"]) for eid, e in ent.items() if e["mca_adverse"]]
-            cur.execute("DELETE FROM adverse_signal WHERE signal_type = ANY(%s)",
-                        (sorted(DERIVED_ADVERSE),))
-            cur.executemany(
-                "INSERT INTO adverse_signal (entity_id, signal_type, detail, source_id, "
-                "observed_at) VALUES (%s, %s, %s, 's03_mca', %s)",
-                [(eid, a["signal_type"], lib.jsonb({k: a[k] for k in ("cin", "status", "source_key")}),
-                  a["as_of"]) for eid, a in adverse])
+            with c.transaction():                  # derived rows: replaced, atomically
+                cur.execute("DELETE FROM adverse_signal WHERE signal_type = ANY(%s)",
+                            (sorted(DERIVED_ADVERSE),))
+                cur.executemany(
+                    "INSERT INTO adverse_signal (entity_id, signal_type, detail, source_id, "
+                    "observed_at) VALUES (%s, %s, %s, 's03_mca', %s)",
+                    [(eid, a["signal_type"],
+                      lib.jsonb({k: a[k] for k in ("cin", "status", "source_key")}),
+                      a["as_of"]) for eid, a in adverse])
             review = [e["mca_review"] for e in ent.values() if e["mca_review"]]
             cur.executemany(
                 "INSERT INTO review_queue (entity_type, left_key, right_key, features) "

@@ -735,6 +735,23 @@ run, like `trust_state`, not append-only. The facts it reads are the append-only
 
 ### 10.3 T2 — GST behind a stub
 
+**Done 2026-10-31.** `trust/gst/` holds the adapter (GSTN field names), the stub provider,
+the router (fallback, circuit breaker, 2% shadow sample with field disagreement), cache
+(per-trigger TTLs, single-flight), budget (₹5k a month and ₹500 a day caps, ledger), the
+link rule, and `service.py` with the §4.2 triggers. The schema is in
+`sql/004_gst_verification.sql`. `make gst-stub` ran end to end on the 54 held GSTINs:
+- 36 clean: checked;
+- 5 state mismatches: blocked at rung 0;
+- 13 personal-PAN: skipped, since the batch trigger isn't a buyer action;
+- second pass: 36 of 36 served from cache;
+- name search on 20 firms: 5 auto-link, 7 review, 16 reject.
+
+Grades did not move: the stub verifies nothing. The stub rows were then purged
+(`make gst-stub-purge`). `tests/test_gst.py` has 15 tests. Not built:
+- hedged requests, which need a second live provider's latency history (T4);
+- the HTTP API in §9, because the public demo has no Postgres credentials by design. It
+  belongs in an internal service when there are users.
+
 - `sql/003_trust.sql`; the `cosmetics/trust/gst/` package (§9).
 - **The stub provider** returns deterministic records keyed by GSTIN hash: a realistic status
   mix, plus name and `pradr` drawn from our own record. That lets the link rule be tested

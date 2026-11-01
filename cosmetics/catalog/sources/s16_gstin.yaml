@@ -2,7 +2,7 @@ id: s16
 slug: gstin
 name: GSTIN verification
 tier: 1
-status: blocked
+status: stub         # T2 2026-10-31: plumbing built on a stub provider; no live vendor
 jurisdiction: IN
 
 what_it_is: >
@@ -24,7 +24,7 @@ publisher:
 
 acquisition:
   adapter: null
-  method: none
+  method: none         # trust/gst/ — adapter, router, cache, budget, link; stub provider only
   landed_at: null
   payloads: 0
   bytes: 0
@@ -48,7 +48,10 @@ coverage:
     comes before verification. Every held GSTIN gets the free rung-0 checks in
     `gstin_check` (pipeline/gstin.py). See TRUST_PLAN.md §3-4.
 
-blocked_on: A paid provider key (Masters India, Signzy, KarzaSurepass or similar).
+blocked_on: >
+  A live provider account: Lattix's legal entity and GSTIN for vendor KYC, and the budget
+  (TRUST_PLAN §10.5, T4). Adding one is a file under trust/gst/providers/ and its name in
+  COSMETICS_GST_PROVIDERS.
 
 defects: []
 

@@ -8,7 +8,7 @@ id:            str   # sNN, matches adapters/sNN_*.py and raw/sNN_*/
 slug:          str   # short name used in paths
 name:          str   # full human name
 tier:          int   # 1 regulator | 2 company-declared | 3 observed/scraped | 4 inferred
-status:        enum  # live | blocked | no_bulk_source | not_built
+status:        enum  # live | stub | blocked | no_bulk_source | not_built
 jurisdiction:  str   # IN | EU | -
 
 what_it_is:       str    # one plain-English paragraph, no jargon

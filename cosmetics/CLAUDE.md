@@ -77,7 +77,7 @@ out/          built artifacts, gitignored
 ```bash
 make ingest-all        # every source needing no credentials
 make pipeline          # Stages 2-8, ending in validation
-make test              # 221 checks: golden queries + hard-rule invariants + rung-0 GSTIN + backup
+make test              # 279 checks: golden queries + hard-rule invariants + trust + GST + backup
 make schema            # live schema — read before writing Cypher
 make coverage          # the honest number
 make catalog           # write today's snapshot of the live stores
@@ -85,6 +85,7 @@ make catalog-check     # fail if a source card disagrees with the stores
 make backup            # snapshot Postgres, mirror raw/ + msme inputs, encrypt to iCloud (DATA.md)
 make backup-verify     # restore the newest snapshot into a scratch db and check it
 make backup-verify-offsite  # the same check on the encrypted iCloud copy alone
+make gst-stub          # GST verification end to end on the STUB provider (verifies nothing); gst-stub-purge after
 make ask Q="..."       # natural language -> whitelisted template
 make site              # rebuild the Evidence reading site
 make viz-up            # Metabase :3001, NeoDash :5005, Neo4j Browser :7474
