@@ -1,8 +1,10 @@
 # Trust layer — plan for PRD Priority 2
 
 Plan, not as-built. Covers PRD §6 (GST pipeline + trust score), the trust half of §8, and the
-P2 metrics in §10.2. Written 2026-10-18 against the live stores. Every number below was
-measured from them that day unless marked as a vendor list price.
+P2 metrics in §10.2. First written 2026-10-18. **Revised 2026-10-31**: §0, §1, §6, §9, §10
+and §11 are new, and §2.7–§2.8 were added. The vendor, legal and ideas sections (§3–§5,
+§7, §8) are carried over unchanged. Every number was measured from the live stores on the
+date given, unless marked as a vendor list price.
 
 Read `CLAUDE.md` and `catalog/glossary.yaml` first. This plan keeps every hard rule in them
 and adds to them. It does not relax any.
@@ -13,14 +15,17 @@ and adds to them. It does not relax any.
 
 | # | Decision | Why |
 |---|---|---|
-| 1 | **No bulk verification. Verify lazily, at the moment of intent.** | Agrees with the brief. Cost then scales with the number of distinct suppliers surfaced, not with the registry. That is 10–80× cheaper than a sweep (§5). |
-| 2 | **The real bottleneck is GSTIN *discovery*, not verification.** | We hold a GSTIN for **54 of 132,030** companies (0.04%). Verifying at the last minute only helps once we have a GSTIN to verify. Most of the effort goes into finding GSTINs, and that is lazy too (§3). |
-| 3 | **Cards never wait on a vendor.** They render from cache with an "as of" date and upgrade while the user watches. Only an RFQ send blocks. | GSTN-backed calls take 0.3–3 s and slow down around the 20th–24th filing peaks. A spinner on every card would undo Priority 1. |
-| 4 | **Two live vendors plus one cheap cross-check, behind one adapter**, normalised to GSTN's own public schema. | Gives backup and price leverage, and the cross-check measures vendor accuracy instead of assuming it (§4). |
-| 5 | **Replace the 0–10 score with a four-part evidence profile.** | The PRD wireframe's "9.1 HIGH" next to "fulfilment evidence not yet available" breaks the PRD's own rule that unknown evidence stays unknown (§6). |
-| 6 | **Fix L3. "GSTR-3B within 90 days" is wrong for most MSMEs.** | Quarterly (QRMP) filers fail it while fully compliant, and composition dealers never file 3B at all (§2.4). |
-| 7 | **Filing history stays private. Suppliers can opt in to publish it, with consent.** | This turns the defamation-blocked signal into a sales asset for good suppliers (§8.2). |
-| 8 | **Proprietorship GSTINs are masked in public. Buyers can match one without it being disclosed.** | The GSTIN contains the proprietor's personal PAN (§7, §8.10). |
+| 1 | **Retire the L0–L6 number. Show one evidence grade plus three facets** (§6). | The ladder is not an order. 3,408 of the 4,843 L4 firms have no identity evidence at all. L2 is per category. L3 cannot be reached. "Highest rung reached" skips all three (§2.8). |
+| 2 | **Grade order: GST verified, then corroborated by 3+ independent publishers, then by 2, then registered, then listed.** A tier-1 adverse fact overrides the grade. | Owner's call, 2026-10-31: GST verification at the top, and everything below it decided by how many independent sources agree. |
+| 3 | **Independence is counted by publisher, not by source id.** One registry counts once. A firm's own website never corroborates. Nothing corroborates without identity. | S17 and S17b are both Udyam, and that double count produced 1,090 L4s. S14 crawled sites it found through CHEMEXCIL's links, which produced 1,266 more. |
+| 4 | **Licence, Activity and Track record are facets beside the grade. They are never folded into it.** | A licence covers one category. Activity decays with time. Track record is first-party. A single number hides all three. |
+| 5 | **Trust never sorts results.** | Eight templates use `trust DESC`, so the 3.7% of firms at L4 fill the top of every list. Rank by fit first (§6.5). |
+| 6 | **Use the tier-1 adverse facts we already hold.** These are MCA status Struck off, Dissolved or Liquidated (683 firms), and NABL certificates past their validity date (258). | Today 826 firms read "Legally exists — CIN …" while MCA lists the company as not active. |
+| 7 | **Build GST behind a stub first. A stub record can never produce a verified badge.** | This exercises the cache, triggers, budget and drawer before any vendor is chosen. The msme stub's "any 15 characters = verified" must not be copied. |
+| 8 | **GSTIN discovery is the bottleneck, and GST is a gate at RFQ time, not at discovery.** | We hold 54 GSTINs. Udyam registration already answers "is it real" for 92% of firms. GST adds "is it still active", which matters most when money is about to move (§2.7). |
+| 9 | **No bulk verification. Verify lazily, at the moment of intent, and cards never wait on a vendor.** | Carried over from 2026-10-18 (§4.2, §5). |
+| 10 | **Filing history stays private. Proprietorship GSTINs are masked in public.** | Carried over (§7). |
+| 11 | **Fix L3. "GSTR-3B within 90 days" is wrong for most MSMEs.** | Carried over (§2.4). It is now a private evidence item, not a grade. |
 
 **Phase 2.0 — done 2026-10-18 (₹0).** What it found and fixed:
 
@@ -41,24 +46,81 @@ and adds to them. It does not relax any.
 
 ---
 
-## 1. What already exists (so the plan builds on it, not beside it)
+## 1. Where trust stands (measured 2026-10-31)
+
+### 1.1 The ladder today
+
+| Highest rung | Firms | Share | What put them there |
+|---|---|---|---|
+| L0 Listed | 7,161 | 5.4% | in a source, no identifier |
+| L1 Legally exists | 120,025 | 90.9% | Udyam registration for almost all of them; 1,662 have a CIN; 54 a GSTIN |
+| L2 Permitted | 1 (2 hold the evidence) | 0.0% | a COS-8/9 licence. CDSCO's register holds 3 cosmetics licences against ~880 drug ones (0001) |
+| L3 Operating | 0 | — | needs live GST |
+| L4 Corroborated | 4,843 | 3.7% | see below |
+| L5 / L6 | 0 | — | not built |
+
+**What the 4,843 L4s rest on:**
+
+| Basis | Firms | Holds up? |
+|---|---|---|
+| CHEMEXCIL membership alone | 2,018 | **No.** It is a paid export-council directory, and 0 of these firms have any identity evidence |
+| CHEMEXCIL + their own website (S14 crawled the link CHEMEXCIL printed) | 1,266 | **No.** One publisher, plus the firm talking about itself |
+| S17 + S17b (both Udyam) | 1,090 | **No.** One registry, counted twice |
+| Everything else (MCA, exhibitors, CDSCO, NABL with another publisher) | ~470 | **Mostly yes** |
+
+**3,408 of the 4,843 (70%) have no identity rung.** The ladder lets a firm reach L4 without
+first reaching L1.
+
+### 1.2 Defects found 2026-10-31
+
+1. **Dead companies read as "legally exists".** S03 lists 1,609 companies. 783 are Active.
+   616 are Strike Off, 44 Dissolved, 22 "Converted to LLP and dissolved", and 2 Liquidated.
+   The rest are Amalgamated (91) or Converted to LLP (48), which are successions, not
+   deaths. `trust.py` treats any CIN as identity, so **826 entities whose MCA status is not
+   Active** carry "Legally exists — CIN …". 21 of them are at L4.
+2. **Expired accreditations count.** 258 of 6,682 NABL certificates are past
+   `certificate_valid_till`, and the lab still lists as accredited.
+3. **Trust sorts results.** Eight templates in `pipeline/query_templates.yaml` use `ORDER BY trust
+   DESC`, and two of them (lines 184 and 210) sort by distance first. That puts L4s on top
+   wherever they appear.
+4. **The card chip says "Entity verified"** (`serve/index.html:901`) on Udyam membership
+   alone.
+5. **`adverse_signal` is empty.** The schema exists and nothing writes to it.
+6. **The trust figures in `catalog/snapshots/latest.json` are stale** (SOURCES_PLAN §1.2).
+
+### 1.3 What the new grade would show today (prototype, same data)
+
+| Grade (§6) | Firms | Share | Of today's L4s |
+|---|---|---|---|
+| GST verified | 0 | — | — |
+| Corroborated by 3+ publishers | 6 | 0.0% | 6 |
+| Corroborated by 2 publishers | 247 | 0.2% | 247 |
+| Registered (one registry, one publisher) | 127,379 | 96.5% | 1,094 |
+| Listed only (no registry) | 3,715 | 2.8% | 3,481 |
+| Flagged: struck off or dissolved, no other live registry | 683 | 0.5% | 15 |
+
+This is the honest picture: **131,625 of 132,030 firms (99.7%) appear in exactly one
+publisher.** Our sources barely overlap, so no counting rule can tell most firms apart yet.
+The grade will only differentiate once sources that overlap the Udyam population land
+(§10, T3). The single biggest one is an MCA bridge: 11,526 Udyam firms have a company or
+LLP name (9,579 "Private Limited", 1,488 LLP, 459 "Limited"), and each should have a CIN.
+
+### 1.4 Pieces that already exist
 
 | Piece | Where | State |
 |---|---|---|
-| Trust ladder L0–L6 with `trust_rungs`, reasons, demotion | `pipeline/trust.py`, `trust_state` | live. Distribution after Phase 2.0: L0 7,161 · L1 120,025 · L2 1 · L4 4,843. (The morning's figures were inflated by dead entities; see §0.) |
+| Trust ladder L0–L6 with `trust_rungs`, reasons, demotion | `pipeline/trust.py`, `trust_state` | live. Replaced by §6 in T1 |
 | `gst_record` (history, one row per check), `adverse_signal`, `person` | `sql/001_schema.sql` | schema only, 0 rows |
+| Rung-0 GSTIN checks | `pipeline/gstin.py` → `gstin_check` | live. 54 GSTINs: 36 clean, 5 state mismatches, 13 personal PANs |
 | S16 GSTIN verification | `catalog/sources/s16_gstin.yaml` | **blocked on a provider key** |
-| GSTIN harvest from websites, checksum and name confirmation | `adapters/s14_company_sites.py`, decision 0010 | live. 58 candidates, 54 promoted |
-| CIN on 1,662 entities (MCA partial) | S3 | blocked on a data.gov.in key |
-| COS-8/9 licences, the only tier-1 Permission source | S2, `catalog/rti/0001` | RTI to Gujarat FDCA drafted, **not filed** |
-| NABL labs (201 with cosmetics scope) | S11 | live |
-| Corroboration: CHEMEXCIL, trade-fair exhibitors | S8, S9 → L4 | live |
+| GSTIN harvest from websites (0010) | `adapters/s14_company_sites.py` | live. All 54 GSTINs we hold came from here |
+| CIN on 1,662 entities | S3 (1,609), S14 (63) | MCA resource gated on data.gov.in |
+| COS-8/9 licences | S1, S2, `catalog/rti/0001` | RTI to Gujarat FDCA drafted, **not filed** |
+| NABL labs | S11 | live. 6,424 certificates valid, 258 expired |
+| Trade fairs | S8 | HPCI India 2026 (69), Cosmetics Ingredients Expo 2025 (139) |
 | Claimed certifications and capabilities (tier 2) | S14 → `CLAIMS_*` | live, unverified by design |
-| Planned adverse signals: `samadhaan_case`, `gst_cancelled`, `licence_suspended` | `adverse_signal` comment | not built |
-| L5 Confirmed (supplier claims profile), L6 Vouched (buyer confirms a transaction) | `trust.py` docstring | not built |
-| msme GST stub with a swappable `_call_api`, cached by GSTIN | `msme/gst.py` | dormant. Build the new verifier project-agnostic so msme can reuse it |
-| Card UI with an L-score, "Why this score?" and a trust drawer | `serve/index.html` (uncommitted) | in progress (P1) |
-| Marketing claims: "Entity verified", "TRUST High", "92/100", "2.1h response signal", "who-worked-with-whom graph" | `lattix-site/public/index.html` | **not yet backed by data.** See §7.6 |
+| Card UI with an L-score, ladder drawer and "Entity verified" chip | `serve/index.html` | live on the demo |
+| msme GST stub | `msme/gst.py` | dormant. **Do not reuse its logic**: it calls any 15-char string verified |
 
 PRD items this plan must satisfy (§6.3, §11.2): identity mapping without duplicates; a stored
 verification event behind every badge; visible mismatch; history; "GST evidence
@@ -128,6 +190,40 @@ Two corollaries. A response from a vendor's own cached copy is "on record", not 
   catches this before any money is spent (§3, step 0).
 - **The agent and money.** If the agent can call a paid verifier, one retry loop becomes an
   invoice. The agent gets cached evidence only. Paid calls go through the budgeted API, triggered by user actions.
+
+### 2.7 Is GSTIN the bottleneck right now? For discovery, no. At RFQ time, yes.
+A buyer shortlisting suppliers asks four things in order: is it real, may and can it make my
+thing, is it operating now, and has anyone dealt with it.
+- **Real:** Udyam already answers this for 92% of firms, from a tier-1 registry. GST would
+  strengthen it, but it isn't missing.
+- **May and can make it:** this is where the graph is weakest. 2 firms hold licence
+  evidence. GST doesn't help here at all.
+- **Operating now:** GST status is the best single public signal for this. It decays, and
+  auto-suspension for non-filing can happen in any month (Rule 21A).
+- **Track record:** first-party only.
+
+So GST earns the top of the grade (§6), but it is not what blocks a useful demo. What
+blocks it is that the score misleads (§1.2) and that licence evidence is thin. GST becomes
+**the** gate at the moment money moves: RFQ send, then contracting. That is why §4.2
+blocks only there.
+
+Even with a provider key, verification lights up 54 firms. The 119,120 Udyam firms carry
+no GSTIN, no PAN and no Udyam number: the data.gov.in dataset publishes none of the three.
+Their GSTINs can come only from name search (§3 rung 3), the MCA bridge (§10 T3, then CIN
+→ PAN → GSTIN), association directories (AIPMA prints some), or the supplier and buyer
+(§3 rungs 4–5).
+
+### 2.8 The L0–L6 ladder is not an order
+Each rung answers a different question: listed, exists, licensed for a category, operating,
+corroborated, claimed, vouched. "Highest rung reached" ranks them as if each one implied the
+ones below it. They don't:
+- **L4 without L1:** 3,408 firms are "corroborated" but have no identity evidence.
+- **L2 is per category.** A firm licensed for soaps is not licensed for hair dyes.
+- **L3 is unreachable** without a provider, so the ladder jumps from L2 to L4.
+- **L5 and L6 are first-party**, and they mean something else entirely.
+
+The replacement (§6) keeps exactly one ordered thing, the evidence grade. It is **monotonic**:
+each grade requires every grade below it. Everything that isn't ordered becomes a facet.
 
 ---
 
@@ -262,29 +358,110 @@ budget: ₹10k one-off + a ₹5k/month cap.** Revisit when U passes 5,000.
 
 ---
 
-## 6. From one score to an evidence profile
+## 6. The evidence model: one grade, three facets
 
-The PRD's wireframe shows "9.1 / 10 HIGH" above "Fulfilment evidence not yet available", and
-the site shows "TRUST High 92/100". A single number has to turn "unknown" into *something*,
-and the PRD forbids exactly that (§6.4: "unknown evidence remains unknown"). Show four facets,
-each with a state of `verified · claimed · unknown · adverse`:
+Replaces the 0–10 score of the PRD wireframe and the L0–L6 number on the card. The PRD's
+rule still governs: "unknown evidence remains unknown" (§6.4). Every label describes **our
+evidence, never the supplier**.
 
-| Facet | Question | Evidence (tier) | Current rungs |
+### 6.1 The grade: how sure are we that this firm is real, and is this firm
+
+Ordered, monotonic, and one per firm. Each grade requires every grade below it.
+
+| Grade | Requires | Card wording | Today |
 |---|---|---|---|
-| **Identity** | Does it legally exist, and is it this firm? | GSTIN Active + name match (1), CIN (1), Udyam (1), checksum only (3) | L1 |
-| **Permission** | May it make *this* category? | COS-8/9 with category endorsement (1, via RTI); NABL scope for labs (1); claimed licence (2) | L2 |
-| **Activity** | Is it operating now? | e-invoicing enabled (1); exhibited this year (2); live website (3); *filing on schedule — private only* | L3 (redefined), L4 |
-| **Track record** | Have buyers dealt with it, and how did that go? | e-invoice-verified transactions (1, §8.1); RFQ response time measured by us (§8.7); buyer outcome (2) | L5, L6 |
+| **G4 GST verified** | G1, plus a **live** GSTN check (§2.5) within 30 days: status Active, legal or trade name matches our record, and the principal-place state matches | "GST active · checked 2 d ago" | 0 |
+| **G3 Corroborated (3+)** | G1, plus ≥ 3 independent publishers agree in all (§6.2) | "Found in 3 independent sources" | 6 |
+| **G2 Corroborated (2)** | G1, plus 2 independent publishers agree in all (the registry counts as one) | "Found in 2 independent sources" | 247 |
+| **G1 Registered** | In at least one tier-1 registry (§6.2), with no tier-1 adverse fact on it | "Registered (Udyam)" / "Registered (MCA)" | 127,379 |
+| **G0 Listed** | Appears in a source | "Listed in <source>" | 3,715 |
+| **Flagged** (override) | A tier-1 adverse fact (struck off, dissolved, GST cancelled, licence cancelled), and no other live registry entry | "MCA status: Struck off (as of <date>)" plus the source and the supplier's response, if any | 683 |
 
-**Card line:** `Identity ✓ · Licence ? · Active ✓ · Track record —` with "GST active · checked 2 d ago".
-**Headline label**, by rule: *Well evidenced* (Identity and Permission verified, plus one
-more), *Partly evidenced*, or *Thinly evidenced*. The label describes **our evidence, never the
-supplier**. If a number is wanted, use "3 of 4 facets evidenced", a count with no claim of quality.
+**Rules:**
+- **G4 decays.** After 30 days the chip reads "GST active · checked <date>", and the firm
+  ranks at the grade it would have without G4. The dated check stays in the drawer.
+- **A stub or vendor-cache record never counts toward G4.** Only `provider_class =
+  live_gstn` does (§4.1).
+- **Flagged needs care.** If the dead CIN belongs to an entity that also has a live Udyam
+  entry, it may be a wrong merge. That case goes to `review_queue` as
+  `adverse_vs_live_registry`, not to the public card.
+- **Successions are not adverse.** Amalgamated and Converted to LLP add no identity credit
+  from the old CIN. The drawer notes the succession.
+- **Proprietorships** reach G4 the same way. The GSTIN and legal name stay masked (§7.1).
 
-`trust_level`/`trust_rungs` stay as the storage and filter layer (`2 IN trust_rungs`). Facets
-are computed from rungs plus the new `trust_evidence` rows, so nothing downstream breaks.
-Ranking stops using `trust_level DESC` (§2.6). Public demotion requires a **tier-1** adverse
-fact. Lower-tier adverse signals are private warnings at most.
+### 6.2 Independent publishers
+
+Corroboration counts **publisher families**, not source ids. Each source card gains a
+`publisher_family` and a `kind`, and `make catalog-check` enforces both.
+
+| Family | Sources | Kind | Counts as a registry (G1)? | Corroborates? |
+|---|---|---|---|---|
+| udyam | s17, s17b | tier-1 registry (Ministry of MSME) | yes | yes, once |
+| mca | s03 | tier-1 registry (MCA) | yes, **only if status is Active** | yes |
+| gstn | s16 | tier-1 registry | yes, via G4 | yes |
+| cdsco | s01 | tier-1 licensing register | yes | yes |
+| state_fda | s02 (and RTI replies) | tier-1 licensing register | yes | yes |
+| nabl | s11 | tier-1 accreditation register | yes, **only if the certificate is valid** | yes |
+| zed, pcb, ec, cosmos | s23, s22, s21, s20 (SOURCES_PLAN Phase 2) | tier-1 issuer registers | yes | yes |
+| council | s09 CHEMEXCIL | third-party directory | no | yes |
+| fair:<organiser> | s08, one family per organiser | third-party directory | no | yes |
+| association:<name> | s26 SEA / AIPMA / AIGMF | third-party directory | no | yes |
+| self | s14, s14b, supplier claim | the firm about itself | no | **never** |
+
+- **Third-party directories corroborate but never establish identity.** Two directories that
+  agree on a firm with no registry entry leave it at G0, with a drawer line saying so.
+- **Agreement means the resolver merged the records** under 0004–0008: name plus pincode,
+  district or identifier. The drawer lists which publishers agree, and on what.
+- **A publisher that republishes another publisher is one family.** An exhibitor list copied
+  from a council directory counts once. The card records `derived_from` where we know it.
+
+### 6.3 The facets: what the grade doesn't answer
+
+Each facet has a state of `verified · claimed · unknown · adverse`, and each state carries
+its evidence, tier, source and date.
+
+| Facet | Question | Evidence (tier) | Today |
+|---|---|---|---|
+| **Licence** | May it make *this* category? Always per category | COS-8/9 with a category endorsement (1, S1/S2/RTI); NABL scope for labs (1); `PERMITTED_TO_MAKE` from consent or EC is a **ceiling**, shown as "Pollution consent covers …", never as a licence (0020); claimed licence (2) | 2 licensed firms; 201 labs with cosmetics scope |
+| **Activity** | Is it operating now? Expires 18 months after `observed_at` | GST Active (1, from G4); valid pollution consent to operate (1, s22); ZED certificate date (1); MCA status Active (1); exhibited within 12 months (2); e-invoicing enabled (1, public firms only); website live, checked <date> (3, self); *filing on schedule: private only* (§2.4) | HPCI 2026: 69; MCA Active: 783; NABL valid: 6,424; S14 sites crawled 2026-09: 1,499 |
+| **Track record** | Have buyers dealt with it, and how did that go? | e-invoice QR-verified transactions (1, §8.1); RFQ response time measured by us (§8.7); buyer-confirmed outcome (2); consented GSTR-2B (1, §8.4) | none |
+
+**Tenure is not activity.** "Udyam-registered since 2021" is shown under the grade, never as
+Activity. The dataset's registration dates run 2020–2024, which says nothing about 2026.
+
+**Supplier claim (old L5)** isn't a facet. A claim that passes §8.6 adds a "Profile claimed by
+the company" line, and its GSTIN goes through G4 like any other.
+
+### 6.4 The card
+
+```
+Registered (Udyam) · Found in 2 independent sources
+Licence ? for skin creams · Active: exhibited HPCI 2026 · Track record —
+```
+
+There's no number. If a single count is ever wanted, use "2 of 3 facets evidenced", a count
+that makes no claim about quality.
+
+### 6.5 Ranking
+
+1. **Fit:** match rank, evidence tier of the match, then distance for "near" questions (0028).
+2. **Then the facet that matters for the question:** Licence for "who can make", Activity
+   for suppliers, the grade for everything else.
+3. **Then name.**
+
+Trust never sorts first. A lint golden query (`trust_never_orders_results`) fails any
+template whose `ORDER BY` puts a trust field ahead of fit.
+
+### 6.6 Storage and migration
+
+- `trust_evidence` (§9) holds one row per fact. Grade and facets are computed from it nightly,
+  replacing what `trust.py` does today.
+- Neo4j `Company` gets `trust_grade`, `trust_facets` (public states only) and
+  `trust_reasons`. `trust_level` and `trust_rungs` stay for one release so nothing breaks,
+  then go. `CLAUDE.md`, `glossary.yaml`, the golden queries and the agent skill move to
+  `trust_grade` in the same change.
+- Public demotion requires a **tier-1** adverse fact. Lower-tier adverse signals are private
+  warnings at most.
 
 ---
 
@@ -429,66 +606,209 @@ endorsement (the Emblems and Names Act). Write "Checked against the GST Network 
 ## 9. Data model and code changes
 
 **Postgres** (`sql/003_trust.sql`, additive):
-- `gst_record` (exists, append-only): add `provider_class` (`live_gstn` | `vendor_cache`),
-  `raw_sha256`, `einvoice_enabled`, `taxpayer_type` (from `dty`), `filing_frequency`,
-  `trigger` (render/detail/shortlist/rfq/claim/free_check), `cost_inr`, `latency_ms`.
-- `trust_evidence` (the PRD §9.1 entity): `entity_id, facet, signal_type, value jsonb,
-  source_id, tier, provenance_class, visibility (public|private|consented|supplier_only),
-  observed_at, expiry_at, confidence, superseded_by`.
-- `verification_spend` (ledger, used by the budget guard; reconciled monthly against vendor invoices).
-- `trust_feedback` (PRD correction loop): field, claim, reporter, status, resolution, timestamps.
-- `supplier_response` (right of reply), `consent_record`.
-- Proprietorship GSTINs live with `person`-grade handling: erasable, consent basis recorded.
+- **`trust_evidence`** (T1, the PRD §9.1 entity): `entity_id, facet (grade|licence|activity|track),
+  signal_type, value jsonb, source_id, publisher_family, tier, provenance_class,
+  visibility (public|private|consented|supplier_only), observed_at, expiry_at, confidence,
+  superseded_by`. Append-only, like `crosswalk`.
+- **`adverse_signal`** (exists, 0 rows) gets its first writers in T0: `mca_struck_off`,
+  `mca_dissolved`, `mca_liquidated`, `nabl_expired`. Later: `gst_cancelled`, `licence_cancelled`.
+- **`gst_record`** (exists, append-only) adds `provider_class` (`live_gstn` | `vendor_cache` |
+  `stub`), `raw_sha256`, `einvoice_enabled`, `filing_frequency`, `trigger`
+  (render/detail/shortlist/rfq/claim/free_check), `cost_inr` and `latency_ms`. It already has
+  `taxpayer_type`.
+- **`gstin_candidate`** (T2): name-search results waiting on the link rule (§3 rung 3). They
+  link only through `crosswalk` or `review_queue`.
+- **`verification_spend`** (T2): the ledger behind the budget guard, reconciled monthly against
+  vendor invoices.
+- **`trust_feedback`**, **`supplier_response`** and **`consent_record`** (T7).
+- Proprietorship GSTINs get `person`-grade handling: erasable, with the consent basis recorded.
 
-**Code** (`cosmetics/trust/`, with no cosmetics-specific imports so `msme/gst.py` can be replaced by it):
-- `discovery.py` — the rungs in §3 and the link rules; it writes to `crosswalk`/`review_queue`.
-- `gst/adapter.py` (interface + normaliser), `gst/providers/*.py`, `gst/router.py`
-  (breaker, hedging, shadow sampling), `gst/cache.py` (field TTLs, single-flight).
-- `budget.py` — caps and the ledger.
-- `facets.py` — the evidence profile. `pipeline/trust.py` keeps the rungs and calls it. L3 is redefined (§2.4).
-- `qr.py` — e-invoice JWS verification against IRP public keys fetched from the official
-  portal and pinned (never hard-coded from a third-party page).
-- API (PRD §9.2): `GET /vendors/{id}/trust` (public fields only), `POST /vendors/{id}/verify`
-  (budgeted, rate-limited), `POST /vendors/{id}/report`, `POST /trust/check-gstin` (match without disclosure).
-- `skills/jarvis-cosmetics-search`: the agent reads `/trust` and quotes states; it gets no paid-call tool.
-- Catalog: S16 moves from `blocked` to `live` with vendor cards; new cards for IAF and e-invoice QR. `make catalog-check` covers them.
-- Golden queries: `no_private_trust_fields_in_neo4j`, `no_unmasked_proprietorship_gstin_public`,
-  `every_gst_badge_has_a_record` (PRD §11.2).
+**Catalog:** every source card gains `publisher_family` and `kind` (§6.2). `make
+catalog-check` fails a card without them. S16 moves from `blocked` to `stub` in T2, and to
+`live` with vendor cards in T4.
+
+**Code** (`cosmetics/trust/`, with no cosmetics-specific imports, so `msme/gst.py` can be
+replaced by it):
+- `evidence.py` (T1): turns sources into `trust_evidence` rows. `grade.py` computes §6.1
+  and `facets.py` computes §6.3. `pipeline/trust.py` becomes a thin caller.
+- `gst/adapter.py` (T2): the interface, normalised to GSTN's `searchTaxpayer` field names,
+  with two methods, `verify(gstin)` and `search_by_name(name, state)`.
+  - `gst/providers/stub.py` returns deterministic fake records marked `stub`.
+  - `gst/router.py`: breaker, hedging, shadow sampling (§4.4).
+  - `gst/cache.py`: per-field TTLs (§4.3), single-flight.
+  - `gst/link.py`: the rung-3 auto-link rule.
+- `budget.py` (T2): caps and the ledger.
+- `discovery.py` (T4): the §3 rungs.
+- `qr.py` (T7): e-invoice JWS verification against IRP public keys, fetched from the official
+  portal and pinned.
+- **API** (PRD §9.2): `GET /vendors/{id}/trust` (public fields only), `POST
+  /vendors/{id}/verify` (budgeted, rate-limited), `POST /vendors/{id}/report`, `POST
+  /trust/check-gstin` (match without disclosure).
+- **Agent:** `skills/jarvis-cosmetics-search` reads `/trust` and quotes its states. It gets no
+  paid-call tool.
+
+**Golden queries:**
+
+| Phase | Query |
+|---|---|
+| T0 | `no_inactive_cin_as_identity` |
+| T0 | `corroboration_requires_identity` |
+| T0 | `own_site_never_corroborates` |
+| T0 | `trust_never_orders_results` |
+| T1 | `no_private_trust_fields_in_neo4j` |
+| T1 | `every_chip_has_evidence` |
+| T2 | `stub_never_verifies` |
+| T2 | `no_unmasked_proprietorship_gstin_public` |
+| T4 | `every_gst_badge_has_a_live_record` (PRD §11.2) |
 
 ---
 
 ## 10. Delivery
 
-| Phase | Scope | Cost | Exit criteria |
-|---|---|---|---|
-| **2.0 — done 2026-10-18** | masked personal-PAN GSTINs in `trust_reasons`, `gstins` and `pan`; set `udyam_registered` in s17b; rung-0 checks; pruned dead trust rows; skill and schema-card rules | ₹0 | **met:** 0 personal PANs in the graph (golden query); `1 IN trust_rungs` for 92.0%; mismatches in `gstin_check`. Still open: the "GST verified" definition, and the P1 card's "Entity verified" chip (`serve/index.html:886`). It fires on rung 1, which now covers 92% of firms on Udyam membership alone. Suggest "Registered (Udyam)" / "GSTIN on record" until a live check backs "verified" |
-| **2.1 — week 1–2** | adapter + 2 providers on trial credits; cache, TTLs, single-flight; budget guard; `gst_record` writes; lazy triggers; badge and drawer with "checked <date>" | trial credits | every badge traces to a `gst_record` row; render p95 unchanged; spend ledger matches the vendor console |
-| **2.2 — week 2–3** | rung 2 (CIN→PAN→GSTIN batch); rung 3 on detail-open with confirmation; the free GSTIN check (match without disclosure) | ≈ ₹10k pack + ₹5k/mo cap | GST coverage of *surfaced* vendors ≥ 30%; name-search false links < 2% on a 100-row audit |
-| **2.3 — week 3–4** | facet UI replacing the L-score; ranking fix; L3 redefinition; feedback + supplier response; privacy notice and terms drafted for review | ₹0 + lawyer | PRD §11.2 acceptance criteria all pass; the score breaks down into facets |
-| **2.4 — with real users** | supplier claim (L5) with domain/bank proof; consent compliance badge; e-invoice QR vouching (L6); IAF certificate checks; status alerts; RTIs to 4 more states | per use | ≥ 1 supplier with a consented compliance badge; ≥ 1 QR-verified transaction; RTI replies logged |
+Phases are named T0–T7 so they don't collide with SOURCES_PLAN's numbered phases. The old
+2.1–2.4 map onto them: 2.1 → T2 + T4, 2.2 → T4, 2.3 → T0 + T1, 2.4 → T6 + T7.
 
-**Metrics** (PRD §10.2, plus what the design needs): GST coverage of surfaced vendors; match
-success by discovery method; evidence-drawer open rate; correction rate; contact after trust
-view; **cost per verified card**; cache hit rate; vendor disagreement rate; false-link rate
-from name search; time to badge.
+| Phase | Scope | Cost | Blocked on | Exit criteria |
+|---|---|---|---|---|
+| **T0. Stop the number misleading** | §10.1 | ₹0, 2–3 days | nothing | 0 inactive CINs counted as identity; 0 firms corroborated without identity; L4 count under the new rule ≤ ~470; no template sorts on trust |
+| **T1. Evidence profile** | §10.2 | ₹0, ~1 week | nothing | every chip on the card traces to a `trust_evidence` row; grade and facet distribution in the catalog snapshot |
+| **T2. GST behind a stub** | §10.3 | ₹0, ~1 week | nothing | stub verify and name search run end to end on the 36 clean GSTINs; `stub_never_verifies` passes; swapping in a provider is one file plus a card |
+| **T3. Free sources that corroborate** | §10.4 | ₹0 | data.gov.in MCA access for the bridge; the rest rides SOURCES_PLAN | share of firms with ≥ 2 publishers measured after each source lands |
+| **T4. Live GST** | §10.5 | ≈ ₹10k pack + ₹5k/month cap | Lattix's legal entity and GSTIN; budget sign-off | every GST chip traces to a `live_gstn` record; GST coverage of *surfaced* vendors ≥ 30%; name-search false links < 2% on a 100-row audit |
+| **T5. Licences by RTI** | §10.6 | ₹10 per request | Sarvesh files them | Licence facet verified for > 2 firms; tier-1 `PERMITS` edges exist (0012) |
+| **T6. Certificates at the issuer** | §10.7 | IAF "Basic 499" (150 credits a year) | budget sign-off | every verified certification chip has an issuer lookup behind it |
+| **T7. First-party evidence** | §10.8 | per use, plus a lawyer | real users; lawyer review | ≥ 1 claimed profile; ≥ 1 QR-verified transaction; correction loop live |
+
+**Order:** T0 → T1 → T2 now. All three cost ₹0, depend on nothing outside the repo, and take
+about 2.5 weeks together. **T0 must land before SOURCES_PLAN Phase 3**, which adds Cosmoprof
+and three association directories: under today's rule each of those would mint more
+council-only L4s. T3 rides along with SOURCES_PLAN. T4–T7 start when their blockers clear.
+
+### 10.1 T0 — stop the number misleading
+
+1. **Ranking.** Take `trust DESC` out of the eight templates and rank per §6.5. Add the
+   `trust_never_orders_results` lint.
+2. **Independence.** Add `publisher_family` to every source card. `trust.py` counts families, never
+   counts `self`, and gives corroboration credit only to firms with identity.
+3. **MCA status.** Strike Off, Dissolved, Liquidated and "Converted to LLP and dissolved"
+   write a tier-1 `adverse_signal`, and the CIN stops counting as identity. Where the same
+   entity also has a live registry entry, write a `review_queue` row instead
+   (`adverse_vs_live_registry`). The source card states the dataset's as-of date, since a
+   data.gov.in snapshot lags MCA.
+4. **NABL validity.** A certificate past `certificate_valid_till` doesn't count as a registry
+   entry or as a Licence fact for labs. The drawer shows "Certificate expired <date>".
+5. **Card wording.** "Entity verified" becomes "Registered (Udyam)" or "Registered (MCA)".
+6. **Measure.** Run `make catalog` so `latest.json` carries the new distribution, and update
+   the s16 and glossary entries.
+
+### 10.2 T1 — the evidence profile
+
+- `trust_evidence` plus `evidence.py`, `grade.py` and `facets.py` (§9). `trust.py` keeps its CLI.
+- **Activity, from data already held:** HPCI India 2026 exhibitors (69); MCA status Active
+  (783); NABL certificates in date (6,424); S14 site crawled 2026-09 (1,499, tier 3, self).
+  Each item expires 18 months after `observed_at`.
+- **Neo4j:** `trust_grade`, `trust_facets` and `trust_reasons` on `Company`. Templates return them.
+- **UI:** the card shows the grade line and the facet line (§6.4). The ladder drawer becomes an
+  evidence drawer: each facet with its rows, sources and dates.
+- **Agent:** the skill and the schema card quote grade and facets, never a number.
+- **Migration:** `trust_level` and `trust_rungs` are kept for one release, then removed together
+  with `CLAUDE.md`'s "filter with `2 IN trust_rungs`" rule.
+
+### 10.3 T2 — GST behind a stub
+
+- `sql/003_trust.sql`; the `cosmetics/trust/gst/` package (§9).
+- **The stub provider** returns deterministic records keyed by GSTIN hash: a realistic status
+  mix, plus name and `pradr` drawn from our own record. That lets the link rule be tested
+  for matches and for mismatches. It writes `gst_record` with `provider_class = 'stub'`.
+- **Stub name search** returns 0–3 candidates, including a deliberate near-miss name, so that
+  `review_queue` sees real work.
+- **The rung-0 gate runs before every call.** The 5 GSTINs with a state mismatch never reach a
+  provider. The 13 personal-PAN GSTINs are checked only on a buyer action (§4.2).
+- **Cache, single-flight, budget ledger and triggers** are built as §4.2–§4.4 describe. The
+  stub costs ₹0 and still writes `verification_spend` rows at ₹0, so the ledger is tested.
+- **Drawer:** "GST evidence unavailable — verification is not connected yet" until T4.
+  Stub results are visible only in dev mode, labelled "STUB". The public demo never shows them.
+
+### 10.4 T3 — free sources that corroborate
+
+Chosen for overlap with the Udyam population, since 99.7% of firms sit in one publisher today.
+
+| Source | Where it's planned | Grade | Facet | Expected reach |
+|---|---|---|---|---|
+| **MCA bridge**: CIN and status for Udyam firms with a company or LLP name | **new**; same data.gov.in resource as s03 | 2nd registry → G2; adverse → Flagged | Activity (status Active) | up to 11,526 Udyam firms. Feeds T4's CIN → PAN → GSTIN |
+| ZED certified MSMEs (s23) | SOURCES_PLAN Phase 2 | 2nd registry (it requires Udyam, joins on name + pincode) | Activity (certificate date) | unknown until fetched; Bronze is weak |
+| GPCB / MPCB consents (s22) | SOURCES_PLAN Phase 2 | 2nd registry | Activity (valid consent to operate); Licence ceiling (0020) | Gujarat and Maharashtra plants |
+| Environmental clearances (s21) | SOURCES_PLAN Phase 2 | registry | Licence ceiling only | large plants |
+| COSMOS (s20) | SOURCES_PLAN Phase 2 | issuer register | certification verified | small |
+| Goa loan and own-manufacturer lists (s02) | SOURCES_PLAN Phase 3 | registry | Licence verified | 9 firms |
+| Cosmoprof 2026 (s08), SEA / AIPMA / AIGMF (s26) | SOURCES_PLAN Phase 3 | third-party corroboration | Activity (exhibited) | hundreds; AIPMA prints some GSTINs (§3 rung 1) |
+| Udyam re-sweep | SOURCES_PLAN Phase 1 | no new family | — | landed pages allow re-checks later |
+
+### 10.5 T4 — live GST
+
+These are the old 2.1/2.2 items, unchanged in substance:
+- **Vendors:** due diligence per §4.1, trials with two providers, then live `verify` on the
+  §4.2 triggers.
+- **Rung 2:** CIN → PAN → GSTIN for every Active CIN: the 783 held today, plus T3's bridge.
+- **Rung 3:** name search on detail-open, capped at 300 a month until the false-link audit
+  passes.
+- **Private signals:** "filing on schedule" computed against the taxpayer's own frequency
+  (§2.4), and "e-invoicing enabled".
+- **Match without disclosure:** the free check (§8.10).
+
+### 10.6 T5 — licences by RTI
+
+- File `catalog/rti/0001` (Gujarat). Then the per-state template to Maharashtra, Tamil Nadu,
+  Himachal, Uttarakhand and Delhi.
+- File a second request per state for **cancelled or suspended** licences: tier-1 adverse
+  evidence (§8.5).
+- Replies land as s02 rows: Licence facet verified, and `PERMITS` edges at tier 1.
+
+### 10.7 T6 — certificates at the issuer
+
+- IAF CertSearch, run lazily on shortlisted suppliers that claim ISO 9001, 22716 or 15378.
+- COSMOS, Leaping Bunny and PETA lists in bulk where they publish one.
+- A claim that fails at the issuer stays private and goes to review. It is never shown as fake.
+
+### 10.8 T7 — first-party evidence (with real users)
+
+- **Supplier claim** (§8.6): GSTIN plus a domain email or DNS TXT record, and optionally a
+  penny-drop.
+- **Track record:** RFQ response time measured on our rail (§8.7); e-invoice QR vouching (§8.1);
+  consented compliance badge (§8.2); buyer-consented GSTR-2B (§8.4).
+- **Alerts and corrections:** status-change alerts to shortlisters (§8.9); the correction loop and
+  right of reply (§7.4).
+- **Legal:** privacy notice and terms (§7.7), with a lawyer.
 
 ---
 
 ## 11. Decisions only Sarvesh can make
 
-1. **Vendor accounts.** Sign up for trials with gstinapi.com, Cashfree and Infyner, and ask
-   two GSPs (Quicko/Sandbox, Masters India) for quotes using the §4.1 questionnaire. This needs Lattix's entity and GSTIN.
-2. **Budget:** ₹10k one-off + ₹5k/month cap to start?
-3. **Drop the 0–10 score** for the facet profile (§6), including on the landing page?
-4. **Public wording for non-active GST:** "Could not be confirmed active, checked <date>" (proposed), or exact status?
-5. **Lawyer review:** DPDP basis for processing proprietorships; the display matrix; the CICRA
+1. **Approve the model** (§6): one grade (GST verified, then 3+, 2, registered, listed, with
+   Flagged as an override) plus three facets. The L-number leaves the card.
+2. **Public wording for a dead company:** "MCA status: Struck off (as of <date>)" (proposed),
+   or a softer "Not active on the MCA register"?
+3. **data.gov.in MCA access**, for the T3 bridge and for s03. It is requested from the same
+   account as the Udyam key.
+4. **Vendor accounts** (T4): trials with gstinapi.com, Cashfree and Infyner, and quotes from
+   two GSPs (Quicko/Sandbox, Masters India) using the §4.1 questionnaire. These need Lattix's
+   entity and GSTIN.
+5. **Budget:** ₹10k one-off plus a ₹5k/month cap to start (T4), and IAF Basic 499 (T6)?
+6. **Drop the 0–10 score** on the landing page too (§7.6)?
+7. **Public wording for non-active GST:** "Could not be confirmed active, checked <date>"
+   (proposed), or the exact status?
+8. **Lawyer review:** DPDP basis for processing proprietorships; the display matrix; the CICRA
    boundary; buyer and supplier terms; the Samadhaan question.
-6. **File RTI 0001** (Gujarat), as only an Indian citizen can, and approve the per-state template.
+9. **File RTI 0001** (Gujarat), as only an Indian citizen can, and approve the per-state template.
 
 ## 12. Risks
 
 | Risk | Mitigation |
 |---|---|
+| A wrong merge pins a struck-off CIN on a live firm | Flagged only when no live registry entry exists on the same entity; otherwise `review_queue` (§6.1). The dataset's as-of date is shown |
+| Directories copying each other inflate corroboration | Counted by publisher family; `derived_from` on cards; own site never counts (§6.2) |
+| A stub result reaches the public demo | `provider_class = stub` never counts toward G4; dev-mode only; `stub_never_verifies` golden query (§10.3) |
+| The grade stays flat (96.5% at G1) and looks useless | Say so on the card honestly; T3 sources are picked for overlap with Udyam; measure the share at G2+ after each lands |
 | A vendor's cached data is wrong or stale | `provider_class`; live-only for "verified"; shadow cross-check; automatic demotion |
 | GSTN slows down around filing dates | stale-while-revalidate; nothing on the render path waits |
 | Name search links the wrong firm | confirmation rule; review queue; audited false-link metric; cap |
